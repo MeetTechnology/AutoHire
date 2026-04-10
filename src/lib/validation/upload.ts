@@ -1,0 +1,35 @@
+import {
+  ALLOWED_DOCUMENT_EXTENSIONS,
+  MAX_ARCHIVE_SIZE_BYTES,
+  MAX_FILE_SIZE_BYTES,
+} from "@/features/upload/constants";
+
+function hasAllowedExtension(fileName: string) {
+  const lower = fileName.toLowerCase();
+
+  return ALLOWED_DOCUMENT_EXTENSIONS.some((extension) =>
+    lower.endsWith(extension),
+  );
+}
+
+function isArchive(fileName: string) {
+  return [".zip", ".rar", ".7z"].some((extension) =>
+    fileName.toLowerCase().endsWith(extension),
+  );
+}
+
+export function validateUpload(fileName: string, fileSize: number) {
+  if (!hasAllowedExtension(fileName)) {
+    return { valid: false, reason: "UNSUPPORTED_FILE_TYPE" as const };
+  }
+
+  if (isArchive(fileName) && fileSize > MAX_ARCHIVE_SIZE_BYTES) {
+    return { valid: false, reason: "ARCHIVE_TOO_LARGE" as const };
+  }
+
+  if (!isArchive(fileName) && fileSize > MAX_FILE_SIZE_BYTES) {
+    return { valid: false, reason: "FILE_TOO_LARGE" as const };
+  }
+
+  return { valid: true as const };
+}
