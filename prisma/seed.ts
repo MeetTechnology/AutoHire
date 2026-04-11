@@ -64,6 +64,7 @@ async function main() {
       analysisJobs: {
         create: {
           id: "job_progress",
+          resumeFileId: "resume_progress",
           externalJobId: "mock:insufficient_info:progress",
           jobType: "INITIAL",
           jobStatus: "COMPLETED",
@@ -114,9 +115,21 @@ async function main() {
       submittedAt: now,
       createdAt: now,
       updatedAt: now,
+      resumeFiles: {
+        create: {
+          id: "resume_submitted",
+          fileName: "candidate-submitted.pdf",
+          objectKey: "applications/app_submitted/resume/candidate-submitted.pdf",
+          fileType: "application/pdf",
+          fileSize: 2048,
+          versionNo: 1,
+          uploadedAt: now,
+        },
+      },
       analysisJobs: {
         create: {
           id: "job_submitted",
+          resumeFileId: "resume_submitted",
           externalJobId: "mock:eligible:submitted",
           jobType: "INITIAL",
           jobStatus: "COMPLETED",
@@ -149,6 +162,7 @@ async function main() {
           fileSize: 1000,
           uploadedAt: now,
           isDeleted: false,
+          deletedAt: null,
         },
       },
     },

@@ -72,7 +72,7 @@ model ExpertInvitation {
 model Application {
   id                  String             @id @default(cuid())
   expertId            String
-  invitationId        String
+  invitationId        String             @unique
   applicationStatus   ApplicationStatus  @default(INIT)
   currentStep         String?
   eligibilityResult   EligibilityResult  @default(UNKNOWN)
@@ -104,13 +104,16 @@ model ResumeFile {
   uploadedAt    DateTime    @default(now())
 
   application Application @relation(fields: [applicationId], references: [id])
+  analysisJobs ResumeAnalysisJob[]
 
   @@index([applicationId])
+  @@unique([applicationId, versionNo])
 }
 
 model ResumeAnalysisJob {
   id            String            @id @default(cuid())
   applicationId String
+  resumeFileId  String?
   externalJobId String?           @unique
   jobType       AnalysisJobType
   jobStatus     AnalysisJobStatus @default(QUEUED)
@@ -119,15 +122,19 @@ model ResumeAnalysisJob {
   startedAt     DateTime          @default(now())
   finishedAt    DateTime?
 
-  application Application @relation(fields: [applicationId], references: [id])
+  application                  Application                   @relation(fields: [applicationId], references: [id])
+  resumeFile                   ResumeFile?                   @relation(fields: [resumeFileId], references: [id])
+  analysisResult               ResumeAnalysisResult?
+  supplementalFieldSubmissions SupplementalFieldSubmission[]
 
   @@index([applicationId])
+  @@index([resumeFileId])
 }
 
 model ResumeAnalysisResult {
   id                String            @id @default(cuid())
   applicationId     String
-  analysisJobId     String
+  analysisJobId     String            @unique
   analysisRound     Int               @default(1)
   eligibilityResult EligibilityResult @default(UNKNOWN)
   reasonText        String?
@@ -137,9 +144,9 @@ model ResumeAnalysisResult {
   createdAt         DateTime          @default(now())
 
   application Application @relation(fields: [applicationId], references: [id])
+  analysisJob ResumeAnalysisJob @relation(fields: [analysisJobId], references: [id])
 
   @@index([applicationId])
-  @@index([analysisJobId])
 }
 
 model SupplementalFieldSubmission {
@@ -150,8 +157,10 @@ model SupplementalFieldSubmission {
   submittedAt   DateTime @default(now())
 
   application Application @relation(fields: [applicationId], references: [id])
+  analysisJob ResumeAnalysisJob? @relation(fields: [analysisJobId], references: [id])
 
   @@index([applicationId])
+  @@index([analysisJobId])
 }
 
 model ApplicationMaterial {
@@ -164,10 +173,12 @@ model ApplicationMaterial {
   fileSize      Int
   uploadedAt    DateTime         @default(now())
   isDeleted     Boolean          @default(false)
+  deletedAt     DateTime?
 
   application Application @relation(fields: [applicationId], references: [id])
 
   @@index([applicationId, category])
+  @@index([applicationId, isDeleted, category])
 }
 
 model ApplicationEventLog {

@@ -21,6 +21,7 @@ import {
   getApplicationById,
   getLatestAnalysisJob,
   getLatestAnalysisResult,
+  getLatestResumeFile,
   getLatestResumeVersion,
   listMaterials,
   softDeleteMaterial,
@@ -159,6 +160,7 @@ function mapExternalJobStatus(jobStatus: string): AnalysisJobStatus {
 export async function startInitialAnalysis(input: {
   applicationId: string;
   fileName: string;
+  resumeFileId: string;
 }) {
   const analysis = await createResumeAnalysisJob({
     applicationId: input.applicationId,
@@ -167,6 +169,7 @@ export async function startInitialAnalysis(input: {
 
   const job = await createAnalysisJob({
     applicationId: input.applicationId,
+    resumeFileId: input.resumeFileId,
     externalJobId: analysis.externalJobId,
     jobType: "INITIAL",
     jobStatus: mapExternalJobStatus(analysis.jobStatus),
@@ -270,6 +273,7 @@ export async function submitSupplementalFields(input: {
   fields: Record<string, unknown>;
 }) {
   const latestJob = await getLatestAnalysisJob(input.applicationId);
+  const latestResumeFile = await getLatestResumeFile(input.applicationId);
 
   await createSupplementalFieldSubmission({
     applicationId: input.applicationId,
@@ -284,6 +288,7 @@ export async function submitSupplementalFields(input: {
 
   const job = await createAnalysisJob({
     applicationId: input.applicationId,
+    resumeFileId: latestResumeFile?.id ?? null,
     externalJobId: analysis.externalJobId,
     jobType: "REANALYSIS",
     jobStatus: mapExternalJobStatus(analysis.jobStatus),

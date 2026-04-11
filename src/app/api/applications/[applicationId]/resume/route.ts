@@ -36,13 +36,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     return jsonError("文件不符合上传要求。", 400, { code: validation.reason });
   }
 
-  await createResumeUploadRecord({
+  const resumeFile = await createResumeUploadRecord({
     applicationId,
     ...parsed.data,
   });
   const job = await startInitialAnalysis({
     applicationId,
     fileName: parsed.data.fileName,
+    resumeFileId: resumeFile.id,
   });
 
   return NextResponse.json({

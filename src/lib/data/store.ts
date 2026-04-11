@@ -48,6 +48,7 @@ type ResumeFileRecord = {
 type AnalysisJobRecord = {
   id: string;
   applicationId: string;
+  resumeFileId: string | null;
   externalJobId: string | null;
   jobType: "INITIAL" | "REANALYSIS";
   jobStatus: AnalysisJobStatus;
@@ -88,6 +89,7 @@ type MaterialRecord = {
   fileSize: number;
   uploadedAt: Date;
   isDeleted: boolean;
+  deletedAt: Date | null;
 };
 
 type EventRecord = {
@@ -170,11 +172,22 @@ function buildSampleStore(): PersistedStore {
         versionNo: 1,
         uploadedAt: now,
       },
+      {
+        id: "resume_submitted",
+        applicationId: "app_submitted",
+        fileName: "candidate-submitted.pdf",
+        objectKey: "applications/app_submitted/resume/candidate-submitted.pdf",
+        fileType: "application/pdf",
+        fileSize: 2048,
+        versionNo: 1,
+        uploadedAt: now,
+      },
     ],
     analysisJobs: [
       {
         id: "job_progress",
         applicationId: "app_progress",
+        resumeFileId: "resume_progress",
         externalJobId: "mock:insufficient_info:progress",
         jobType: "INITIAL",
         jobStatus: "COMPLETED",
@@ -186,6 +199,7 @@ function buildSampleStore(): PersistedStore {
       {
         id: "job_submitted",
         applicationId: "app_submitted",
+        resumeFileId: "resume_submitted",
         externalJobId: "mock:eligible:submitted",
         jobType: "INITIAL",
         jobStatus: "COMPLETED",
@@ -248,6 +262,7 @@ function buildSampleStore(): PersistedStore {
         fileSize: 1000,
         uploadedAt: now,
         isDeleted: false,
+        deletedAt: null,
       },
     ],
     events: [],
@@ -294,25 +309,15 @@ export async function findInvitationById(invitationId: string) {
 export async function findOpenApplicationByInvitationId(invitationId: string) {
   if (getRuntimeMode() === "memory") {
     return (
-      getMemoryStore()
-        .applications.filter(
-          (item) =>
-            item.invitationId === invitationId &&
-            item.applicationStatus !== "CLOSED",
-        )
-        .sort(byDateDesc)[0] ?? null
+      getMemoryStore().applications.find(
+        (item) => item.invitationId === invitationId,
+      ) ?? null
     );
   }
 
   const prisma = await getPrisma();
-  return prisma.application.findFirst({
-    where: {
-      invitationId,
-      applicationStatus: {
-        not: "CLOSED",
-      },
-    },
-    orderBy: { updatedAt: "desc" },
+  return prisma.application.findUnique({
+    where: { invitationId },
   });
 }
 
@@ -437,6 +442,7 @@ export async function createResumeFile(input: {
 
 export async function createAnalysisJob(input: {
   applicationId: string;
+  resumeFileId: string | null;
   externalJobId: string | null;
   jobType: "INITIAL" | "REANALYSIS";
   jobStatus: AnalysisJobStatus;
@@ -505,6 +511,22 @@ export async function getLatestAnalysisJob(applicationId: string) {
   return prisma.resumeAnalysisJob.findFirst({
     where: { applicationId },
     orderBy: { startedAt: "desc" },
+  });
+}
+
+export async function getLatestResumeFile(applicationId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore()
+        .resumeFiles.filter((item) => item.applicationId === applicationId)
+        .sort((left, right) => right.versionNo - left.versionNo)[0] ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.resumeFile.findFirst({
+    where: { applicationId },
+    orderBy: [{ versionNo: "desc" }, { uploadedAt: "desc" }],
   });
 }
 
@@ -610,6 +632,7 @@ export async function createMaterial(input: {
       id: createId("material"),
       uploadedAt: new Date(),
       isDeleted: false,
+      deletedAt: null,
       ...input,
     };
 
@@ -635,13 +658,14 @@ export async function softDeleteMaterial(
     }
 
     material.isDeleted = true;
+    material.deletedAt = new Date();
     return material;
   }
 
   const prisma = await getPrisma();
   return prisma.applicationMaterial.update({
     where: { id: fileId },
-    data: { isDeleted: true },
+    data: { isDeleted: true, deletedAt: new Date() },
   });
 }
 
