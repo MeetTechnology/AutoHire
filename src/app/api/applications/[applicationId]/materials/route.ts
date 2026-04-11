@@ -1,30 +1,56 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+
+import { materialConfirmSchema } from "@/features/application/schemas";
+import {
+  addMaterialRecord,
+  getMaterialsByCategory,
+} from "@/lib/application/service";
+import { requireApplicationSession } from "@/lib/auth/access";
+import { jsonError, parseJsonBody } from "@/lib/http";
+import { validateUpload } from "@/lib/validation/upload";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
 };
 
-export async function GET(_: Request, { params }: Params) {
+export async function GET(request: NextRequest, { params }: Params) {
   const { applicationId } = await params;
+  const access = await requireApplicationSession(request, applicationId);
 
-  return NextResponse.json({
-    applicationId,
-    identity: [],
-    employment: [],
-    education: [],
-    honor: [],
-    patent: [],
-    project: [],
-  });
+  if (!access) {
+    return jsonError("当前会话无权访问该申请。", 403);
+  }
+
+  return NextResponse.json(await getMaterialsByCategory(applicationId));
 }
 
-export async function POST(request: Request, { params }: Params) {
+export async function POST(request: NextRequest, { params }: Params) {
   const { applicationId } = await params;
-  const body = await request.json().catch(() => null);
+  const access = await requireApplicationSession(request, applicationId);
 
-  return NextResponse.json({
+  if (!access) {
+    return jsonError("当前会话无权访问该申请。", 403);
+  }
+
+  const body = await parseJsonBody(request);
+  const parsed = materialConfirmSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return jsonError("材料上传确认参数不合法。", 400, {
+      details: parsed.error.flatten(),
+    });
+  }
+
+  const validation = validateUpload(parsed.data.fileName, parsed.data.fileSize);
+
+  if (!validation.valid) {
+    return jsonError("文件不符合上传要求。", 400, { code: validation.reason });
+  }
+
+  await addMaterialRecord({
     applicationId,
-    received: body,
-    message: "Materials upload metadata endpoint placeholder",
+    ...parsed.data,
   });
+
+  return NextResponse.json(await getMaterialsByCategory(applicationId));
 }

@@ -1,5 +1,26 @@
 # 07 Test Plan
 
+## 当前验证结果（2026-04-11）
+
+当前已完成的本地验证：
+
+- `bun run format:check`
+- `bun run lint`
+- `bun run test`
+- `bun run build`
+- `bun run db:seed`
+- `bunx --bun prisma migrate deploy`
+- 真实 PostgreSQL + OSS 环境下的关键 HTTP 链路验证
+
+当前测试结论：
+
+- 本地 `mock` 模式下，专家端主流程已可运行
+- token 校验、状态恢复、分析结果三态、结构化补填、材料上传、提交幂等已有自动化覆盖
+- 真实 PostgreSQL 模式下，初始化、恢复、补填、材料删除、提交已验证可真实落库
+- 真实阿里云 OSS 模式下，服务端预签名上传、对象 key 规则、材料回显已验证通过
+- 浏览器端直传 E2E 已基本可跑，但仍存在本地 dev server / 测试时序稳定性问题
+- 真实简历分析服务 `live` 模式仍待联调验证
+
 ## 1. 测试目标
 
 验证专家端流程可完整运行，状态恢复准确，分析结果驱动正确，材料提交可靠。
@@ -79,3 +100,31 @@
   - 正常主路径
   - 信息不足路径
   - 进度恢复路径
+
+## 6. 当前已覆盖项
+
+- 单元测试已覆盖：
+  - token hash 与会话签名校验
+  - 上传规则校验
+  - 简历分析结果映射
+  - 路由状态解析
+- 端到端测试已覆盖：
+  - 有效 token 首次进入
+  - mock 返回 `ELIGIBLE` 的主路径
+  - mock 返回 `INFO_REQUIRED` 的补填路径
+  - 无效 token 异常展示
+  - 已提交状态恢复
+- 真实环境联调已覆盖：
+  - PostgreSQL migration + seed
+  - `expert-session` 初始化 / 恢复
+  - `resume upload intent -> PUT -> confirm -> analysis`
+  - `materials upload intent -> PUT -> confirm -> delete -> reupload`
+  - `submit` 提交与提交后恢复
+
+## 7. 当前待补验证项
+
+- 浏览器端阿里云 OSS 直传回归稳定性验证
+- 受控下载 / 受控预览接口验证
+- 既有简历分析服务真实任务状态与结果结构验证
+- 多文件、大文件、压缩包上传的边界验证
+- token 在真实邀约数据上的校验与恢复验证

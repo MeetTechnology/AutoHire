@@ -33,7 +33,6 @@ bun-debug.log*
 *.tsbuildinfo
 
 # prisma
-/prisma/migrations
 /prisma/dev.db
 /prisma/dev.db-journal
 
