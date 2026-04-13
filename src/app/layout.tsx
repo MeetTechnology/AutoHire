@@ -16,7 +16,7 @@ const serif = Source_Serif_4({
 export const metadata: Metadata = {
   title: "AutoHire | Global Expert Application",
   description:
-    "Editorial-style expert application flow for GESF invitees, including resume review, supplemental information, and supporting materials.",
+    "Editorial-style expert application flow for GESF invitees, including resume review, supplemental information, detailed analysis, and supporting materials.",
 };
 
 export default function RootLayout({

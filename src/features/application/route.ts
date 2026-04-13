@@ -14,7 +14,10 @@ export function resolveRouteFromStatus(status: ApplicationStatus) {
     status === "REANALYZING" ||
     status === "INFO_REQUIRED" ||
     status === "INELIGIBLE" ||
-    status === "ELIGIBLE"
+    status === "ELIGIBLE" ||
+    status === "SECONDARY_ANALYZING" ||
+    status === "SECONDARY_REVIEW" ||
+    status === "SECONDARY_FAILED"
   ) {
     return status === "CV_UPLOADED" ? "/apply/resume" : "/apply/result";
   }

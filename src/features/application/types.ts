@@ -1,5 +1,6 @@
 import type { MissingField } from "@/features/analysis/types";
 import type { SecondaryVisibleField } from "@/features/analysis/secondary";
+import type { EditableSecondaryField } from "@/features/analysis/types";
 
 export type ApplicationStatus =
   | "INIT"
@@ -10,6 +11,9 @@ export type ApplicationStatus =
   | "REANALYZING"
   | "INELIGIBLE"
   | "ELIGIBLE"
+  | "SECONDARY_ANALYZING"
+  | "SECONDARY_REVIEW"
+  | "SECONDARY_FAILED"
   | "MATERIALS_IN_PROGRESS"
   | "SUBMITTED"
   | "CLOSED";
@@ -69,6 +73,16 @@ export type SecondaryAnalysisSnapshot = {
   errorMessage: string | null;
   fields: SecondaryVisibleField[];
   run: SecondaryAnalysisRunSummary | null;
+};
+
+export type EditableSecondaryAnalysisSnapshot = {
+  runId: string | null;
+  status: SecondaryAnalysisStatus;
+  errorMessage: string | null;
+  fields: EditableSecondaryField[];
+  run: SecondaryAnalysisRunSummary | null;
+  missingCount: number;
+  savedAt: string | null;
 };
 
 export type ApplicationSnapshot = {

@@ -104,6 +104,7 @@ type SecondaryAnalysisFieldValueRecord = {
   sourceValue: string | null;
   editedValue: string | null;
   effectiveValue: string | null;
+  hasOverride: boolean;
   isMissing: boolean;
   isEdited: boolean;
   savedAt: Date;
@@ -194,6 +195,18 @@ function buildSampleStore(): PersistedStore {
         createdAt: now,
         updatedAt: now,
       },
+      {
+        id: "app_secondary",
+        expertId: "expert_secondary",
+        invitationId: "invitation_secondary",
+        applicationStatus: "ELIGIBLE",
+        currentStep: "result",
+        eligibilityResult: "ELIGIBLE",
+        latestAnalysisJobId: "job_secondary",
+        submittedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
     ],
     resumeFiles: [
       {
@@ -211,6 +224,16 @@ function buildSampleStore(): PersistedStore {
         applicationId: "app_submitted",
         fileName: "candidate-submitted.pdf",
         objectKey: "applications/app_submitted/resume/candidate-submitted.pdf",
+        fileType: "application/pdf",
+        fileSize: 2048,
+        versionNo: 1,
+        uploadedAt: now,
+      },
+      {
+        id: "resume_secondary",
+        applicationId: "app_secondary",
+        fileName: "candidate-secondary.pdf",
+        objectKey: "applications/app_secondary/resume/candidate-secondary.pdf",
         fileType: "application/pdf",
         fileSize: 2048,
         versionNo: 1,
@@ -235,6 +258,18 @@ function buildSampleStore(): PersistedStore {
         applicationId: "app_submitted",
         resumeFileId: "resume_submitted",
         externalJobId: "mock:eligible:submitted",
+        jobType: "INITIAL",
+        jobStatus: "COMPLETED",
+        stageText: "Resume analysis completed",
+        errorMessage: null,
+        startedAt: now,
+        finishedAt: now,
+      },
+      {
+        id: "job_secondary",
+        applicationId: "app_secondary",
+        resumeFileId: "resume_secondary",
+        externalJobId: "mock:eligible:secondary",
         jobType: "INITIAL",
         jobStatus: "COMPLETED",
         stageText: "Resume analysis completed",
@@ -292,11 +327,29 @@ function buildSampleStore(): PersistedStore {
         eligibilityResult: "ELIGIBLE",
         reasonText: "The profile meets the basic application requirements.",
         displaySummary:
-          "You passed the initial eligibility review. Please continue with the supporting materials.",
+          "You passed the initial eligibility review. Please continue with the detailed analysis.",
         extractedFields: {
           "*姓名": "Submitted Expert",
           "最高学位": "Doctorate",
           "就职单位中文": "Example University",
+        },
+        missingFields: [],
+        createdAt: now,
+      },
+      {
+        id: "result_secondary",
+        applicationId: "app_secondary",
+        analysisJobId: "job_secondary",
+        analysisRound: 1,
+        eligibilityResult: "ELIGIBLE",
+        reasonText: "The profile meets the basic application requirements.",
+        displaySummary:
+          "You passed the initial eligibility review. Please continue with the detailed analysis.",
+        extractedFields: {
+          "*姓名": "Secondary Expert",
+          "最高学位": "Doctorate",
+          "就职单位中文": "Example Institute",
+          "研究方向": "Marine biotechnology",
         },
         missingFields: [],
         createdAt: now,
@@ -800,6 +853,7 @@ export async function upsertSecondaryAnalysisFieldValues(input: {
           sourceValue: field.sourceValue,
           editedValue: field.editedValue || null,
           effectiveValue: field.effectiveValue,
+          hasOverride: field.hasOverride,
           isMissing: field.isMissing,
           isEdited: field.isEdited,
           savedAt: field.savedAt ? new Date(field.savedAt) : existing.savedAt,
@@ -818,6 +872,7 @@ export async function upsertSecondaryAnalysisFieldValues(input: {
         sourceValue: field.sourceValue || null,
         editedValue: field.editedValue || null,
         effectiveValue: field.effectiveValue || null,
+        hasOverride: field.hasOverride,
         isMissing: field.isMissing,
         isEdited: field.isEdited,
         savedAt: field.savedAt ? new Date(field.savedAt) : new Date(),
@@ -845,6 +900,7 @@ export async function upsertSecondaryAnalysisFieldValues(input: {
           sourceValue: field.sourceValue || null,
           editedValue: field.editedValue || null,
           effectiveValue: field.effectiveValue || null,
+          hasOverride: field.hasOverride,
           isMissing: field.isMissing,
           isEdited: field.isEdited,
           savedAt: field.savedAt ? new Date(field.savedAt) : new Date(),
@@ -858,6 +914,7 @@ export async function upsertSecondaryAnalysisFieldValues(input: {
           sourceValue: field.sourceValue || null,
           editedValue: field.editedValue || null,
           effectiveValue: field.effectiveValue || null,
+          hasOverride: field.hasOverride,
           isMissing: field.isMissing,
           isEdited: field.isEdited,
           savedAt: field.savedAt ? new Date(field.savedAt) : new Date(),

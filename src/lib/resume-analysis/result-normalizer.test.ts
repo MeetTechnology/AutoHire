@@ -15,7 +15,7 @@ describe("normalizeAnalysisResultPayload", () => {
     });
 
     expect(result.eligibilityResult).toBe("ELIGIBLE");
-    expect(result.displaySummary).toContain("meets the basic application requirements");
+    expect(result.displaySummary).toContain("Please continue with the detailed analysis");
     expect(result.reasonText).toBeNull();
     expect(result.rawReasoning).toContain("meets threshold");
   });
@@ -44,7 +44,7 @@ describe("normalizeAnalysisResultPayload", () => {
     });
 
     expect(result.eligibilityResult).toBe("ELIGIBLE");
-    expect(result.displaySummary).toContain("meets the basic application requirements");
+    expect(result.displaySummary).toContain("Please continue with the detailed analysis");
     expect(result.reasonText).toBeNull();
     expect(result.rawReasoning).toContain("姓名：Jane Doe");
   });

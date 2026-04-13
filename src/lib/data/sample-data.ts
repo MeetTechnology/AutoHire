@@ -4,6 +4,7 @@ export const SAMPLE_TOKENS = {
   init: "sample-init-token",
   progress: "sample-progress-token",
   submitted: "sample-submitted-token",
+  secondary: "sample-secondary-token",
 } as const;
 
 export function getSampleInvitationSeeds() {
@@ -36,6 +37,16 @@ export function getSampleInvitationSeeds() {
       expertId: "expert_submitted",
       email: "submitted@example.com",
       tokenHash: hashInviteToken(SAMPLE_TOKENS.submitted),
+      tokenStatus: "ACTIVE" as const,
+      expiredAt: future,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "invitation_secondary",
+      expertId: "expert_secondary",
+      email: "secondary@example.com",
+      tokenHash: hashInviteToken(SAMPLE_TOKENS.secondary),
       tokenStatus: "ACTIVE" as const,
       expiredAt: future,
       createdAt: now,

@@ -1,4 +1,4 @@
-import { parseSecondaryFieldSourceValues, parseSecondaryVisibleFields } from "@/features/analysis/secondary";
+import { parseSecondaryFieldSourceValues } from "@/features/analysis/secondary";
 import {
   SECONDARY_FIELD_DEFINITIONS,
   buildEditableSecondaryField,
@@ -58,6 +58,31 @@ import {
   enrichMissingFieldWithRegistry,
 } from "@/lib/resume-analysis/missing-field-registry";
 import { translateVisibleFieldValue } from "@/features/analysis/display";
+
+export class ApplicationServiceError extends Error {
+  status: number;
+  code: string;
+
+  constructor(message: string, status: number, code: string) {
+    super(message);
+    this.name = "ApplicationServiceError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+type StoredSecondaryFieldValue = {
+  no: number;
+  columnName: string | null;
+  label: string;
+  sourceValue: string | null;
+  editedValue: string | null;
+  effectiveValue: string | null;
+  hasOverride: boolean;
+  isMissing: boolean;
+  isEdited: boolean;
+  savedAt: Date;
+};
 
 export async function resolveInviteToken(token: string) {
   return findInvitationByTokenHash(hashInviteToken(token));
@@ -168,6 +193,89 @@ function mapEligibilityToApplicationStatus(
   }
 
   return "CV_ANALYZING";
+}
+
+function mapSecondaryStatusToApplicationStatus(
+  status: SecondaryAnalysisSnapshot["status"] | EditableSecondaryAnalysisSnapshot["status"],
+): ApplicationStatus | null {
+  if (["pending", "processing", "retrying"].includes(status)) {
+    return "SECONDARY_ANALYZING";
+  }
+
+  if (status === "completed" || status === "completed_partial") {
+    return "SECONDARY_REVIEW";
+  }
+
+  if (status === "failed") {
+    return "SECONDARY_FAILED";
+  }
+
+  return null;
+}
+
+async function syncSecondaryApplicationState(input: {
+  applicationId: string;
+  status: SecondaryAnalysisSnapshot["status"] | EditableSecondaryAnalysisSnapshot["status"];
+  errorMessage: string | null;
+}) {
+  const nextStatus = mapSecondaryStatusToApplicationStatus(input.status);
+
+  if (!nextStatus) {
+    return null;
+  }
+
+  const application = await getApplicationById(input.applicationId);
+
+  if (
+    !application ||
+    application.applicationStatus === "MATERIALS_IN_PROGRESS" ||
+    application.applicationStatus === "SUBMITTED" ||
+    application.applicationStatus === nextStatus
+  ) {
+    return application;
+  }
+
+  const updated = await updateApplication(input.applicationId, {
+    applicationStatus: nextStatus,
+    currentStep: "result",
+  });
+
+  const eventType =
+    nextStatus === "SECONDARY_REVIEW"
+      ? "SECONDARY_ANALYSIS_COMPLETED"
+      : nextStatus === "SECONDARY_FAILED"
+        ? "SECONDARY_ANALYSIS_FAILED"
+        : "SECONDARY_ANALYSIS_SYNCED";
+
+  await createEvent(input.applicationId, eventType, {
+    status: input.status,
+    errorMessage: input.errorMessage,
+  });
+
+  return updated;
+}
+
+async function requireApplicationStage(input: {
+  applicationId: string;
+  allowedStatuses: ApplicationStatus[];
+  message: string;
+  code: string;
+}) {
+  const application = await getApplicationById(input.applicationId);
+
+  if (!application) {
+    throw new ApplicationServiceError(
+      "The application could not be found.",
+      404,
+      "APPLICATION_NOT_FOUND",
+    );
+  }
+
+  if (!input.allowedStatuses.includes(application.applicationStatus)) {
+    throw new ApplicationServiceError(input.message, 409, input.code);
+  }
+
+  return application;
 }
 
 function mapExternalJobStatus(jobStatus: string): AnalysisJobStatus {
@@ -369,7 +477,7 @@ export async function refreshAnalysisState(applicationId: string) {
 
       await updateApplication(applicationId, {
         applicationStatus: nextStatus,
-        currentStep: nextStatus === "ELIGIBLE" ? "materials" : "result",
+        currentStep: "result",
         eligibilityResult: result.eligibilityResult,
       });
 
@@ -506,14 +614,62 @@ export async function submitSupplementalFields(input: {
 }
 
 export async function startSecondaryAnalysis(applicationId: string) {
+  const existingRun = await getLatestSecondaryAnalysisRun(applicationId);
+
+  if (existingRun && !isPlaceholderSecondaryRun(existingRun)) {
+    throw new ApplicationServiceError(
+      "Secondary analysis can only be started once for this application.",
+      409,
+      "SECONDARY_ANALYSIS_ALREADY_STARTED",
+    );
+  }
+
+  const application = await requireApplicationStage({
+    applicationId,
+    allowedStatuses: ["ELIGIBLE"],
+    message:
+      "Detailed analysis can only be started after the initial eligibility review has passed.",
+    code: "SECONDARY_ANALYSIS_NOT_READY",
+  });
   const latestJob = await getLatestAnalysisJob(applicationId);
 
   if (!latestJob?.externalJobId) {
-    throw new Error("No completed analysis job is available for secondary analysis.");
+    throw new ApplicationServiceError(
+      "No completed analysis job is available for secondary analysis.",
+      409,
+      "SECONDARY_ANALYSIS_NOT_AVAILABLE",
+    );
   }
 
   const secondary = await triggerSecondaryAnalysis({
     externalJobId: latestJob.externalJobId,
+  });
+
+  if (secondary.runId) {
+    await upsertSecondaryAnalysisRun({
+      applicationId,
+      analysisJobId: latestJob.id,
+      externalRunId: secondary.runId,
+      status: secondary.status,
+      errorMessage: null,
+      runSummary: secondary.runId
+        ? {
+            id: secondary.runId,
+            status: secondary.status,
+            totalPrompts: null,
+            completedPrompts: null,
+            failedPromptIds: [],
+            errorMessage: null,
+          }
+        : null,
+      rawResults: null,
+    });
+  }
+
+  await updateApplication(applicationId, {
+    applicationStatus: "SECONDARY_ANALYZING",
+    currentStep: "result",
+    eligibilityResult: application.eligibilityResult,
   });
 
   await createEvent(applicationId, "SECONDARY_ANALYSIS_TRIGGERED", {
@@ -544,15 +700,7 @@ function buildSecondaryRunSummary(
 
 function buildEditableFieldsFromSource(input: {
   sourceValuesByNo: Map<number, string>;
-  storedFields: Array<{
-    no: number;
-    sourceValue: string | null;
-    editedValue: string | null;
-    effectiveValue: string | null;
-    isMissing: boolean;
-    isEdited: boolean;
-    savedAt: Date;
-  }>;
+  storedFields: StoredSecondaryFieldValue[];
 }) {
   const storedByNo = new Map(input.storedFields.map((field) => [field.no, field]));
 
@@ -560,19 +708,48 @@ function buildEditableFieldsFromSource(input: {
     const stored = storedByNo.get(definition.no);
     const rawSourceValue = input.sourceValuesByNo.get(definition.no) ?? "";
     const sourceValue = translateVisibleFieldValue(definition.no, rawSourceValue);
+    const hasOverride = stored?.hasOverride ?? false;
     const editedValue = stored?.editedValue ?? "";
-    const effectiveValue = editedValue.trim().length > 0 ? editedValue : sourceValue;
+    const effectiveValue = hasOverride ? editedValue : sourceValue;
 
     return buildEditableSecondaryField(definition, {
       sourceValue,
       editedValue,
       effectiveValue,
+      hasOverride,
       isMissing: effectiveValue.trim().length === 0,
-      isEdited:
-        editedValue.trim().length > 0 && editedValue.trim() !== sourceValue.trim(),
+      isEdited: hasOverride && editedValue.trim() !== sourceValue.trim(),
       savedAt: stored?.savedAt ? stored.savedAt.toISOString() : null,
     });
   });
+}
+
+function isPlaceholderSecondaryRun(
+  run:
+    | {
+        externalRunId: string;
+        status: string;
+        runSummary: Record<string, unknown> | null;
+        rawResults: Record<string, unknown>[] | null;
+      }
+    | null
+    | undefined,
+) {
+  if (!run) {
+    return false;
+  }
+
+  const summaryId =
+    run.runSummary && typeof run.runSummary.id === "string"
+      ? run.runSummary.id.trim()
+      : "";
+
+  return (
+    run.status === "idle" &&
+    run.externalRunId === "latest" &&
+    summaryId.length === 0 &&
+    (run.rawResults?.length ?? 0) === 0
+  );
 }
 
 async function persistSecondaryAnalysisSnapshot(input: {
@@ -606,22 +783,50 @@ async function persistSecondaryAnalysisSnapshot(input: {
     })),
   });
 
-  const existingFields = await listSecondaryAnalysisFieldValues(runRecord.id);
+  const existingFields = (await listSecondaryAnalysisFieldValues(
+    runRecord.id,
+  )) as StoredSecondaryFieldValue[];
+  const completedTexts = input.results
+    .filter((result) => result.status === "completed" && result.generatedText)
+    .map((result) => result.generatedText);
+
+  if (completedTexts.length === 0) {
+    const editableFields =
+      existingFields.length === 0
+        ? []
+        : SECONDARY_FIELD_DEFINITIONS.map((definition) => {
+            const stored = existingFields.find((field) => field.no === definition.no);
+
+            return buildEditableSecondaryField(definition, {
+              sourceValue: stored?.sourceValue ?? "",
+              editedValue: stored?.editedValue ?? "",
+              effectiveValue: stored?.effectiveValue ?? "",
+              hasOverride: stored?.hasOverride ?? false,
+              isMissing: stored?.isMissing ?? true,
+              isEdited: stored?.isEdited ?? false,
+              savedAt: stored?.savedAt?.toISOString() ?? null,
+            });
+          });
+
+    return {
+      runRecord,
+      editableFields,
+    };
+  }
+
   const sourceValuesByNo = parseSecondaryFieldSourceValues(
-    input.results
-      .filter((result) => result.status === "completed" && result.generatedText)
-      .map((result) => result.generatedText),
+    completedTexts,
   );
   const editableFields = buildEditableFieldsFromSource({
     sourceValuesByNo,
     storedFields: existingFields,
   });
 
-  const storedFields = await upsertSecondaryAnalysisFieldValues({
+  const storedFields = (await upsertSecondaryAnalysisFieldValues({
     applicationId: input.applicationId,
     secondaryRunId: runRecord.id,
     fields: editableFields,
-  });
+  })) as StoredSecondaryFieldValue[];
 
   return {
     runRecord,
@@ -678,29 +883,51 @@ export async function getSecondaryAnalysisSnapshot(input: {
     };
   }
 
-  const targetRun = input.runId
+  const targetRunRecord = input.runId
     ? await findSecondaryAnalysisRunByExternalRunId({
         applicationId: input.applicationId,
         externalRunId: input.runId,
       })
     : await getLatestSecondaryAnalysisRun(input.applicationId);
+  const targetRun = isPlaceholderSecondaryRun(targetRunRecord)
+    ? null
+    : targetRunRecord;
 
   if (targetRun && !["pending", "processing", "retrying"].includes(targetRun.status)) {
-    const storedFields = await listSecondaryAnalysisFieldValues(targetRun.id);
-
-    return {
-      runId: targetRun.externalRunId,
+    await syncSecondaryApplicationState({
+      applicationId: input.applicationId,
       status: targetRun.status as SecondaryAnalysisSnapshot["status"],
       errorMessage: targetRun.errorMessage,
-      fields: storedFields
-        .filter((field) => (field.effectiveValue ?? "").trim().length > 0)
-        .map((field) => ({
-          no: field.no,
-          column: field.columnName,
-          label: field.label,
-          value: field.effectiveValue ?? "",
-        })),
-      run: (targetRun.runSummary as SecondaryAnalysisSnapshot["run"] | null) ?? null,
+    });
+
+    const storedFields = (await listSecondaryAnalysisFieldValues(
+      targetRun.id,
+    )) as StoredSecondaryFieldValue[];
+    if (storedFields.length > 0) {
+      return {
+        runId: targetRun.externalRunId,
+        status: targetRun.status as SecondaryAnalysisSnapshot["status"],
+        errorMessage: targetRun.errorMessage,
+        fields: storedFields
+          .filter((field) => (field.effectiveValue ?? "").trim().length > 0)
+          .map((field) => ({
+            no: field.no,
+            column: field.columnName,
+            label: field.label,
+            value: field.effectiveValue ?? "",
+          })),
+        run: (targetRun.runSummary as SecondaryAnalysisSnapshot["run"] | null) ?? null,
+      };
+    }
+  }
+
+  if (!input.runId && !targetRun) {
+    return {
+      runId: null,
+      status: "idle",
+      errorMessage: null,
+      fields: [],
+      run: null,
     };
   }
 
@@ -716,6 +943,12 @@ export async function getSecondaryAnalysisSnapshot(input: {
     errorMessage: secondary.errorMessage,
     run: secondary.run,
     results: secondary.results,
+  });
+
+  await syncSecondaryApplicationState({
+    applicationId: input.applicationId,
+    status: secondary.status,
+    errorMessage: secondary.errorMessage,
   });
 
   return {
@@ -750,34 +983,58 @@ export async function getEditableSecondaryAnalysisSnapshot(input: {
     });
   }
 
-  const targetRun = input.runId
+  const targetRunRecord = input.runId
     ? await findSecondaryAnalysisRunByExternalRunId({
         applicationId: input.applicationId,
         externalRunId: input.runId,
       })
     : await getLatestSecondaryAnalysisRun(input.applicationId);
+  const targetRun = isPlaceholderSecondaryRun(targetRunRecord)
+    ? null
+    : targetRunRecord;
 
   if (targetRun && !["pending", "processing", "retrying"].includes(targetRun.status)) {
-    const storedFields = await listSecondaryAnalysisFieldValues(targetRun.id);
-    const editableFields = SECONDARY_FIELD_DEFINITIONS.map((definition) => {
-      const stored = storedFields.find((field) => field.no === definition.no);
-
-      return buildEditableSecondaryField(definition, {
-        sourceValue: stored?.sourceValue ?? "",
-        editedValue: stored?.editedValue ?? "",
-        effectiveValue: stored?.effectiveValue ?? "",
-        isMissing: stored?.isMissing ?? true,
-        isEdited: stored?.isEdited ?? false,
-        savedAt: stored?.savedAt?.toISOString() ?? null,
-      });
-    });
-
-    return buildEditableSecondarySnapshot({
-      runId: targetRun.externalRunId,
+    await syncSecondaryApplicationState({
+      applicationId: input.applicationId,
       status: targetRun.status as EditableSecondaryAnalysisSnapshot["status"],
       errorMessage: targetRun.errorMessage,
-      fields: editableFields,
-      run: (targetRun.runSummary as EditableSecondaryAnalysisSnapshot["run"] | null) ?? null,
+    });
+
+    const storedFields = (await listSecondaryAnalysisFieldValues(
+      targetRun.id,
+    )) as StoredSecondaryFieldValue[];
+    if (storedFields.length > 0) {
+      const editableFields = SECONDARY_FIELD_DEFINITIONS.map((definition) => {
+        const stored = storedFields.find((field) => field.no === definition.no);
+
+        return buildEditableSecondaryField(definition, {
+          sourceValue: stored?.sourceValue ?? "",
+          editedValue: stored?.editedValue ?? "",
+          effectiveValue: stored?.effectiveValue ?? "",
+          hasOverride: stored?.hasOverride ?? false,
+          isMissing: stored?.isMissing ?? true,
+          isEdited: stored?.isEdited ?? false,
+          savedAt: stored?.savedAt?.toISOString() ?? null,
+        });
+      });
+
+      return buildEditableSecondarySnapshot({
+        runId: targetRun.externalRunId,
+        status: targetRun.status as EditableSecondaryAnalysisSnapshot["status"],
+        errorMessage: targetRun.errorMessage,
+        fields: editableFields,
+        run: (targetRun.runSummary as EditableSecondaryAnalysisSnapshot["run"] | null) ?? null,
+      });
+    }
+  }
+
+  if (!input.runId && !targetRun) {
+    return buildEditableSecondarySnapshot({
+      runId: null,
+      status: "idle",
+      errorMessage: null,
+      fields: [],
+      run: null,
     });
   }
 
@@ -793,6 +1050,12 @@ export async function getEditableSecondaryAnalysisSnapshot(input: {
     errorMessage: secondary.errorMessage,
     run: secondary.run,
     results: secondary.results,
+  });
+
+  await syncSecondaryApplicationState({
+    applicationId: input.applicationId,
+    status: secondary.status,
+    errorMessage: secondary.errorMessage,
   });
 
   return buildEditableSecondarySnapshot({
@@ -815,12 +1078,18 @@ export async function saveEditableSecondaryAnalysisFields(input: {
   });
 
   if (!runRecord) {
-    throw new Error("The secondary analysis run could not be found.");
+    throw new ApplicationServiceError(
+      "The secondary analysis run could not be found.",
+      404,
+      "SECONDARY_ANALYSIS_RUN_NOT_FOUND",
+    );
   }
 
-  const existingFields = await listSecondaryAnalysisFieldValues(runRecord.id);
+  const existingFields = (await listSecondaryAnalysisFieldValues(
+    runRecord.id,
+  )) as StoredSecondaryFieldValue[];
   const existingByNo = new Map(existingFields.map((field) => [field.no, field]));
-  const editableByNo = new Map<number, string>();
+  const editableByNo = new Map<number, { value: string; hasOverride: boolean }>();
 
   for (const [key, rawValue] of Object.entries(input.fields)) {
     const numericNo = Number.parseInt(key, 10);
@@ -831,31 +1100,62 @@ export async function saveEditableSecondaryAnalysisFields(input: {
     const definition = byNo ?? byFieldKey;
 
     if (!definition) {
-      throw new Error(`Unsupported secondary field: ${key}`);
+      throw new ApplicationServiceError(
+        `Unsupported secondary field: ${key}`,
+        400,
+        "SECONDARY_ANALYSIS_FIELD_UNSUPPORTED",
+      );
     }
 
-    editableByNo.set(
-      definition.no,
-      typeof rawValue === "string" ? rawValue.trim() : String(rawValue ?? "").trim(),
-    );
+    if (
+      rawValue &&
+      typeof rawValue === "object" &&
+      !Array.isArray(rawValue) &&
+      ("value" in rawValue || "hasOverride" in rawValue)
+    ) {
+      const typedValue = rawValue as {
+        value?: unknown;
+        hasOverride?: unknown;
+      };
+      const value =
+        typeof typedValue.value === "string"
+          ? typedValue.value.trim()
+          : String(typedValue.value ?? "").trim();
+      const hasOverride = Boolean(typedValue.hasOverride);
+
+      editableByNo.set(definition.no, {
+        value,
+        hasOverride,
+      });
+      continue;
+    }
+
+    editableByNo.set(definition.no, {
+      value: typeof rawValue === "string" ? rawValue.trim() : String(rawValue ?? "").trim(),
+      hasOverride: true,
+    });
   }
 
   const savedAt = new Date().toISOString();
   const nextFields = SECONDARY_FIELD_DEFINITIONS.map((definition) => {
     const existing = existingByNo.get(definition.no);
     const sourceValue = existing?.sourceValue ?? "";
-    const editedValue = editableByNo.has(definition.no)
-      ? editableByNo.get(definition.no) ?? ""
+    const nextOverride = editableByNo.get(definition.no);
+    const editedValue = nextOverride
+      ? nextOverride.value
       : existing?.editedValue ?? "";
-    const effectiveValue = editedValue.trim().length > 0 ? editedValue : sourceValue;
+    const hasOverride = nextOverride
+      ? nextOverride.hasOverride
+      : existing?.hasOverride ?? false;
+    const effectiveValue = hasOverride ? editedValue : sourceValue;
 
     return buildEditableSecondaryField(definition, {
       sourceValue,
       editedValue,
       effectiveValue,
+      hasOverride,
       isMissing: effectiveValue.trim().length === 0,
-      isEdited:
-        editedValue.trim().length > 0 && editedValue.trim() !== sourceValue.trim(),
+      isEdited: hasOverride && editedValue.trim() !== sourceValue.trim(),
       savedAt,
     });
   });
@@ -888,15 +1188,15 @@ export async function addMaterialRecord(input: {
   fileSize: number;
   objectKey: string;
 }) {
-  const material = await createMaterial(input);
-  const application = await getApplicationById(input.applicationId);
+  await requireApplicationStage({
+    applicationId: input.applicationId,
+    allowedStatuses: ["MATERIALS_IN_PROGRESS"],
+    message:
+      "Supporting materials can only be uploaded after the detailed analysis is complete.",
+    code: "MATERIALS_STAGE_NOT_READY",
+  });
 
-  if (application && application.applicationStatus === "ELIGIBLE") {
-    await updateApplication(input.applicationId, {
-      applicationStatus: "MATERIALS_IN_PROGRESS",
-      currentStep: "materials",
-    });
-  }
+  const material = await createMaterial(input);
 
   await createEvent(input.applicationId, "MATERIAL_UPLOADED", {
     category: input.category,
@@ -910,6 +1210,14 @@ export async function removeMaterialRecord(
   applicationId: string,
   fileId: string,
 ) {
+  await requireApplicationStage({
+    applicationId,
+    allowedStatuses: ["MATERIALS_IN_PROGRESS"],
+    message:
+      "Supporting materials can only be edited while the materials stage is active.",
+    code: "MATERIALS_STAGE_NOT_EDITABLE",
+  });
+
   const material = await softDeleteMaterial(fileId, applicationId);
 
   if (material) {
@@ -920,6 +1228,14 @@ export async function removeMaterialRecord(
 }
 
 export async function getMaterialsByCategory(applicationId: string) {
+  await requireApplicationStage({
+    applicationId,
+    allowedStatuses: ["MATERIALS_IN_PROGRESS", "SUBMITTED"],
+    message:
+      "Supporting materials are only available after the detailed analysis review is complete.",
+    code: "MATERIALS_STAGE_NOT_READY",
+  });
+
   const materials = await listMaterials(applicationId);
   const safeMaterials = materials.map((item) => ({
     id: item.id,
@@ -951,6 +1267,14 @@ export async function submitApplication(applicationId: string) {
     return application;
   }
 
+  await requireApplicationStage({
+    applicationId,
+    allowedStatuses: ["MATERIALS_IN_PROGRESS"],
+    message:
+      "The application can only be submitted after entering the materials stage.",
+    code: "SUBMISSION_STAGE_NOT_READY",
+  });
+
   const updated = await updateApplication(applicationId, {
     applicationStatus: "SUBMITTED",
     currentStep: "materials",
@@ -958,6 +1282,25 @@ export async function submitApplication(applicationId: string) {
   });
 
   await createEvent(applicationId, "APPLICATION_SUBMITTED", null);
+
+  return updated;
+}
+
+export async function enterMaterialsStage(applicationId: string) {
+  await requireApplicationStage({
+    applicationId,
+    allowedStatuses: ["SECONDARY_REVIEW"],
+    message:
+      "You can continue to supporting materials only after the detailed analysis is complete.",
+    code: "MATERIALS_ENTRY_NOT_READY",
+  });
+
+  const updated = await updateApplication(applicationId, {
+    applicationStatus: "MATERIALS_IN_PROGRESS",
+    currentStep: "materials",
+  });
+
+  await createEvent(applicationId, "MATERIALS_STAGE_ENTERED", null);
 
   return updated;
 }

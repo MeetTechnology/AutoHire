@@ -21,6 +21,9 @@ enum ApplicationStatus {
   REANALYZING
   INELIGIBLE
   ELIGIBLE
+  SECONDARY_ANALYZING
+  SECONDARY_REVIEW
+  SECONDARY_FAILED
   MATERIALS_IN_PROGRESS
   SUBMITTED
   CLOSED
@@ -86,6 +89,7 @@ model Application {
   analysisJobs         ResumeAnalysisJob[]
   analysisResults      ResumeAnalysisResult[]
   secondaryAnalysisRuns SecondaryAnalysisRun[]
+  secondaryAnalysisFieldValues SecondaryAnalysisFieldValue[]
   supplementalFields   SupplementalFieldSubmission[]
   materials            ApplicationMaterial[]
   events               ApplicationEventLog[]
@@ -182,6 +186,7 @@ model SecondaryAnalysisFieldValue {
   sourceValue      String?
   editedValue      String?
   effectiveValue   String?
+  hasOverride      Boolean  @default(false)
   isMissing        Boolean  @default(false)
   isEdited         Boolean  @default(false)
   savedAt          DateTime @default(now())

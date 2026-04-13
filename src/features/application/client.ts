@@ -1,5 +1,6 @@
 import type {
   ApplicationSnapshot,
+  EditableSecondaryAnalysisSnapshot,
   MaterialCategory,
   SecondaryAnalysisSnapshot,
 } from "@/features/application/types";
@@ -223,6 +224,55 @@ export async function fetchSecondaryAnalysisResult(
   );
 }
 
+export async function fetchEditableSecondaryAnalysis(
+  applicationId: string,
+  runId?: string | null,
+) {
+  const query = runId ? `?runId=${encodeURIComponent(runId)}` : "";
+  const response = await fetch(
+    `/api/applications/${applicationId}/secondary-analysis/editable${query}`,
+    {
+      credentials: "include",
+      cache: "no-store",
+    },
+  );
+
+  return parseResponse<
+    EditableSecondaryAnalysisSnapshot & { applicationId: string }
+  >(response);
+}
+
+export async function saveEditableSecondaryAnalysis(
+  applicationId: string,
+  input: {
+    runId: string;
+    fields: Record<
+      string,
+      | string
+      | {
+          value: string;
+          hasOverride: boolean;
+        }
+    >;
+  },
+) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/secondary-analysis/save`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(input),
+    },
+  );
+
+  return parseResponse<
+    EditableSecondaryAnalysisSnapshot & { applicationId: string }
+  >(response);
+}
+
 export async function fetchMaterials(applicationId: string) {
   const response = await fetch(`/api/applications/${applicationId}/materials`, {
     credentials: "include",
@@ -279,6 +329,23 @@ export async function confirmMaterialUpload(
   });
 
   return parseResponse<MaterialsResponse>(response);
+}
+
+export async function enterMaterialsStage(applicationId: string) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/materials/enter`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+
+  return parseResponse<{
+    applicationId: string;
+    applicationStatus: string;
+    currentStep: string | null;
+    nextRoute: string;
+  }>(response);
 }
 
 export async function deleteMaterial(applicationId: string, fileId: string) {

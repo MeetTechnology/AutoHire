@@ -50,7 +50,7 @@ export default function MaterialsPage() {
         }
 
         if (
-          !["ELIGIBLE", "MATERIALS_IN_PROGRESS", "SUBMITTED"].includes(
+          !["MATERIALS_IN_PROGRESS", "SUBMITTED"].includes(
             nextSnapshot.applicationStatus,
           )
         ) {

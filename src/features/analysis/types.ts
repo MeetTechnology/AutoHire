@@ -41,12 +41,14 @@ export type SecondaryFieldDefinition = {
   options?: string[];
   helpText?: string;
   placeholder?: string;
+  expertVisible: boolean;
 };
 
 export type EditableSecondaryField = SecondaryFieldDefinition & {
   sourceValue: string;
   editedValue: string;
   effectiveValue: string;
+  hasOverride: boolean;
   isMissing: boolean;
   isEdited: boolean;
   savedAt: string | null;

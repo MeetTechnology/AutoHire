@@ -29,7 +29,7 @@ const INELIGIBLE_SENTENCE_CN =
   "很遗憾，您的资历不符合本次人才项目的基本申请要求";
 
 const ELIGIBLE_SUMMARY_EN =
-  "Your profile meets the basic application requirements for this talent program.";
+  "Your profile meets the basic application requirements for this talent program. Please continue with the detailed analysis.";
 const INELIGIBLE_SUMMARY_EN =
   "Your profile does not currently meet the basic application requirements for this talent program.";
 const INSUFFICIENT_INFO_SUMMARY_EN =
@@ -193,7 +193,7 @@ function buildDecisionFromText(
     return {
       eligibilityResult: "INELIGIBLE" as const,
       displaySummary: INELIGIBLE_SUMMARY_EN,
-      reasonText: extractIneligibleReason(formalResult),
+      reasonText: extractIneligibleReason(formalResult ?? ""),
       missingFields: [],
       extractedFields,
       rawReasoning,

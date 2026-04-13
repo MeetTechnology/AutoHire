@@ -3,8 +3,10 @@
 ## 当前进度（2026-04-11）
 
 - 当前代码库已完成文档中 `Slice 1` 到 `Slice 6` 的 MVP 实现
+- 当前已将资格通过后的流程收紧为：`ELIGIBLE -> detailed analysis -> materials`
 - 当前已打通专家端主流程：`/apply` -> `/apply/resume` -> `/apply/result` -> `/apply/materials`
 - 当前已完成 token 校验、会话恢复、申请快照、状态机驱动跳转、分析三态、结构化补填、材料上传、提交幂等
+- 当前已完成详细分析前置 gating：资格通过后不再直接开放材料页
 - 当前已提供本地可运行的 `mock` 分析模式、内存数据模式、Prisma migration 与 seed
 - 当前已完成真实 PostgreSQL 建库、migration、seed 与关键状态落库验证
 - 当前已完成申请唯一性、分析关联与材料软删除审计字段的 schema hardening
@@ -82,6 +84,17 @@
 - 已实现提交接口幂等
 - 已提交状态可恢复
 - 页面可显示“已收到材料信息，将在 1-3 个工作日内答复”
+
+### Slice 7: 详细分析完成后进入材料页
+
+状态：已完成
+
+已实现内容：
+
+- 新增 `SECONDARY_ANALYZING`、`SECONDARY_REVIEW`、`SECONDARY_FAILED`
+- 资格通过后仅显示详细分析入口
+- 详细分析完成后通过显式接口推进到 `MATERIALS_IN_PROGRESS`
+- 材料与提交接口已补状态守卫
 
 ## 联调里程碑（2026-04-11）
 

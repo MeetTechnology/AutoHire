@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { parseSecondaryVisibleFields } from "@/features/analysis/secondary";
+import {
+  parseSecondaryFieldSourceValues,
+  parseSecondaryVisibleFields,
+} from "@/features/analysis/secondary";
 
 describe("parseSecondaryVisibleFields", () => {
   it("parses visible NO fields, applies label mapping, and strips placeholder values", () => {
@@ -56,5 +59,20 @@ NO.34###Internal summary`,
         value: "2013-2021 Researcher\n\n2021-present Senior researcher",
       },
     ]);
+  });
+
+  it("returns source values for empty and duplicated NO blocks", () => {
+    const fields = parseSecondaryFieldSourceValues([
+      `NO.1###Jane Doe
+NO.15###
+NO.32###Biochemistry^^^Biotechnology井井井ignored`,
+      `NO.32###Genetic engineering`,
+    ]);
+
+    expect(fields.get(1)).toBe("Jane Doe");
+    expect(fields.get(15)).toBe("");
+    expect(fields.get(32)).toBe(
+      "Biochemistry\nBiotechnology\n\nGenetic engineering",
+    );
   });
 });

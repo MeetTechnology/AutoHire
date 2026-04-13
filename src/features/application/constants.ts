@@ -16,6 +16,9 @@ export const APPLICATION_STATUSES = [
   "REANALYZING",
   "INELIGIBLE",
   "ELIGIBLE",
+  "SECONDARY_ANALYZING",
+  "SECONDARY_REVIEW",
+  "SECONDARY_FAILED",
   "MATERIALS_IN_PROGRESS",
   "SUBMITTED",
   "CLOSED",
@@ -28,7 +31,7 @@ export const APPLICATION_FLOW_STEPS = [
   },
   {
     label: "Review",
-    hint: "Read the assessment and complete missing fields if needed",
+    hint: "Complete the initial and detailed analysis steps",
   },
   {
     label: "Materials",

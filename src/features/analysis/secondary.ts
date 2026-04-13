@@ -3,6 +3,7 @@ import {
   normalizeDisplayValue,
   translateVisibleFieldValue,
 } from "@/features/analysis/display";
+import { SECONDARY_FIELD_DEFINITIONS } from "@/features/analysis/secondary-fields";
 
 export type SecondaryVisibleField = {
   no: number;
@@ -56,10 +57,7 @@ const SECONDARY_NO_TO_COLUMN: Record<number, string> = {
 };
 
 const SECONDARY_LABELS = new Map(
-  getVisibleExtractedFieldDefinitions().map((definition) => [
-    definition.no,
-    definition.label,
-  ]),
+  getVisibleExtractedFieldDefinitions().map((definition) => [definition.no, definition.label]),
 );
 
 function normalizeSecondaryText(text: string) {
@@ -87,13 +85,13 @@ function cleanSecondarySegment(segment: string) {
   return normalizeDisplayValue(normalized);
 }
 
-export function parseSecondaryVisibleFields(texts: string[]) {
+function parseSecondaryValuesByNo(texts: string[]) {
   const normalizedTexts = texts
     .map((text) => normalizeSecondaryText(text))
     .filter(Boolean);
 
   if (normalizedTexts.length === 0) {
-    return [] satisfies SecondaryVisibleField[];
+    return new Map<number, string>();
   }
 
   const mergedText = normalizedTexts.join("\n");
@@ -115,20 +113,45 @@ export function parseSecondaryVisibleFields(texts: string[]) {
         ? (matches[index + 1].index ?? mergedText.length)
         : mergedText.length;
     const value = cleanSecondarySegment(mergedText.slice(start, end));
+    const previous = valuesByNo.get(no);
 
-    if (!value) {
+    if (!previous) {
+      valuesByNo.set(no, value);
       continue;
     }
 
-    const previous = valuesByNo.get(no);
-    valuesByNo.set(
-      no,
-      previous && previous !== value ? `${previous}\n\n${value}` : value,
-    );
+    if (!value || previous === value) {
+      continue;
+    }
+
+    valuesByNo.set(no, `${previous}\n\n${value}`);
+  }
+
+  return valuesByNo;
+}
+
+export function parseSecondaryFieldSourceValues(texts: string[]) {
+  return parseSecondaryValuesByNo(texts);
+}
+
+export function parseSecondaryVisibleFields(texts: string[]) {
+  const valuesByNo = parseSecondaryValuesByNo(texts);
+
+  if (valuesByNo.size === 0) {
+    return [] satisfies SecondaryVisibleField[];
   }
 
   return [...valuesByNo.entries()]
     .sort(([leftNo], [rightNo]) => leftNo - rightNo)
+    .filter(([no, value]) => {
+      if (!value) {
+        return false;
+      }
+
+      return SECONDARY_FIELD_DEFINITIONS.some(
+        (definition) => definition.no === no && definition.expertVisible,
+      );
+    })
     .map(([no, value]) => ({
       no,
       column: SECONDARY_NO_TO_COLUMN[no] ?? null,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { materialConfirmSchema } from "@/features/application/schemas";
 import {
+  ApplicationServiceError,
   addMaterialRecord,
   getMaterialsByCategory,
 } from "@/lib/application/service";
@@ -24,7 +25,17 @@ export async function GET(request: NextRequest, { params }: Params) {
     );
   }
 
-  return NextResponse.json(await getMaterialsByCategory(applicationId));
+  try {
+    return NextResponse.json(await getMaterialsByCategory(applicationId));
+  } catch (error) {
+    if (error instanceof ApplicationServiceError) {
+      return jsonError(error.message, error.status, {
+        code: error.code,
+      });
+    }
+
+    throw error;
+  }
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -55,10 +66,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
   }
 
-  await addMaterialRecord({
-    applicationId,
-    ...parsed.data,
-  });
+  try {
+    await addMaterialRecord({
+      applicationId,
+      ...parsed.data,
+    });
 
-  return NextResponse.json(await getMaterialsByCategory(applicationId));
+    return NextResponse.json(await getMaterialsByCategory(applicationId));
+  } catch (error) {
+    if (error instanceof ApplicationServiceError) {
+      return jsonError(error.message, error.status, {
+        code: error.code,
+      });
+    }
+
+    throw error;
+  }
 }

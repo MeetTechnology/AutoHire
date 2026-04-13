@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  ApplicationServiceError,
   getMaterialsByCategory,
   removeMaterialRecord,
 } from "@/lib/application/service";
@@ -22,11 +23,21 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     );
   }
 
-  const material = await removeMaterialRecord(applicationId, fileId);
+  try {
+    const material = await removeMaterialRecord(applicationId, fileId);
 
-  if (!material) {
-    return jsonError("The material could not be found.", 404);
+    if (!material) {
+      return jsonError("The material could not be found.", 404);
+    }
+
+    return NextResponse.json(await getMaterialsByCategory(applicationId));
+  } catch (error) {
+    if (error instanceof ApplicationServiceError) {
+      return jsonError(error.message, error.status, {
+        code: error.code,
+      });
+    }
+
+    throw error;
   }
-
-  return NextResponse.json(await getMaterialsByCategory(applicationId));
 }

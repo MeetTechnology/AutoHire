@@ -3,6 +3,7 @@
 ## 当前状态（2026-04-11）
 
 - 当前接口契约已按代码实现更新为“upload intent + confirm”两步上传模式
+- 当前资格通过后的流程已更新为“详细分析完成后再进入材料上传”
 - 当前 `expert-session`、`resume`、`materials`、`submit` 已在真实 PostgreSQL 模式下验证通过
 - 当前阿里云 OSS 预签名 `PUT` 上传已完成服务端联调验证
 - 当前 live 简历分析适配层已改为对接既有 `resume-process` 上传与详情接口
@@ -320,7 +321,29 @@
 - 当前响应不会回传底层对象存储地址
 - 当前仅回传受控所需的材料摘要字段
 
-## 11. 删除材料
+## 11. 进入材料上传阶段
+
+### POST `/api/applications/{applicationId}/materials/enter`
+
+用途：在详细分析完成后，显式进入材料上传阶段。
+
+实现说明：
+
+- 仅当 `applicationStatus=SECONDARY_REVIEW` 时允许调用
+- 成功后状态推进为 `MATERIALS_IN_PROGRESS`
+
+响应示例：
+
+```json
+{
+  "applicationId": "app_001",
+  "applicationStatus": "MATERIALS_IN_PROGRESS",
+  "currentStep": "materials",
+  "nextRoute": "/apply/materials"
+}
+```
+
+## 12. 删除材料
 
 ### DELETE `/api/applications/{applicationId}/materials/{fileId}`
 
@@ -337,7 +360,12 @@
 }
 ```
 
-## 12. 最终提交
+## 13. 最终提交
+
+实现说明：
+
+- 仅当 `applicationStatus=MATERIALS_IN_PROGRESS` 时允许提交
+- 若当前已是 `SUBMITTED`，仍返回幂等成功响应
 
 ### POST `/api/applications/{applicationId}/submit`
 
@@ -351,7 +379,7 @@
 }
 ```
 
-## 13. live 简历分析适配说明
+## 14. live 简历分析适配说明
 
 当前专家端公开接口不直接透传上游 `resume-process` 结构，内部适配规则如下：
 
@@ -386,7 +414,7 @@
 - `extractedFields` 用于展示“已识别信息摘要”，前端会按旧项目字段规则做隐藏、标题改名和默认值清洗
 - 状态轮询遇到上游超时、网络错误、429、5xx 时，当前任务不会立刻置为失败，而是继续维持轮询态
 
-## 14. 当前未完成接口
+## 15. 当前未完成接口
 
 - 受控下载 / 受控预览接口仍未补齐
 - 当前前端不直接持有底层存储地址
@@ -396,7 +424,12 @@
   - `RESUME_ANALYSIS_API_KEY`
   - `RESUME_ANALYSIS_REANALYZE_PATH`（若上游未使用默认路径）
 
-## 15. 触发进一步分析（secondary analysis）
+## 16. 触发进一步分析（secondary analysis）
+
+实现说明补充：
+
+- 资格初审通过后，专家端仅显示详细分析入口，不再直接进入材料上传页
+- 详细分析完成后会先停留在结果页，待专家点击继续后再进入材料上传
 
 ### POST `/api/applications/{applicationId}/secondary-analysis`
 
@@ -408,6 +441,7 @@
 - 内部会读取当前申请最新 `analysis_job.external_job_id`
 - 然后调用上游：
   - `POST {RESUME_ANALYSIS_BASE_URL}/resume-process/jobs/{externalJobId}/trigger-secondary`
+- 二次分析当前只允许触发一次；若当前申请已存在 `secondary_analysis_run`，接口返回 `409`
 
 响应示例：
 
@@ -419,7 +453,18 @@
 }
 ```
 
-## 16. 查询进一步分析结果
+重复触发响应示例：
+
+```json
+{
+  "error": {
+    "message": "Secondary analysis has already been started for this application.",
+    "code": "SECONDARY_ANALYSIS_ALREADY_STARTED"
+  }
+}
+```
+
+## 17. 查询进一步分析结果
 
 ### GET `/api/applications/{applicationId}/secondary-analysis/result`
 
@@ -445,6 +490,8 @@
   - `无+客户号` -> 空
 - `NO.29` 展示文案统一改为：
   `是否曾入选过中国省级或国家级人才计划（若是请填写计划名称及年份）`
+- 当前结果接口继续返回只读投影，仅包含非空 `effectiveValue`
+- 若专家已人工修订字段，则返回人工保存后的 `effectiveValue`
 
 响应示例：
 
@@ -476,5 +523,118 @@
       "value": "国家级人才计划（2023）"
     }
   ]
+}
+```
+
+## 18. 获取可编辑的二次分析字段
+
+### GET `/api/applications/{applicationId}/secondary-analysis/editable`
+
+可选查询参数：
+
+- `runId`
+
+用途：返回完整的专家可编辑二次分析快照，包括模型原值、人工覆盖值、最终生效值，以及缺失/编辑状态。
+
+实现说明：
+
+- 若当前申请尚未触发二次分析，返回 `status=idle` 且 `fields=[]`
+- 返回字段列表包含完整专家侧字段，而不只返回非空字段
+- `effectiveValue` 计算规则为：
+  - `hasOverride=true` 时取 `editedValue`
+  - 否则取 `sourceValue`
+- 因此专家可以显式把字段保存为空，而不会自动回退到模型值
+
+响应示例：
+
+```json
+{
+  "applicationId": "app_001",
+  "runId": "123",
+  "status": "completed",
+  "errorMessage": null,
+  "missingCount": 2,
+  "savedAt": "2026-04-13T03:50:00.000Z",
+  "run": {
+    "id": "123",
+    "status": "completed",
+    "totalPrompts": 2,
+    "completedPrompts": 2,
+    "failedPromptIds": [],
+    "errorMessage": null
+  },
+  "fields": [
+    {
+      "no": 15,
+      "fieldKey": "highest_degree",
+      "column": "Y",
+      "label": "Highest Degree",
+      "inputType": "select",
+      "options": ["Bachelor's", "Master's", "Doctorate", "Other"],
+      "sourceValue": "Doctorate",
+      "editedValue": "Master's",
+      "effectiveValue": "Master's",
+      "hasOverride": true,
+      "isMissing": false,
+      "isEdited": true,
+      "savedAt": "2026-04-13T03:50:00.000Z"
+    },
+    {
+      "no": 32,
+      "fieldKey": "research_direction",
+      "column": "AQ",
+      "label": "Research Direction",
+      "inputType": "textarea",
+      "sourceValue": "",
+      "editedValue": "Marine biotechnology",
+      "effectiveValue": "Marine biotechnology",
+      "hasOverride": true,
+      "isMissing": false,
+      "isEdited": true,
+      "savedAt": "2026-04-13T03:50:00.000Z"
+    }
+  ]
+}
+```
+
+## 19. 保存可编辑的二次分析字段
+
+### POST `/api/applications/{applicationId}/secondary-analysis/save`
+
+用途：批量保存专家对二次分析字段的修改或空值补填。
+
+请求示例：
+
+```json
+{
+  "runId": "123",
+  "fields": {
+    "highest_degree": {
+      "value": "Master's",
+      "hasOverride": true
+    },
+    "32": {
+      "value": "Marine biotechnology",
+      "hasOverride": true
+    }
+  }
+}
+```
+
+实现说明：
+
+- `fields` 的 key 既支持 `fieldKey`，也支持字段序号 `no`
+- `hasOverride=false` 表示清除人工覆盖，恢复使用模型值
+- 保存动作不会改动 `application_status`、`eligibility_result`，也不会自动推进流程
+- 保存后的响应结构与 `editable` 接口一致
+
+错误示例：
+
+```json
+{
+  "error": {
+    "message": "The provided secondary analysis field is not supported.",
+    "code": "SECONDARY_ANALYSIS_FIELD_UNSUPPORTED"
+  }
 }
 ```

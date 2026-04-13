@@ -33,13 +33,13 @@ const PROGRAM_HIGHLIGHTS = [
     eyebrow: "Application Logic",
     title: "A staged review rather than a one-time upload form",
     description:
-      "The application starts with a resume review, requests only the missing structured details when needed, and collects supporting materials only after the initial assessment is complete.",
+      "The application starts with a resume review, requests only the missing structured details when needed, and opens supporting materials only after the detailed analysis is complete.",
   },
   {
     eyebrow: "Review Experience",
     title: "Clear outcomes and calm decision points",
     description:
-      "Applicants see whether the profile is in review, needs more information, or is ready for the final materials stage, so the next action is always explicit.",
+      "Applicants see whether the profile is in review, needs more information, must complete detailed analysis, or is ready for the final materials stage, so the next action is always explicit.",
   },
 ] as const;
 
@@ -79,15 +79,15 @@ const PROCESS_OVERVIEW = [
   },
   {
     eyebrow: "Stage Four",
-    title: "Provide supporting materials and submit",
+    title: "Complete detailed analysis, then submit materials",
     description:
-      "Once the profile is ready to proceed, upload the supporting documents you wish to include and confirm the final package.",
+      "Once the profile passes the initial review, complete the detailed analysis first, then upload the supporting documents you wish to include and confirm the final package.",
   },
 ] as const;
 
 const PREPARATION_NOTES = [
   "Prepare one current resume in PDF, Word, or ZIP format.",
-  "Supporting documents can be organized after the initial review.",
+  "Supporting documents can be organized while the detailed analysis is in progress.",
   "Use the invitation link associated with this application only.",
 ] as const;
 

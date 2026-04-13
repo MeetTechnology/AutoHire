@@ -2,17 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   ApplicationServiceError,
-  startSecondaryAnalysis,
+  getEditableSecondaryAnalysisSnapshot,
 } from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError } from "@/lib/http";
-import { getResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
 };
 
-export async function POST(request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, { params }: Params) {
   const { applicationId } = await params;
   const access = await requireApplicationSession(request, applicationId);
 
@@ -24,16 +23,15 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   try {
-    const secondary = await startSecondaryAnalysis(applicationId);
+    const snapshot = await getEditableSecondaryAnalysisSnapshot({
+      applicationId,
+      runId: request.nextUrl.searchParams.get("runId"),
+    });
 
-    return NextResponse.json(
-      {
-        applicationId,
-        runId: secondary.runId,
-        status: secondary.status,
-      },
-      { status: 202 },
-    );
+    return NextResponse.json({
+      applicationId,
+      ...snapshot,
+    });
   } catch (error) {
     if (error instanceof ApplicationServiceError) {
       return jsonError(error.message, error.status, {
@@ -41,8 +39,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       });
     }
 
-    return jsonError(getResumeAnalysisErrorMessage(error), 502, {
-      code: "SECONDARY_ANALYSIS_START_FAILED",
+    return jsonError("The editable secondary analysis result could not be loaded.", 502, {
+      code: "SECONDARY_ANALYSIS_EDITABLE_FAILED",
     });
   }
 }

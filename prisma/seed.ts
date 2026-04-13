@@ -157,7 +157,7 @@ async function main() {
           analysisRound: 1,
           eligibilityResult: "ELIGIBLE",
           reasonText: "符合基本申报条件。",
-          displaySummary: "您已通过初步资格判断，请继续上传证明材料。",
+          displaySummary: "您已通过初步资格判断，请继续完成详细分析。",
           extractedFields: {
             "*姓名": "Submitted Expert",
             "最高学位": "博士",
@@ -184,11 +184,67 @@ async function main() {
     },
   });
 
+  await prisma.application.create({
+    data: {
+      id: "app_secondary",
+      expertId: "expert_secondary",
+      invitationId: "invitation_secondary",
+      applicationStatus: "ELIGIBLE",
+      currentStep: "result",
+      eligibilityResult: "ELIGIBLE",
+      latestAnalysisJobId: "job_secondary",
+      createdAt: now,
+      updatedAt: now,
+      resumeFiles: {
+        create: {
+          id: "resume_secondary",
+          fileName: "candidate-secondary.pdf",
+          objectKey: "applications/app_secondary/resume/candidate-secondary.pdf",
+          fileType: "application/pdf",
+          fileSize: 2048,
+          versionNo: 1,
+          uploadedAt: now,
+        },
+      },
+      analysisJobs: {
+        create: {
+          id: "job_secondary",
+          resumeFileId: "resume_secondary",
+          externalJobId: "mock:eligible:secondary",
+          jobType: "INITIAL",
+          jobStatus: "COMPLETED",
+          stageText: "已完成简历分析",
+          startedAt: now,
+          finishedAt: now,
+        },
+      },
+      analysisResults: {
+        create: {
+          id: "result_secondary",
+          analysisJobId: "job_secondary",
+          analysisRound: 1,
+          eligibilityResult: "ELIGIBLE",
+          reasonText: "符合基本申报条件。",
+          displaySummary: "您已通过初步资格判断，请继续完成详细分析。",
+          extractedFields: {
+            "*姓名": "Secondary Expert",
+            "最高学位": "博士",
+            "就职单位中文": "Example Institute",
+            "研究方向": "Marine biotechnology",
+          },
+          missingFields: [],
+          createdAt: now,
+        },
+      },
+    },
+  });
+
   console.log("Seeded AutoHire sample data.");
   console.log("Sample tokens:");
   console.log(`- init: ${SAMPLE_TOKENS.init}`);
   console.log(`- progress: ${SAMPLE_TOKENS.progress}`);
   console.log(`- submitted: ${SAMPLE_TOKENS.submitted}`);
+  console.log(`- secondary: ${SAMPLE_TOKENS.secondary}`);
 }
 
 main()

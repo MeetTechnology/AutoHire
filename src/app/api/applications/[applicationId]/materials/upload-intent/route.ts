@@ -21,6 +21,16 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
   }
 
+  if (access.application.applicationStatus !== "MATERIALS_IN_PROGRESS") {
+    return jsonError(
+      "Supporting materials can only be uploaded after the detailed analysis is complete.",
+      409,
+      {
+        code: "MATERIALS_STAGE_NOT_READY",
+      },
+    );
+  }
+
   const body = await parseJsonBody(request);
   const parsed = uploadIntentSchema.safeParse(body);
 
