@@ -1,12 +1,18 @@
-import { parseSecondaryVisibleFields } from "@/features/analysis/secondary";
+import { parseSecondaryFieldSourceValues, parseSecondaryVisibleFields } from "@/features/analysis/secondary";
+import {
+  SECONDARY_FIELD_DEFINITIONS,
+  buildEditableSecondaryField,
+  getSecondaryFieldDefinition,
+} from "@/features/analysis/secondary-fields";
 import type {
   AnalysisJobStatus,
   ApplicationStatus,
+  EditableSecondaryAnalysisSnapshot,
   EligibilityResult,
   MaterialCategory,
   SecondaryAnalysisSnapshot,
 } from "@/features/application/types";
-import type { MissingField } from "@/features/analysis/types";
+import type { EditableSecondaryField, MissingField } from "@/features/analysis/types";
 import { createSessionToken } from "@/lib/auth/session";
 import { hashInviteToken } from "@/lib/auth/token";
 import {
@@ -20,14 +26,19 @@ import {
   createSupplementalFieldSubmission,
   findInvitationById,
   findInvitationByTokenHash,
+  findSecondaryAnalysisRunByExternalRunId,
   findOpenApplicationByInvitationId,
   getApplicationById,
   getLatestAnalysisJob,
   getLatestAnalysisResult,
+  getLatestSecondaryAnalysisRun,
   getLatestResumeFile,
   getLatestResumeVersion,
   listMaterials,
+  listSecondaryAnalysisFieldValues,
   softDeleteMaterial,
+  upsertSecondaryAnalysisFieldValues,
+  upsertSecondaryAnalysisRun,
   updateAnalysisJob,
   updateApplication,
 } from "@/lib/data/store";
@@ -39,9 +50,14 @@ import {
   getResumeAnalysisStatus,
   isRetryableResumeAnalysisError,
   reanalyzeWithSupplementalFields,
+  syncExpertJobUpstreamMapping,
   triggerSecondaryAnalysis,
 } from "@/lib/resume-analysis/client";
-import { buildSupplementalFieldPayload } from "@/lib/resume-analysis/missing-field-registry";
+import {
+  buildSupplementalFieldPayload,
+  enrichMissingFieldWithRegistry,
+} from "@/lib/resume-analysis/missing-field-registry";
+import { translateVisibleFieldValue } from "@/features/analysis/display";
 
 export async function resolveInviteToken(token: string) {
   return findInvitationByTokenHash(hashInviteToken(token));
@@ -232,6 +248,12 @@ export async function refreshAnalysisState(applicationId: string) {
   const existingResult = await getLatestAnalysisResult(applicationId);
 
   if (job.jobStatus === "COMPLETED" && existingResult?.analysisJobId === job.id) {
+    await syncExpertJobUpstreamMapping({
+      applicationId,
+      expertAnalysisJobId: job.id,
+      externalJobId: job.externalJobId,
+    });
+
     const snapshot = await buildApplicationSnapshot(applicationId);
 
     return {
@@ -356,6 +378,12 @@ export async function refreshAnalysisState(applicationId: string) {
         eligibilityResult: result.eligibilityResult,
         rawReasoning: result.rawReasoning ?? null,
       });
+
+      await syncExpertJobUpstreamMapping({
+        applicationId,
+        expertAnalysisJobId: job.id,
+        externalJobId: job.externalJobId,
+      });
     } catch (error) {
       if (isRetryableResumeAnalysisError(error)) {
         await updateAnalysisJob(job.id, {
@@ -415,10 +443,11 @@ export async function submitSupplementalFields(input: {
   const latestResult = await getLatestAnalysisResult(input.applicationId);
   const currentMissingFields =
     ((latestResult?.missingFields as MissingField[] | null) ?? []).map(
-      (field) => ({
-        ...field,
-        sourceItemName: field.sourceItemName || field.label || field.fieldKey,
-      }),
+      (field) =>
+        enrichMissingFieldWithRegistry({
+          ...field,
+          sourceItemName: field.sourceItemName || field.label || field.fieldKey,
+        }),
     );
   const normalizedPayload = buildSupplementalFieldPayload(
     input.fields,
@@ -433,6 +462,14 @@ export async function submitSupplementalFields(input: {
       missingFieldsSnapshot: currentMissingFields,
     },
   });
+
+  if (latestJob?.id && latestJob.externalJobId) {
+    await syncExpertJobUpstreamMapping({
+      applicationId: input.applicationId,
+      expertAnalysisJobId: latestJob.id,
+      externalJobId: latestJob.externalJobId,
+    });
+  }
 
   const analysis = await reanalyzeWithSupplementalFields({
     applicationId: input.applicationId,
@@ -488,6 +525,143 @@ export async function startSecondaryAnalysis(applicationId: string) {
   return secondary;
 }
 
+function buildSecondaryRunSummary(
+  run: SecondaryAnalysisSnapshot["run"] | EditableSecondaryAnalysisSnapshot["run"],
+) {
+  if (!run) {
+    return null;
+  }
+
+  return {
+    id: run.id,
+    status: run.status,
+    totalPrompts: run.totalPrompts,
+    completedPrompts: run.completedPrompts,
+    failedPromptIds: run.failedPromptIds,
+    errorMessage: run.errorMessage,
+  } satisfies Record<string, unknown>;
+}
+
+function buildEditableFieldsFromSource(input: {
+  sourceValuesByNo: Map<number, string>;
+  storedFields: Array<{
+    no: number;
+    sourceValue: string | null;
+    editedValue: string | null;
+    effectiveValue: string | null;
+    isMissing: boolean;
+    isEdited: boolean;
+    savedAt: Date;
+  }>;
+}) {
+  const storedByNo = new Map(input.storedFields.map((field) => [field.no, field]));
+
+  return SECONDARY_FIELD_DEFINITIONS.map((definition) => {
+    const stored = storedByNo.get(definition.no);
+    const rawSourceValue = input.sourceValuesByNo.get(definition.no) ?? "";
+    const sourceValue = translateVisibleFieldValue(definition.no, rawSourceValue);
+    const editedValue = stored?.editedValue ?? "";
+    const effectiveValue = editedValue.trim().length > 0 ? editedValue : sourceValue;
+
+    return buildEditableSecondaryField(definition, {
+      sourceValue,
+      editedValue,
+      effectiveValue,
+      isMissing: effectiveValue.trim().length === 0,
+      isEdited:
+        editedValue.trim().length > 0 && editedValue.trim() !== sourceValue.trim(),
+      savedAt: stored?.savedAt ? stored.savedAt.toISOString() : null,
+    });
+  });
+}
+
+async function persistSecondaryAnalysisSnapshot(input: {
+  applicationId: string;
+  analysisJobId: string | null;
+  runId: string;
+  status: SecondaryAnalysisSnapshot["status"];
+  errorMessage: string | null;
+  run: SecondaryAnalysisSnapshot["run"];
+  results: Array<{
+    id: string;
+    promptId: string | null;
+    generatedText: string;
+    status: string;
+    errorMessage: string | null;
+  }>;
+}) {
+  const runRecord = await upsertSecondaryAnalysisRun({
+    applicationId: input.applicationId,
+    analysisJobId: input.analysisJobId,
+    externalRunId: input.runId,
+    status: input.status,
+    errorMessage: input.errorMessage,
+    runSummary: buildSecondaryRunSummary(input.run),
+    rawResults: input.results.map((result) => ({
+      id: result.id,
+      promptId: result.promptId,
+      generatedText: result.generatedText,
+      status: result.status,
+      errorMessage: result.errorMessage,
+    })),
+  });
+
+  const existingFields = await listSecondaryAnalysisFieldValues(runRecord.id);
+  const sourceValuesByNo = parseSecondaryFieldSourceValues(
+    input.results
+      .filter((result) => result.status === "completed" && result.generatedText)
+      .map((result) => result.generatedText),
+  );
+  const editableFields = buildEditableFieldsFromSource({
+    sourceValuesByNo,
+    storedFields: existingFields,
+  });
+
+  const storedFields = await upsertSecondaryAnalysisFieldValues({
+    applicationId: input.applicationId,
+    secondaryRunId: runRecord.id,
+    fields: editableFields,
+  });
+
+  return {
+    runRecord,
+    editableFields: editableFields.map((field) => {
+      const savedField = storedFields.find((item) => item.no === field.no);
+
+      return {
+        ...field,
+        savedAt: savedField?.savedAt?.toISOString() ?? field.savedAt,
+      };
+    }),
+  };
+}
+
+function buildEditableSecondarySnapshot(input: {
+  runId: string | null;
+  status: EditableSecondaryAnalysisSnapshot["status"];
+  errorMessage: string | null;
+  fields: EditableSecondaryField[];
+  run: EditableSecondaryAnalysisSnapshot["run"];
+}) {
+  const missingCount = input.fields.filter((field) => field.isMissing).length;
+  const savedAt =
+    input.fields
+      .map((field) => field.savedAt)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1) ?? null;
+
+  return {
+    runId: input.runId,
+    status: input.status,
+    errorMessage: input.errorMessage,
+    fields: input.fields,
+    run: input.run,
+    missingCount,
+    savedAt,
+  } satisfies EditableSecondaryAnalysisSnapshot;
+}
+
 export async function getSecondaryAnalysisSnapshot(input: {
   applicationId: string;
   runId?: string | null;
@@ -504,22 +678,206 @@ export async function getSecondaryAnalysisSnapshot(input: {
     };
   }
 
+  const targetRun = input.runId
+    ? await findSecondaryAnalysisRunByExternalRunId({
+        applicationId: input.applicationId,
+        externalRunId: input.runId,
+      })
+    : await getLatestSecondaryAnalysisRun(input.applicationId);
+
+  if (targetRun && !["pending", "processing", "retrying"].includes(targetRun.status)) {
+    const storedFields = await listSecondaryAnalysisFieldValues(targetRun.id);
+
+    return {
+      runId: targetRun.externalRunId,
+      status: targetRun.status as SecondaryAnalysisSnapshot["status"],
+      errorMessage: targetRun.errorMessage,
+      fields: storedFields
+        .filter((field) => (field.effectiveValue ?? "").trim().length > 0)
+        .map((field) => ({
+          no: field.no,
+          column: field.columnName,
+          label: field.label,
+          value: field.effectiveValue ?? "",
+        })),
+      run: (targetRun.runSummary as SecondaryAnalysisSnapshot["run"] | null) ?? null,
+    };
+  }
+
   const secondary = await getSecondaryAnalysisResult({
     externalJobId: latestJob.externalJobId,
-    runId: input.runId,
+    runId: input.runId ?? targetRun?.externalRunId ?? null,
+  });
+  const persisted = await persistSecondaryAnalysisSnapshot({
+    applicationId: input.applicationId,
+    analysisJobId: latestJob.id,
+    runId: secondary.runId ?? input.runId ?? targetRun?.externalRunId ?? "latest",
+    status: secondary.status,
+    errorMessage: secondary.errorMessage,
+    run: secondary.run,
+    results: secondary.results,
   });
 
   return {
     runId: secondary.runId,
     status: secondary.status,
     errorMessage: secondary.errorMessage,
-    fields: parseSecondaryVisibleFields(
-      secondary.results
-        .filter((result) => result.status === "completed" && result.generatedText)
-        .map((result) => result.generatedText),
-    ),
+    fields: persisted.editableFields
+      .filter((field) => field.effectiveValue.trim().length > 0)
+      .map((field) => ({
+        no: field.no,
+        column: field.column,
+        label: field.label,
+        value: field.effectiveValue,
+      })),
     run: secondary.run,
   };
+}
+
+export async function getEditableSecondaryAnalysisSnapshot(input: {
+  applicationId: string;
+  runId?: string | null;
+}): Promise<EditableSecondaryAnalysisSnapshot> {
+  const latestJob = await getLatestAnalysisJob(input.applicationId);
+
+  if (!latestJob?.externalJobId) {
+    return buildEditableSecondarySnapshot({
+      runId: null,
+      status: "idle",
+      errorMessage: null,
+      fields: [],
+      run: null,
+    });
+  }
+
+  const targetRun = input.runId
+    ? await findSecondaryAnalysisRunByExternalRunId({
+        applicationId: input.applicationId,
+        externalRunId: input.runId,
+      })
+    : await getLatestSecondaryAnalysisRun(input.applicationId);
+
+  if (targetRun && !["pending", "processing", "retrying"].includes(targetRun.status)) {
+    const storedFields = await listSecondaryAnalysisFieldValues(targetRun.id);
+    const editableFields = SECONDARY_FIELD_DEFINITIONS.map((definition) => {
+      const stored = storedFields.find((field) => field.no === definition.no);
+
+      return buildEditableSecondaryField(definition, {
+        sourceValue: stored?.sourceValue ?? "",
+        editedValue: stored?.editedValue ?? "",
+        effectiveValue: stored?.effectiveValue ?? "",
+        isMissing: stored?.isMissing ?? true,
+        isEdited: stored?.isEdited ?? false,
+        savedAt: stored?.savedAt?.toISOString() ?? null,
+      });
+    });
+
+    return buildEditableSecondarySnapshot({
+      runId: targetRun.externalRunId,
+      status: targetRun.status as EditableSecondaryAnalysisSnapshot["status"],
+      errorMessage: targetRun.errorMessage,
+      fields: editableFields,
+      run: (targetRun.runSummary as EditableSecondaryAnalysisSnapshot["run"] | null) ?? null,
+    });
+  }
+
+  const secondary = await getSecondaryAnalysisResult({
+    externalJobId: latestJob.externalJobId,
+    runId: input.runId ?? targetRun?.externalRunId ?? null,
+  });
+  const persisted = await persistSecondaryAnalysisSnapshot({
+    applicationId: input.applicationId,
+    analysisJobId: latestJob.id,
+    runId: secondary.runId ?? input.runId ?? targetRun?.externalRunId ?? "latest",
+    status: secondary.status,
+    errorMessage: secondary.errorMessage,
+    run: secondary.run,
+    results: secondary.results,
+  });
+
+  return buildEditableSecondarySnapshot({
+    runId: secondary.runId,
+    status: secondary.status,
+    errorMessage: secondary.errorMessage,
+    fields: persisted.editableFields,
+    run: secondary.run,
+  });
+}
+
+export async function saveEditableSecondaryAnalysisFields(input: {
+  applicationId: string;
+  runId: string;
+  fields: Record<string, unknown>;
+}) {
+  const runRecord = await findSecondaryAnalysisRunByExternalRunId({
+    applicationId: input.applicationId,
+    externalRunId: input.runId,
+  });
+
+  if (!runRecord) {
+    throw new Error("The secondary analysis run could not be found.");
+  }
+
+  const existingFields = await listSecondaryAnalysisFieldValues(runRecord.id);
+  const existingByNo = new Map(existingFields.map((field) => [field.no, field]));
+  const editableByNo = new Map<number, string>();
+
+  for (const [key, rawValue] of Object.entries(input.fields)) {
+    const numericNo = Number.parseInt(key, 10);
+    const byNo = Number.isFinite(numericNo) ? getSecondaryFieldDefinition(numericNo) : null;
+    const byFieldKey = SECONDARY_FIELD_DEFINITIONS.find(
+      (definition) => definition.fieldKey === key,
+    );
+    const definition = byNo ?? byFieldKey;
+
+    if (!definition) {
+      throw new Error(`Unsupported secondary field: ${key}`);
+    }
+
+    editableByNo.set(
+      definition.no,
+      typeof rawValue === "string" ? rawValue.trim() : String(rawValue ?? "").trim(),
+    );
+  }
+
+  const savedAt = new Date().toISOString();
+  const nextFields = SECONDARY_FIELD_DEFINITIONS.map((definition) => {
+    const existing = existingByNo.get(definition.no);
+    const sourceValue = existing?.sourceValue ?? "";
+    const editedValue = editableByNo.has(definition.no)
+      ? editableByNo.get(definition.no) ?? ""
+      : existing?.editedValue ?? "";
+    const effectiveValue = editedValue.trim().length > 0 ? editedValue : sourceValue;
+
+    return buildEditableSecondaryField(definition, {
+      sourceValue,
+      editedValue,
+      effectiveValue,
+      isMissing: effectiveValue.trim().length === 0,
+      isEdited:
+        editedValue.trim().length > 0 && editedValue.trim() !== sourceValue.trim(),
+      savedAt,
+    });
+  });
+
+  await upsertSecondaryAnalysisFieldValues({
+    applicationId: input.applicationId,
+    secondaryRunId: runRecord.id,
+    fields: nextFields,
+  });
+
+  await createEvent(input.applicationId, "SECONDARY_ANALYSIS_FIELDS_SAVED", {
+    runId: input.runId,
+    editedFieldNos: [...editableByNo.keys()],
+  });
+
+  return buildEditableSecondarySnapshot({
+    runId: input.runId,
+    status: runRecord.status as EditableSecondaryAnalysisSnapshot["status"],
+    errorMessage: runRecord.errorMessage,
+    fields: nextFields,
+    run: (runRecord.runSummary as EditableSecondaryAnalysisSnapshot["run"] | null) ?? null,
+  });
 }
 
 export async function addMaterialRecord(input: {

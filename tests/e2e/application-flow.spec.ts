@@ -17,7 +17,7 @@ async function uploadVirtualFile(
 test("invalid token shows an error", async ({ page }) => {
   await page.goto("/apply?t=bad-token");
 
-  await expect(page.getByText("无效的邀约链接")).toBeVisible();
+  await expect(page.getByText("The invitation link is invalid.")).toBeVisible();
 });
 
 test("eligible resume flow can reach materials and submit", async ({
@@ -25,27 +25,33 @@ test("eligible resume flow can reach materials and submit", async ({
 }) => {
   await page.goto("/apply?t=sample-init-token");
 
-  await expect(page.getByRole("button", { name: "开始申请" })).toBeVisible();
-  await page.getByRole("button", { name: "开始申请" }).click();
+  await expect(page.getByRole("button", { name: "Start Application" })).toBeVisible();
+  await page.getByRole("button", { name: "Start Application" }).click();
 
-  await expect(page.getByRole("heading", { name: "简历上传" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /Upload the resume that best represents/ }),
+  ).toBeVisible();
   await uploadVirtualFile(page, "candidate-eligible.pdf");
-  await page.getByRole("button", { name: "上传并开始分析" }).click();
+  await page.getByRole("button", { name: "Upload and Start Analysis" }).click();
 
   await expect(
-    page.getByText("已通过初步资格判断", { exact: true }),
+    page.getByText("The initial eligibility review has passed", { exact: true }),
   ).toBeVisible({ timeout: 10000 });
-  await page.getByRole("button", { name: "继续上传证明材料" }).click();
+  await page.getByRole("button", { name: "Continue to Materials" }).click();
 
   await expect(
-    page.getByRole("heading", { name: "证明材料上传" }),
+    page.getByRole("heading", {
+      name: /Complete the application package with the supporting evidence/,
+    }),
   ).toBeVisible();
   await uploadVirtualFile(page, "passport.pdf");
   await expect(page.getByText("passport.pdf")).toBeVisible({ timeout: 10000 });
 
-  await page.getByRole("button", { name: "确认提交" }).click();
+  await page.getByRole("button", { name: "Confirm Submission" }).click();
   await expect(
-    page.getByText("已收到材料信息，将在 1-3 个工作日内答复。"),
+    page.getByText(
+      "We have received your materials and will respond within 1 to 3 business days.",
+    ),
   ).toBeVisible();
 });
 
@@ -54,15 +60,17 @@ test("insufficient info flow supports supplemental fields", async ({
 }) => {
   await page.goto("/apply?t=sample-progress-token");
 
-  await expect(page.getByText("还缺少部分关键信息")).toBeVisible();
-  await page.getByRole("combobox").selectOption({ label: "博士" });
+  await expect(
+    page.getByText("Some required information is still missing"),
+  ).toBeVisible();
+  await page.getByRole("combobox").selectOption({ label: "Doctorate" });
   await page
-    .getByRole("textbox", { name: "当前工作单位" })
+    .getByRole("textbox", { name: "Current Employer" })
     .fill("Example University");
-  await page.getByRole("button", { name: "确认并重新分析" }).click();
+  await page.getByRole("button", { name: "Submit and Reanalyze" }).click();
 
   await expect(
-    page.getByText("已通过初步资格判断", { exact: true }),
+    page.getByText("The initial eligibility review has passed", { exact: true }),
   ).toBeVisible({ timeout: 10000 });
 });
 
@@ -70,9 +78,13 @@ test("submitted token restores submitted materials page", async ({ page }) => {
   await page.goto("/apply?t=sample-submitted-token");
 
   await expect(
-    page.getByRole("heading", { name: "证明材料上传" }),
+    page.getByRole("heading", {
+      name: /Complete the application package with the supporting evidence/,
+    }),
   ).toBeVisible();
   await expect(
-    page.getByText("已收到材料信息，将在 1-3 个工作日内答复。"),
+    page.getByText(
+      "We have received your materials and will respond within 1 to 3 business days.",
+    ),
   ).toBeVisible();
 });

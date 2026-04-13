@@ -189,6 +189,52 @@ Highest Degree: To be confirmed
     expect(result.extractedFields?.["*姓名"]).toBe("Jane Doe");
   });
 
+  it("posts resume-analysis mapping with numeric upstreamJobId", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 201,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { registerExpertResumeAnalysisMapping } = await loadClient({
+      RESUME_ANALYSIS_MODE: "live",
+      RESUME_ANALYSIS_BASE_URL: "http://resume.test/api/v1",
+      RESUME_ANALYSIS_API_KEY: "secret",
+    });
+
+    await registerExpertResumeAnalysisMapping({
+      applicationId: "app_1",
+      expertAnalysisJobId: "clx_expert_job_1",
+      upstreamJobId: 99,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://resume.test/api/v1/internal/resume-analysis/mappings",
+    );
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({
+      applicationId: "app_1",
+      expertAnalysisJobId: "clx_expert_job_1",
+      upstreamJobId: 99,
+    });
+  });
+
+  it("parses resume-process job id strings for mapping helper", async () => {
+    const { parseResumeProcessNumericJobId } = await loadClient({
+      RESUME_ANALYSIS_MODE: "mock",
+    });
+
+    expect(parseResumeProcessNumericJobId("42")).toBe(42);
+    expect(parseResumeProcessNumericJobId("mock:eligible:1")).toBeNull();
+    expect(parseResumeProcessNumericJobId("x")).toBeNull();
+  });
+
   it("marks upstream 503 as retryable live error", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

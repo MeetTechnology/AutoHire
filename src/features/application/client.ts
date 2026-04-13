@@ -156,6 +156,12 @@ export async function fetchAnalysisResult(applicationId: string) {
       helpText?: string;
       options?: string[];
       defaultValue?: string;
+      selectOtherDetails?: {
+        triggerOption: string;
+        detailFieldKey: string;
+        detailLabel: string;
+        detailPlaceholder?: string;
+      };
     }>;
     applicationStatus: string;
     resumeAnalysisStatus: string | null;

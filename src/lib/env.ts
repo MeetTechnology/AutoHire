@@ -22,6 +22,7 @@ const envSchema = z.object({
   RESUME_ANALYSIS_BASE_URL: z.string().optional(),
   RESUME_ANALYSIS_API_KEY: z.string().optional(),
   RESUME_ANALYSIS_REANALYZE_PATH: z.string().optional(),
+  RESUME_ANALYSIS_MAPPINGS_PATH: z.string().optional(),
   SENTRY_DSN: z.string().optional().default(""),
 });
 

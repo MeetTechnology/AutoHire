@@ -348,6 +348,86 @@ function isLiveMode() {
   );
 }
 
+/**
+ * Parses `ResumeAnalysisJob.externalJobId` from resume-process upload / polling
+ * into a positive integer job_id. Returns null for mock ids or non-numeric values.
+ */
+export function parseResumeProcessNumericJobId(
+  externalJobId: string | null | undefined,
+): number | null {
+  if (!externalJobId) {
+    return null;
+  }
+
+  const trimmed = externalJobId.trim();
+
+  if (trimmed.length === 0 || trimmed.toLowerCase().startsWith("mock:")) {
+    return null;
+  }
+
+  if (!/^\d+$/.test(trimmed)) {
+    return null;
+  }
+
+  const value = Number.parseInt(trimmed, 10);
+
+  if (!Number.isFinite(value) || value < 1) {
+    return null;
+  }
+
+  return value;
+}
+
+/**
+ * Registers expert `ResumeAnalysisJob.id` (cuid) → resume-process numeric `job_id`
+ * so upstream `POST …/jobs/{jobId}/reanalyze` can resolve cuid paths (GO_EIIE BFF).
+ * Idempotent: upstream returns 200 when the mapping already exists with the same pair.
+ */
+export async function registerExpertResumeAnalysisMapping(input: {
+  applicationId: string;
+  expertAnalysisJobId: string;
+  upstreamJobId: number;
+}) {
+  if (!isLiveMode()) {
+    return;
+  }
+
+  const env = getEnv();
+  const path =
+    env.RESUME_ANALYSIS_MAPPINGS_PATH ?? "/internal/resume-analysis/mappings";
+
+  await callLiveService(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      applicationId: input.applicationId,
+      expertAnalysisJobId: input.expertAnalysisJobId,
+      upstreamJobId: input.upstreamJobId,
+    }),
+  });
+}
+
+/** No-op in mock mode or when `externalJobId` is not a numeric resume-process job id. */
+export async function syncExpertJobUpstreamMapping(input: {
+  applicationId: string;
+  expertAnalysisJobId: string;
+  externalJobId: string | null | undefined;
+}) {
+  const upstreamJobId = parseResumeProcessNumericJobId(input.externalJobId);
+
+  if (upstreamJobId === null) {
+    return;
+  }
+
+  await registerExpertResumeAnalysisMapping({
+    applicationId: input.applicationId,
+    expertAnalysisJobId: input.expertAnalysisJobId,
+    upstreamJobId,
+  });
+}
+
 function buildLiveUrl(path: string) {
   const env = getEnv();
 

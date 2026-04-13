@@ -4,13 +4,45 @@ type MissingFieldConfig = Omit<MissingField, "sourceItemName"> & {
   aliases?: string[];
 };
 
+export function enrichMissingFieldWithRegistry(field: MissingField): MissingField {
+  const config = MISSING_FIELD_REGISTRY[field.fieldKey];
+
+  if (!config) {
+    return field;
+  }
+
+  return {
+    ...field,
+    label: config.label,
+    type: config.type,
+    required: config.required,
+    helpText: config.helpText,
+    options: config.options,
+    defaultValue: config.defaultValue ?? field.defaultValue,
+    selectOtherDetails: config.selectOtherDetails ?? field.selectOtherDetails,
+    sourceItemName: field.sourceItemName,
+  };
+}
+
+export function enrichMissingFieldsWithRegistry(
+  fields: MissingField[],
+): MissingField[] {
+  return fields.map(enrichMissingFieldWithRegistry);
+}
+
 const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
   highest_degree: {
     fieldKey: "highest_degree",
     label: "Highest Degree",
     type: "select",
     required: true,
-    options: ["本科", "硕士", "博士", "其他"],
+    options: ["Bachelor's degree", "Master's degree", "Doctorate", "Other"],
+    selectOtherDetails: {
+      triggerOption: "Other",
+      detailFieldKey: "highest_degree_other",
+      detailLabel: "Please specify your highest degree",
+      detailPlaceholder: "e.g. professional diploma, equivalent qualification",
+    },
     helpText: "Please provide the highest degree you have completed.",
     aliases: [
       "最高学位",
@@ -196,6 +228,7 @@ export function resolveMissingField(sourceItemName: string): MissingField {
     helpText: config.helpText,
     options: config.options,
     defaultValue: config.defaultValue,
+    selectOtherDetails: config.selectOtherDetails,
     sourceItemName: normalized,
   };
 }

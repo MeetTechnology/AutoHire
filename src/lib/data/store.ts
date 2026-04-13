@@ -1,4 +1,5 @@
 import type { MissingField } from "@/features/analysis/types";
+import type { EditableSecondaryField } from "@/features/analysis/types";
 import type {
   AnalysisJobStatus,
   ApplicationSnapshot,
@@ -6,6 +7,7 @@ import type {
   EligibilityResult,
   MaterialCategory,
 } from "@/features/application/types";
+import { enrichMissingFieldsWithRegistry } from "@/lib/resume-analysis/missing-field-registry";
 import { getRuntimeMode } from "@/lib/env";
 import { getSampleInvitationSeeds } from "@/lib/data/sample-data";
 import type { Prisma } from "@prisma/client";
@@ -79,6 +81,36 @@ type SupplementalFieldRecord = {
   submittedAt: Date;
 };
 
+type SecondaryAnalysisRunRecord = {
+  id: string;
+  applicationId: string;
+  analysisJobId: string | null;
+  externalRunId: string;
+  status: string;
+  errorMessage: string | null;
+  runSummary: Record<string, unknown> | null;
+  rawResults: Record<string, unknown>[] | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SecondaryAnalysisFieldValueRecord = {
+  id: string;
+  applicationId: string;
+  secondaryRunId: string;
+  no: number;
+  columnName: string | null;
+  label: string;
+  sourceValue: string | null;
+  editedValue: string | null;
+  effectiveValue: string | null;
+  isMissing: boolean;
+  isEdited: boolean;
+  savedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 type MaterialRecord = {
   id: string;
   applicationId: string;
@@ -106,6 +138,8 @@ type PersistedStore = {
   resumeFiles: ResumeFileRecord[];
   analysisJobs: AnalysisJobRecord[];
   analysisResults: AnalysisResultRecord[];
+  secondaryAnalysisRuns: SecondaryAnalysisRunRecord[];
+  secondaryAnalysisFieldValues: SecondaryAnalysisFieldValueRecord[];
   supplementalFields: SupplementalFieldRecord[];
   materials: MaterialRecord[];
   events: EventRecord[];
@@ -268,6 +302,8 @@ function buildSampleStore(): PersistedStore {
         createdAt: now,
       },
     ],
+    secondaryAnalysisRuns: [],
+    secondaryAnalysisFieldValues: [],
     supplementalFields: [],
     materials: [
       {
@@ -620,6 +656,222 @@ export async function createSupplementalFieldSubmission(input: {
   });
 }
 
+export async function getLatestSecondaryAnalysisRun(applicationId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore()
+        .secondaryAnalysisRuns.filter((item) => item.applicationId === applicationId)
+        .sort(byDateDesc)[0] ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.secondaryAnalysisRun.findFirst({
+    where: { applicationId },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function findSecondaryAnalysisRunByExternalRunId(input: {
+  applicationId: string;
+  externalRunId: string;
+}) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().secondaryAnalysisRuns.find(
+        (item) =>
+          item.applicationId === input.applicationId &&
+          item.externalRunId === input.externalRunId,
+      ) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.secondaryAnalysisRun.findUnique({
+    where: {
+      applicationId_externalRunId: {
+        applicationId: input.applicationId,
+        externalRunId: input.externalRunId,
+      },
+    },
+  });
+}
+
+export async function upsertSecondaryAnalysisRun(input: {
+  applicationId: string;
+  analysisJobId: string | null;
+  externalRunId: string;
+  status: string;
+  errorMessage: string | null;
+  runSummary: Record<string, unknown> | null;
+  rawResults: Record<string, unknown>[] | null;
+}) {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const existing = store.secondaryAnalysisRuns.find(
+      (item) =>
+        item.applicationId === input.applicationId &&
+        item.externalRunId === input.externalRunId,
+    );
+
+    if (existing) {
+      Object.assign(existing, {
+        analysisJobId: input.analysisJobId,
+        status: input.status,
+        errorMessage: input.errorMessage,
+        runSummary: input.runSummary,
+        rawResults: input.rawResults,
+        updatedAt: new Date(),
+      });
+
+      return existing;
+    }
+
+    const record: SecondaryAnalysisRunRecord = {
+      id: createId("secondary_run"),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...input,
+    };
+
+    store.secondaryAnalysisRuns.push(record);
+    return record;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.secondaryAnalysisRun.upsert({
+    where: {
+      applicationId_externalRunId: {
+        applicationId: input.applicationId,
+        externalRunId: input.externalRunId,
+      },
+    },
+    update: {
+      analysisJobId: input.analysisJobId,
+      status: input.status,
+      errorMessage: input.errorMessage,
+      runSummary: input.runSummary as Prisma.InputJsonValue | undefined,
+      rawResults: input.rawResults as Prisma.InputJsonValue | undefined,
+    },
+    create: {
+      applicationId: input.applicationId,
+      analysisJobId: input.analysisJobId,
+      externalRunId: input.externalRunId,
+      status: input.status,
+      errorMessage: input.errorMessage,
+      runSummary: input.runSummary as Prisma.InputJsonValue | undefined,
+      rawResults: input.rawResults as Prisma.InputJsonValue | undefined,
+    },
+  });
+}
+
+export async function listSecondaryAnalysisFieldValues(secondaryRunId: string) {
+  if (getRuntimeMode() === "memory") {
+    return getMemoryStore().secondaryAnalysisFieldValues
+      .filter((item) => item.secondaryRunId === secondaryRunId)
+      .sort((left, right) => left.no - right.no);
+  }
+
+  const prisma = await getPrisma();
+  return prisma.secondaryAnalysisFieldValue.findMany({
+    where: { secondaryRunId },
+    orderBy: { no: "asc" },
+  });
+}
+
+export async function upsertSecondaryAnalysisFieldValues(input: {
+  applicationId: string;
+  secondaryRunId: string;
+  fields: EditableSecondaryField[];
+}) {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+
+    for (const field of input.fields) {
+      const existing = store.secondaryAnalysisFieldValues.find(
+        (item) =>
+          item.secondaryRunId === input.secondaryRunId && item.no === field.no,
+      );
+
+      if (existing) {
+        Object.assign(existing, {
+          columnName: field.column,
+          label: field.label,
+          sourceValue: field.sourceValue,
+          editedValue: field.editedValue || null,
+          effectiveValue: field.effectiveValue,
+          isMissing: field.isMissing,
+          isEdited: field.isEdited,
+          savedAt: field.savedAt ? new Date(field.savedAt) : existing.savedAt,
+          updatedAt: new Date(),
+        });
+        continue;
+      }
+
+      store.secondaryAnalysisFieldValues.push({
+        id: createId("secondary_field"),
+        applicationId: input.applicationId,
+        secondaryRunId: input.secondaryRunId,
+        no: field.no,
+        columnName: field.column,
+        label: field.label,
+        sourceValue: field.sourceValue || null,
+        editedValue: field.editedValue || null,
+        effectiveValue: field.effectiveValue || null,
+        isMissing: field.isMissing,
+        isEdited: field.isEdited,
+        savedAt: field.savedAt ? new Date(field.savedAt) : new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    return listSecondaryAnalysisFieldValues(input.secondaryRunId);
+  }
+
+  const prisma = await getPrisma();
+  await prisma.$transaction(
+    input.fields.map((field) =>
+      prisma.secondaryAnalysisFieldValue.upsert({
+        where: {
+          secondaryRunId_no: {
+            secondaryRunId: input.secondaryRunId,
+            no: field.no,
+          },
+        },
+        update: {
+          columnName: field.column,
+          label: field.label,
+          sourceValue: field.sourceValue || null,
+          editedValue: field.editedValue || null,
+          effectiveValue: field.effectiveValue || null,
+          isMissing: field.isMissing,
+          isEdited: field.isEdited,
+          savedAt: field.savedAt ? new Date(field.savedAt) : new Date(),
+        },
+        create: {
+          applicationId: input.applicationId,
+          secondaryRunId: input.secondaryRunId,
+          no: field.no,
+          columnName: field.column,
+          label: field.label,
+          sourceValue: field.sourceValue || null,
+          editedValue: field.editedValue || null,
+          effectiveValue: field.effectiveValue || null,
+          isMissing: field.isMissing,
+          isEdited: field.isEdited,
+          savedAt: field.savedAt ? new Date(field.savedAt) : new Date(),
+        },
+      }),
+    ),
+  );
+
+  return prisma.secondaryAnalysisFieldValue.findMany({
+    where: { secondaryRunId: input.secondaryRunId },
+    orderBy: { no: "asc" },
+  });
+}
+
 export async function listMaterials(applicationId: string) {
   if (getRuntimeMode() === "memory") {
     return getMemoryStore().materials.filter(
@@ -757,7 +1009,7 @@ function toSnapshotFromMemory(
       ? {
           displaySummary: latestResult.displaySummary,
           reasonText: latestResult.reasonText,
-          missingFields: latestResult.missingFields,
+          missingFields: enrichMissingFieldsWithRegistry(latestResult.missingFields),
           extractedFields: latestResult.extractedFields,
         }
       : null,
@@ -830,8 +1082,9 @@ export async function buildApplicationSnapshot(
       ? {
           displaySummary: latestResult.displaySummary,
           reasonText: latestResult.reasonText,
-          missingFields:
+          missingFields: enrichMissingFieldsWithRegistry(
             (latestResult.missingFields as MissingField[] | null) ?? [],
+          ),
           extractedFields:
             (latestResult.extractedFields as Record<string, unknown> | null) ??
             {},

@@ -85,6 +85,7 @@ model Application {
   resumeFiles          ResumeFile[]
   analysisJobs         ResumeAnalysisJob[]
   analysisResults      ResumeAnalysisResult[]
+  secondaryAnalysisRuns SecondaryAnalysisRun[]
   supplementalFields   SupplementalFieldSubmission[]
   materials            ApplicationMaterial[]
   events               ApplicationEventLog[]
@@ -125,6 +126,7 @@ model ResumeAnalysisJob {
   application                  Application                   @relation(fields: [applicationId], references: [id])
   resumeFile                   ResumeFile?                   @relation(fields: [resumeFileId], references: [id])
   analysisResult               ResumeAnalysisResult?
+  secondaryAnalysisRuns        SecondaryAnalysisRun[]
   supplementalFieldSubmissions SupplementalFieldSubmission[]
 
   @@index([applicationId])
@@ -147,6 +149,50 @@ model ResumeAnalysisResult {
   analysisJob ResumeAnalysisJob @relation(fields: [analysisJobId], references: [id])
 
   @@index([applicationId])
+}
+
+model SecondaryAnalysisRun {
+  id             String   @id @default(cuid())
+  applicationId  String
+  analysisJobId  String?
+  externalRunId  String
+  status         String
+  errorMessage   String?
+  runSummary     Json?
+  rawResults     Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id])
+  analysisJob ResumeAnalysisJob? @relation(fields: [analysisJobId], references: [id])
+  fieldValues SecondaryAnalysisFieldValue[]
+
+  @@unique([applicationId, externalRunId])
+  @@index([applicationId])
+  @@index([analysisJobId])
+}
+
+model SecondaryAnalysisFieldValue {
+  id               String   @id @default(cuid())
+  applicationId    String
+  secondaryRunId   String
+  no               Int
+  columnName       String?
+  label            String
+  sourceValue      String?
+  editedValue      String?
+  effectiveValue   String?
+  isMissing        Boolean  @default(false)
+  isEdited         Boolean  @default(false)
+  savedAt          DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  application  Application          @relation(fields: [applicationId], references: [id])
+  secondaryRun SecondaryAnalysisRun @relation(fields: [secondaryRunId], references: [id])
+
+  @@unique([secondaryRunId, no])
+  @@index([applicationId, secondaryRunId])
 }
 
 model SupplementalFieldSubmission {

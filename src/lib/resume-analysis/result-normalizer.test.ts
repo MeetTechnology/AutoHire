@@ -86,4 +86,26 @@ describe("normalizeAnalysisResultPayload", () => {
       "highest_degree",
     ]);
   });
+
+  it("enriches structured missingFields with the latest registry configuration", () => {
+    const result = normalizeAnalysisResultPayload({
+      eligibilityResult: "INSUFFICIENT_INFO",
+      displaySummary: "Missing information.",
+      missingFields: [
+        {
+          fieldKey: "highest_degree",
+          sourceItemName: "最高学位",
+          label: "最高学历",
+          type: "select",
+          required: true,
+          options: ["本科", "硕士", "博士", "其他"],
+        },
+      ],
+    });
+
+    expect(result.missingFields[0]?.options?.[3]).toBe("Other");
+    expect(result.missingFields[0]?.selectOtherDetails?.detailFieldKey).toBe(
+      "highest_degree_other",
+    );
+  });
 });

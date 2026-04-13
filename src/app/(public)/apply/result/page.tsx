@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type ChangeEvent,
+} from "react";
+import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 
@@ -32,8 +39,24 @@ import type {
   SecondaryAnalysisSnapshot,
   SecondaryAnalysisStatus,
 } from "@/features/application/types";
+import { cn } from "@/lib/utils";
 
 type SupplementalFormValues = Record<string, string>;
+
+function normalizeDateInputYearToFourDigits(event: ChangeEvent<HTMLInputElement>) {
+  const input = event.currentTarget;
+  const v = input.value;
+
+  if (!v) {
+    return;
+  }
+
+  const match = /^(\d+)-(\d{2})-(\d{2})$/.exec(v);
+
+  if (match && match[1].length > 4) {
+    input.value = `${match[1].slice(0, 4)}-${match[2]}-${match[3]}`;
+  }
+}
 
 function translateChoiceLabel(option: string) {
   const translations: Record<string, string> = {
@@ -70,6 +93,8 @@ function getSecondaryStatusMessage(status: SecondaryAnalysisStatus) {
 function renderSupplementalField(
   field: MissingField,
   register: ReturnType<typeof useForm<SupplementalFormValues>>["register"],
+  watch: ReturnType<typeof useForm<SupplementalFormValues>>["watch"],
+  getValues: ReturnType<typeof useForm<SupplementalFormValues>>["getValues"],
 ) {
   const inputClassName = getInputClassName();
 
@@ -86,19 +111,48 @@ function renderSupplementalField(
       </span>
       <div className="mt-3">
         {field.type === "select" ? (
-          <select
-            {...register(field.fieldKey, {
-              required: field.required,
-            })}
-            className={inputClassName}
-          >
-            <option value="">Please select</option>
-            {field.options?.map((option) => (
-              <option key={option} value={option}>
-                {translateChoiceLabel(option)}
-              </option>
-            ))}
-          </select>
+          <>
+            <select
+              {...register(field.fieldKey, {
+                required: field.required,
+              })}
+              className={inputClassName}
+            >
+              <option value="">Please select</option>
+              {field.options?.map((option) => (
+                <option key={option} value={option}>
+                  {translateChoiceLabel(option)}
+                </option>
+              ))}
+            </select>
+            {field.selectOtherDetails &&
+            watch(field.fieldKey) === field.selectOtherDetails.triggerOption ? (
+              <div className="mt-3 rounded-xl border border-stone-200 bg-white/80 p-3">
+                <span className="mb-2 block text-xs font-medium text-stone-700">
+                  {field.selectOtherDetails.detailLabel}
+                </span>
+                <input
+                  type="text"
+                  className={inputClassName}
+                  placeholder={field.selectOtherDetails.detailPlaceholder}
+                  {...register(field.selectOtherDetails.detailFieldKey, {
+                    validate: (value) => {
+                      const main = getValues(field.fieldKey);
+
+                      if (main !== field.selectOtherDetails?.triggerOption) {
+                        return true;
+                      }
+
+                      return (
+                        (value && value.trim().length > 0) ||
+                        "Please specify your degree."
+                      );
+                    },
+                  })}
+                />
+              </div>
+            ) : null}
+          </>
         ) : field.type === "textarea" ? (
           <textarea
             {...register(field.fieldKey, {
@@ -124,18 +178,32 @@ function renderSupplementalField(
               </label>
             ))}
           </div>
+        ) : field.type === "date" ? (
+          (() => {
+            const { onChange, ...reg } = register(field.fieldKey, {
+              required: field.required,
+            });
+
+            return (
+              <input
+                {...reg}
+                type="date"
+                min="1900-01-01"
+                max="2100-12-31"
+                className={inputClassName}
+                onChange={(e) => {
+                  normalizeDateInputYearToFourDigits(e);
+                  void onChange(e);
+                }}
+              />
+            );
+          })()
         ) : (
           <input
             {...register(field.fieldKey, {
               required: field.required,
             })}
-            type={
-              field.type === "date"
-                ? "date"
-                : field.type === "number"
-                  ? "number"
-                  : "text"
-            }
+            type={field.type === "number" ? "number" : "text"}
             className={inputClassName}
           />
         )}
@@ -212,6 +280,48 @@ function getInitialBanner(
   return null;
 }
 
+function DetailedInitialAnalysisSection({
+  rawReasoning,
+  expanded,
+  onToggle,
+}: {
+  rawReasoning: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <SectionCard
+      title="Detailed initial analysis"
+      description="This section contains the full model-facing reasoning block retained for review."
+      action={
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={
+            expanded ? "Collapse detailed analysis" : "Expand detailed analysis"
+          }
+          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-stone-300 bg-white/95 text-stone-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition hover:border-stone-400 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40"
+        >
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              "h-5 w-5 transition-transform duration-200",
+              expanded ? "rotate-180" : "rotate-0",
+            )}
+          />
+        </button>
+      }
+    >
+      {expanded ? (
+        <div className="rounded-[1.4rem] border border-stone-200 bg-stone-50/80 p-5 text-sm leading-7 text-stone-700">
+          <p className="whitespace-pre-wrap">{rawReasoning}</p>
+        </div>
+      ) : null}
+    </SectionCard>
+  );
+}
+
 export default function ResultPage() {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
@@ -226,7 +336,20 @@ export default function ResultPage() {
   const [isSubmittingSupplemental, startSupplementalTransition] =
     useTransition();
   const [isStartingSecondary, startSecondaryTransition] = useTransition();
-  const { register, handleSubmit, reset } = useForm<SupplementalFormValues>();
+  const [isDetailedAnalysisOpen, setIsDetailedAnalysisOpen] = useState(true);
+  const { register, handleSubmit, reset, watch, getValues } =
+    useForm<SupplementalFormValues>();
+
+  const rawReasoning = useMemo(
+    () => getRawReasoning(snapshot?.latestResult?.extractedFields),
+    [snapshot?.latestResult?.extractedFields],
+  );
+
+  useEffect(() => {
+    if (rawReasoning) {
+      setIsDetailedAnalysisOpen(true);
+    }
+  }, [rawReasoning, snapshot?.applicationStatus]);
 
   async function syncAnalysisProgress(applicationId: string) {
     const status = await fetchAnalysisStatus(applicationId);
@@ -376,10 +499,17 @@ export default function ResultPage() {
 
         if (result.missingFields.length > 0) {
           const defaults = Object.fromEntries(
-            result.missingFields.map((field) => [
-              field.fieldKey,
-              field.defaultValue ?? "",
-            ]),
+            result.missingFields.flatMap((field) => {
+              const rows: [string, string][] = [
+                [field.fieldKey, field.defaultValue ?? ""],
+              ];
+
+              if (field.selectOtherDetails) {
+                rows.push([field.selectOtherDetails.detailFieldKey, ""]);
+              }
+
+              return rows;
+            }),
           );
           reset(defaults);
         }
@@ -508,7 +638,6 @@ export default function ResultPage() {
   const visibleExtractedFields = buildVisibleExtractedFieldSummary(
     snapshot?.latestResult?.extractedFields ?? {},
   );
-  const rawReasoning = getRawReasoning(snapshot?.latestResult?.extractedFields);
   const canTriggerSecondaryAnalysis = Boolean(
     snapshot &&
     snapshot.applicationStatus !== "CV_ANALYZING" &&
@@ -592,6 +721,17 @@ export default function ResultPage() {
 
           {snapshot ? (
             <>
+              {rawReasoning &&
+              snapshot.applicationStatus === "ELIGIBLE" ? (
+                <DetailedInitialAnalysisSection
+                  rawReasoning={rawReasoning}
+                  expanded={isDetailedAnalysisOpen}
+                  onToggle={() =>
+                    setIsDetailedAnalysisOpen((previous) => !previous)
+                  }
+                />
+              ) : null}
+
               {getInitialBanner(snapshot, statusText)}
 
               {snapshot.latestResult?.reasonText &&
@@ -628,7 +768,7 @@ export default function ResultPage() {
                   <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
                     <div className="grid gap-4">
                       {snapshot.latestResult?.missingFields.map((field) =>
-                        renderSupplementalField(field, register),
+                        renderSupplementalField(field, register, watch, getValues),
                       )}
                     </div>
                     <ActionButton
@@ -644,20 +784,15 @@ export default function ResultPage() {
                 </SectionCard>
               ) : null}
 
-              {rawReasoning ? (
-                <SectionCard
-                  title="Detailed initial analysis"
-                  description="This section contains the full model-facing reasoning block retained for review."
-                >
-                  <details className="rounded-[1.4rem] border border-stone-200 bg-stone-50/80 p-5 text-sm text-stone-700">
-                    <summary className="cursor-pointer list-none font-medium text-stone-950">
-                      Expand detailed analysis
-                    </summary>
-                    <p className="mt-4 leading-7 whitespace-pre-wrap">
-                      {rawReasoning}
-                    </p>
-                  </details>
-                </SectionCard>
+              {rawReasoning &&
+              snapshot.applicationStatus !== "ELIGIBLE" ? (
+                <DetailedInitialAnalysisSection
+                  rawReasoning={rawReasoning}
+                  expanded={isDetailedAnalysisOpen}
+                  onToggle={() =>
+                    setIsDetailedAnalysisOpen((previous) => !previous)
+                  }
+                />
               ) : null}
 
               {canTriggerSecondaryAnalysis ? (

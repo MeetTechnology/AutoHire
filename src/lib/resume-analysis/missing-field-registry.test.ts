@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMissingFieldsFromItemNames,
   buildSupplementalFieldPayload,
+  enrichMissingFieldWithRegistry,
   resolveMissingField,
 } from "@/lib/resume-analysis/missing-field-registry";
 
@@ -13,7 +14,28 @@ describe("missing field registry", () => {
     expect(field.fieldKey).toBe("highest_degree");
     expect(field.label).toBe("Highest Degree");
     expect(field.type).toBe("select");
+    expect(field.options).toEqual([
+      "Bachelor's degree",
+      "Master's degree",
+      "Doctorate",
+      "Other",
+    ]);
+    expect(field.selectOtherDetails?.detailFieldKey).toBe("highest_degree_other");
     expect(field.sourceItemName).toBe("最高学位");
+  });
+
+  it("re-applies registry options to a stored highest_degree field", () => {
+    const enriched = enrichMissingFieldWithRegistry({
+      fieldKey: "highest_degree",
+      sourceItemName: "最高学位",
+      label: "最高学历",
+      type: "select",
+      required: true,
+      options: ["本科", "硕士", "博士", "其他"],
+    });
+
+    expect(enriched.options?.[3]).toBe("Other");
+    expect(enriched.selectOtherDetails?.triggerOption).toBe("Other");
   });
 
   it("maps English prompt missing item names", () => {

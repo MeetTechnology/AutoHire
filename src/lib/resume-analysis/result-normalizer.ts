@@ -2,6 +2,7 @@ import type { MissingField } from "@/features/analysis/types";
 import type { EligibilityResult } from "@/features/application/types";
 import {
   buildMissingFieldsFromItemNames,
+  enrichMissingFieldWithRegistry,
   normalizeSourceItemName,
 } from "@/lib/resume-analysis/missing-field-registry";
 
@@ -265,11 +266,13 @@ export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision
     typeof payload.displaySummary !== "undefined"
   ) {
     const normalizedMissingFields = Array.isArray(payload.missingFields)
-      ? (payload.missingFields as MissingField[]).map((field) => ({
-          ...field,
-          sourceItemName:
-            field.sourceItemName || field.label || field.fieldKey,
-        }))
+      ? (payload.missingFields as MissingField[]).map((field) =>
+          enrichMissingFieldWithRegistry({
+            ...field,
+            sourceItemName:
+              field.sourceItemName || field.label || field.fieldKey,
+          }),
+        )
       : [];
 
     return {

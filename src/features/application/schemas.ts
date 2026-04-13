@@ -30,3 +30,8 @@ export const materialConfirmSchema = resumeConfirmSchema.extend({
 export const supplementalFieldsSchema = z.object({
   fields: z.record(z.string(), z.unknown()),
 });
+
+export const secondaryAnalysisSaveSchema = z.object({
+  runId: z.string().min(1),
+  fields: z.record(z.string(), z.unknown()),
+});
