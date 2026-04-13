@@ -1,9 +1,12 @@
+import { parseSecondaryVisibleFields } from "@/features/analysis/secondary";
 import type {
   AnalysisJobStatus,
   ApplicationStatus,
   EligibilityResult,
   MaterialCategory,
+  SecondaryAnalysisSnapshot,
 } from "@/features/application/types";
+import type { MissingField } from "@/features/analysis/types";
 import { createSessionToken } from "@/lib/auth/session";
 import { hashInviteToken } from "@/lib/auth/token";
 import {
@@ -30,10 +33,15 @@ import {
 } from "@/lib/data/store";
 import {
   createResumeAnalysisJob,
+  getResumeAnalysisErrorMessage,
+  getSecondaryAnalysisResult,
   getResumeAnalysisResult,
   getResumeAnalysisStatus,
+  isRetryableResumeAnalysisError,
   reanalyzeWithSupplementalFields,
+  triggerSecondaryAnalysis,
 } from "@/lib/resume-analysis/client";
+import { buildSupplementalFieldPayload } from "@/lib/resume-analysis/missing-field-registry";
 
 export async function resolveInviteToken(token: string) {
   return findInvitationByTokenHash(hashInviteToken(token));
@@ -120,6 +128,11 @@ export async function createResumeUploadRecord(input: {
     versionNo,
   });
 
+  await updateApplication(input.applicationId, {
+    applicationStatus: "CV_UPLOADED",
+    currentStep: "resume",
+  });
+
   return record;
 }
 
@@ -142,15 +155,17 @@ function mapEligibilityToApplicationStatus(
 }
 
 function mapExternalJobStatus(jobStatus: string): AnalysisJobStatus {
-  if (jobStatus === "completed") {
+  const normalized = jobStatus.trim().toLowerCase();
+
+  if (normalized === "completed") {
     return "COMPLETED";
   }
 
-  if (jobStatus === "failed") {
+  if (normalized === "failed") {
     return "FAILED";
   }
 
-  if (jobStatus === "processing") {
+  if (normalized === "processing") {
     return "PROCESSING";
   }
 
@@ -162,9 +177,12 @@ export async function startInitialAnalysis(input: {
   fileName: string;
   resumeFileId: string;
 }) {
+  const latestResumeFile = await getLatestResumeFile(input.applicationId);
   const analysis = await createResumeAnalysisJob({
     applicationId: input.applicationId,
     fileName: input.fileName,
+    fileType: latestResumeFile?.fileType,
+    objectKey: latestResumeFile?.objectKey,
   });
 
   const job = await createAnalysisJob({
@@ -202,9 +220,81 @@ export async function refreshAnalysisState(applicationId: string) {
     return null;
   }
 
-  const status = await getResumeAnalysisStatus({
-    externalJobId: job.externalJobId ?? "",
-  });
+  if (job.jobStatus === "FAILED") {
+    return {
+      jobStatus: "FAILED" as const,
+      stageText: job.stageText ?? "Analysis failed",
+      progressMessage: "The analysis failed. Please review the input and try again.",
+      errorMessage: job.errorMessage ?? "The analysis failed. Please try again later.",
+    };
+  }
+
+  const existingResult = await getLatestAnalysisResult(applicationId);
+
+  if (job.jobStatus === "COMPLETED" && existingResult?.analysisJobId === job.id) {
+    const snapshot = await buildApplicationSnapshot(applicationId);
+
+    return {
+      jobStatus: "COMPLETED" as const,
+      stageText: job.stageText ?? "Analysis completed",
+      progressMessage: snapshot?.latestResult?.displaySummary ?? "The analysis has completed.",
+      errorMessage: null,
+    };
+  }
+
+  let status;
+
+  try {
+    status = await getResumeAnalysisStatus({
+      externalJobId: job.externalJobId ?? "",
+    });
+  } catch (error) {
+    if (isRetryableResumeAnalysisError(error)) {
+      const progressJobStatus =
+        job.jobStatus === "COMPLETED" ? "PROCESSING" : job.jobStatus;
+
+      if (job.jobStatus === "COMPLETED") {
+        await updateAnalysisJob(job.id, {
+          jobStatus: "PROCESSING",
+          stageText: "Syncing analysis result",
+          errorMessage: null,
+          finishedAt: null,
+        });
+      }
+
+      return {
+        jobStatus: progressJobStatus,
+        stageText:
+          progressJobStatus === "QUEUED"
+            ? job.stageText ?? "Queued for analysis"
+            : job.stageText ?? "Retrying analysis status request",
+        progressMessage: "The upstream service is temporarily unavailable. The system will keep retrying.",
+        errorMessage: null,
+      };
+    }
+
+    const errorMessage = getResumeAnalysisErrorMessage(error);
+
+    await updateAnalysisJob(job.id, {
+      jobStatus: "FAILED",
+      stageText: "Analysis failed",
+      errorMessage,
+      finishedAt: new Date(),
+    });
+
+    await createEvent(applicationId, "ANALYSIS_FAILED", {
+      analysisJobId: job.id,
+      errorMessage,
+    });
+
+    return {
+      jobStatus: "FAILED" as const,
+      stageText: "Analysis failed",
+      progressMessage: "The analysis failed. Please review the input and try again.",
+      errorMessage,
+    };
+  }
+
   const mappedJobStatus = mapExternalJobStatus(status.jobStatus);
 
   await updateAnalysisJob(job.id, {
@@ -220,51 +310,99 @@ export async function refreshAnalysisState(applicationId: string) {
   if (mappedJobStatus !== "COMPLETED") {
     return {
       jobStatus: mappedJobStatus,
-      stageText: status.stageText ?? "处理中",
-      progressMessage: status.progressMessage ?? "系统正在处理，请稍候。",
+      stageText: status.stageText ?? "Processing",
+      progressMessage:
+        mappedJobStatus === "FAILED"
+          ? "The analysis failed. Please review the input and try again."
+          : (status.progressMessage ?? "The system is processing your request. Please wait."),
+      errorMessage: status.errorMessage ?? null,
     };
   }
 
-  const existingResult = await getLatestAnalysisResult(applicationId);
-
   if (!existingResult || existingResult.analysisJobId !== job.id) {
-    const result = await getResumeAnalysisResult({
-      externalJobId: job.externalJobId ?? "",
-    });
+    try {
+      const result = await getResumeAnalysisResult({
+        externalJobId: job.externalJobId ?? "",
+      });
+      const extractedFields = result.extractedFields ?? {};
 
-    await createAnalysisResult({
-      applicationId,
-      analysisJobId: job.id,
-      analysisRound: job.jobType === "REANALYSIS" ? 2 : 1,
-      eligibilityResult: result.eligibilityResult,
-      reasonText: result.reasonText ?? null,
-      displaySummary: result.displaySummary ?? null,
-      extractedFields: result.extractedFields ?? {},
-      missingFields: result.missingFields ?? [],
-    });
+      if (result.rawReasoning) {
+        extractedFields.__rawReasoning = result.rawReasoning;
+      }
 
-    const nextStatus = mapEligibilityToApplicationStatus(
-      result.eligibilityResult,
-    );
+      await createAnalysisResult({
+        applicationId,
+        analysisJobId: job.id,
+        analysisRound: job.jobType === "REANALYSIS" ? 2 : 1,
+        eligibilityResult: result.eligibilityResult,
+        reasonText: result.reasonText ?? null,
+        displaySummary: result.displaySummary ?? null,
+        extractedFields,
+        missingFields: result.missingFields ?? [],
+      });
 
-    await updateApplication(applicationId, {
-      applicationStatus: nextStatus,
-      currentStep: nextStatus === "ELIGIBLE" ? "materials" : "result",
-      eligibilityResult: result.eligibilityResult,
-    });
+      const nextStatus = mapEligibilityToApplicationStatus(
+        result.eligibilityResult,
+      );
 
-    await createEvent(applicationId, "ANALYSIS_COMPLETED", {
-      analysisJobId: job.id,
-      eligibilityResult: result.eligibilityResult,
-    });
+      await updateApplication(applicationId, {
+        applicationStatus: nextStatus,
+        currentStep: nextStatus === "ELIGIBLE" ? "materials" : "result",
+        eligibilityResult: result.eligibilityResult,
+      });
+
+      await createEvent(applicationId, "ANALYSIS_COMPLETED", {
+        analysisJobId: job.id,
+        eligibilityResult: result.eligibilityResult,
+        rawReasoning: result.rawReasoning ?? null,
+      });
+    } catch (error) {
+      if (isRetryableResumeAnalysisError(error)) {
+        await updateAnalysisJob(job.id, {
+          jobStatus: "PROCESSING",
+          stageText: "Syncing analysis result",
+          errorMessage: null,
+          finishedAt: null,
+        });
+
+        return {
+          jobStatus: "PROCESSING" as const,
+          stageText: "Syncing analysis result",
+          progressMessage:
+            "The upstream analysis has completed. The system is syncing the result.",
+          errorMessage: null,
+        };
+      }
+
+      const errorMessage = getResumeAnalysisErrorMessage(error);
+
+      await updateAnalysisJob(job.id, {
+        jobStatus: "FAILED",
+        stageText: "Analysis failed",
+        errorMessage,
+        finishedAt: new Date(),
+      });
+
+      await createEvent(applicationId, "ANALYSIS_FAILED", {
+        analysisJobId: job.id,
+        errorMessage,
+      });
+
+      return {
+        jobStatus: "FAILED" as const,
+        stageText: "Analysis failed",
+        progressMessage: "The analysis failed. Please review the input and try again.",
+        errorMessage,
+      };
+    }
   }
 
   const snapshot = await buildApplicationSnapshot(applicationId);
 
   return {
     jobStatus: "COMPLETED" as const,
-    stageText: "已完成分析",
-    progressMessage: snapshot?.latestResult?.displaySummary ?? "分析已完成。",
+    stageText: "Analysis completed",
+    progressMessage: snapshot?.latestResult?.displaySummary ?? "The analysis has completed.",
   };
 }
 
@@ -274,16 +412,33 @@ export async function submitSupplementalFields(input: {
 }) {
   const latestJob = await getLatestAnalysisJob(input.applicationId);
   const latestResumeFile = await getLatestResumeFile(input.applicationId);
+  const latestResult = await getLatestAnalysisResult(input.applicationId);
+  const currentMissingFields =
+    ((latestResult?.missingFields as MissingField[] | null) ?? []).map(
+      (field) => ({
+        ...field,
+        sourceItemName: field.sourceItemName || field.label || field.fieldKey,
+      }),
+    );
+  const normalizedPayload = buildSupplementalFieldPayload(
+    input.fields,
+    currentMissingFields,
+  );
 
   await createSupplementalFieldSubmission({
     applicationId: input.applicationId,
     analysisJobId: latestJob?.id ?? null,
-    fieldValues: input.fields,
+    fieldValues: {
+      ...normalizedPayload,
+      missingFieldsSnapshot: currentMissingFields,
+    },
   });
 
   const analysis = await reanalyzeWithSupplementalFields({
     applicationId: input.applicationId,
-    fields: input.fields,
+    fields: normalizedPayload.valuesByFieldKey,
+    valuesBySourceItemName: normalizedPayload.valuesBySourceItemName,
+    latestAnalysisJobId: latestJob?.id ?? null,
   });
 
   const job = await createAnalysisJob({
@@ -311,6 +466,60 @@ export async function submitSupplementalFields(input: {
   });
 
   return job;
+}
+
+export async function startSecondaryAnalysis(applicationId: string) {
+  const latestJob = await getLatestAnalysisJob(applicationId);
+
+  if (!latestJob?.externalJobId) {
+    throw new Error("No completed analysis job is available for secondary analysis.");
+  }
+
+  const secondary = await triggerSecondaryAnalysis({
+    externalJobId: latestJob.externalJobId,
+  });
+
+  await createEvent(applicationId, "SECONDARY_ANALYSIS_TRIGGERED", {
+    analysisJobId: latestJob.id,
+    externalJobId: latestJob.externalJobId,
+    runId: secondary.runId,
+  });
+
+  return secondary;
+}
+
+export async function getSecondaryAnalysisSnapshot(input: {
+  applicationId: string;
+  runId?: string | null;
+}): Promise<SecondaryAnalysisSnapshot> {
+  const latestJob = await getLatestAnalysisJob(input.applicationId);
+
+  if (!latestJob?.externalJobId) {
+    return {
+      runId: null,
+      status: "idle",
+      errorMessage: null,
+      fields: [],
+      run: null,
+    };
+  }
+
+  const secondary = await getSecondaryAnalysisResult({
+    externalJobId: latestJob.externalJobId,
+    runId: input.runId,
+  });
+
+  return {
+    runId: secondary.runId,
+    status: secondary.status,
+    errorMessage: secondary.errorMessage,
+    fields: parseSecondaryVisibleFields(
+      secondary.results
+        .filter((result) => result.status === "completed" && result.generatedText)
+        .map((result) => result.generatedText),
+    ),
+    run: secondary.run,
+  };
 }
 
 export async function addMaterialRecord(input: {

@@ -6,6 +6,7 @@ export type EligibilityResult =
 
 export type MissingField = {
   fieldKey: string;
+  sourceItemName: string;
   label: string;
   type: "text" | "textarea" | "number" | "date" | "select" | "radio";
   required: boolean;

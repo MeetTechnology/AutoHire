@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { refreshAnalysisState } from "@/lib/application/service";
+import { getSecondaryAnalysisSnapshot } from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError } from "@/lib/http";
+import { getResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
@@ -19,14 +20,19 @@ export async function GET(request: NextRequest, { params }: Params) {
     );
   }
 
-  const status = await refreshAnalysisState(applicationId);
+  try {
+    const snapshot = await getSecondaryAnalysisSnapshot({
+      applicationId,
+      runId: request.nextUrl.searchParams.get("runId"),
+    });
 
-  if (!status) {
-    return jsonError("No analysis job has been created yet.", 404);
+    return NextResponse.json({
+      applicationId,
+      ...snapshot,
+    });
+  } catch (error) {
+    return jsonError(getResumeAnalysisErrorMessage(error), 502, {
+      code: "SECONDARY_ANALYSIS_RESULT_FAILED",
+    });
   }
-
-  return NextResponse.json({
-    applicationId,
-    ...status,
-  });
 }

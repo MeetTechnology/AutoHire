@@ -133,6 +133,7 @@
 
 - `missing_fields` 保存动态表单配置
 - `extracted_fields` 保存结构化提取结果快照
+- 当前 `extracted_fields` 中可附带内部调试元数据（如 `__rawReasoning`），前端摘要展示会忽略这些内部键
 
 ## 6. `supplemental_field_submission`
 
@@ -154,6 +155,11 @@
 说明：
 
 - `analysis_job_id` 指向提交时对应的最近一次分析任务，便于审计前后文
+- `field_values` 当前保存为富结构 JSON，至少包括：
+  - `valuesByFieldKey`
+  - `valuesBySourceItemName`
+  - `fieldMeta`
+  - `missingFieldsSnapshot`
 
 ## 7. `application_material`
 

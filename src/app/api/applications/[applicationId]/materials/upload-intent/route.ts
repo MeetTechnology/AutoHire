@@ -15,16 +15,19 @@ export async function POST(request: NextRequest, { params }: Params) {
   const access = await requireApplicationSession(request, applicationId);
 
   if (!access) {
-    return jsonError("当前会话无权访问该申请。", 403);
+    return jsonError(
+      "The current session is not authorized to access this application.",
+      403,
+    );
   }
 
   const body = await parseJsonBody(request);
   const parsed = uploadIntentSchema.safeParse(body);
 
   if (!parsed.success || !parsed.data.category) {
-    return jsonError("材料上传参数不合法。", 400, {
+    return jsonError("The material upload request payload is invalid.", 400, {
       details: parsed.success
-        ? { category: ["缺少材料分类"] }
+        ? { category: ["Material category is required."] }
         : parsed.error.flatten(),
     });
   }
@@ -32,7 +35,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   const validation = validateUpload(parsed.data.fileName, parsed.data.fileSize);
 
   if (!validation.valid) {
-    return jsonError("文件不符合上传要求。", 400, { code: validation.reason });
+    return jsonError("The file does not meet the upload requirements.", 400, {
+      code: validation.reason,
+    });
   }
 
   const objectKey = createObjectKey({

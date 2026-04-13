@@ -3,6 +3,14 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import {
+  ActionButton,
+  DetailCard,
+  PageFrame,
+  PageShell,
+  SectionCard,
+  StatusBanner,
+} from "@/components/ui/page-shell";
 import { MATERIAL_CATEGORIES } from "@/features/application/constants";
 import {
   confirmMaterialUpload,
@@ -14,6 +22,7 @@ import {
   submitApplicationRequest,
   uploadBinary,
 } from "@/features/application/client";
+import { APPLICATION_FLOW_STEPS } from "@/features/application/constants";
 import { resolveRouteFromStatus } from "@/features/application/route";
 import type {
   ApplicationSnapshot,
@@ -58,7 +67,7 @@ export default function MaterialsPage() {
           setError(
             nextError instanceof Error
               ? nextError.message
-              : "无法读取材料信息。",
+              : "Unable to load the uploaded materials.",
           );
         }
       } finally {
@@ -106,7 +115,9 @@ export default function MaterialsPage() {
         setSnapshot(await fetchSession());
       } catch (nextError) {
         setError(
-          nextError instanceof Error ? nextError.message : "材料上传失败。",
+          nextError instanceof Error
+            ? nextError.message
+            : "Material upload failed.",
         );
       }
     });
@@ -122,7 +133,9 @@ export default function MaterialsPage() {
         setMaterials(await deleteMaterial(snapshot.applicationId, fileId));
       } catch (nextError) {
         setError(
-          nextError instanceof Error ? nextError.message : "删除材料失败。",
+          nextError instanceof Error
+            ? nextError.message
+            : "Failed to delete the material.",
         );
       }
     });
@@ -139,106 +152,179 @@ export default function MaterialsPage() {
         setSnapshot(await fetchSession());
         setNotice(response.message);
       } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : "提交失败。");
+        setError(
+          nextError instanceof Error ? nextError.message : "Submission failed.",
+        );
       }
     });
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-6 py-12">
-      <section className="rounded-[2rem] border border-stone-200 bg-white/85 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-semibold text-slate-900">
-              证明材料上传
-            </h1>
-            <p className="mt-3 text-slate-700">
-              请按分类上传证明材料。每类支持批量上传，可留空。系统会自动保存上传进度。
-            </p>
-          </div>
-          {snapshot?.applicationStatus === "SUBMITTED" || notice ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900">
-              {notice ?? "已收到材料信息，将在 1-3 个工作日内答复。"}
-            </div>
-          ) : null}
-          {error ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-              {error}
-            </div>
-          ) : null}
-          {isLoading ? (
-            <p className="text-sm text-slate-600">正在读取已上传材料...</p>
-          ) : null}
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {MATERIAL_CATEGORIES.map((category) => {
-              const records = materials?.[category.key.toLowerCase()] ?? [];
-
-              return (
-                <div
-                  key={category.key}
-                  className="rounded-2xl border border-stone-200 bg-stone-50 p-5"
-                >
-                  <h2 className="font-medium text-slate-900">
-                    {category.label}
-                  </h2>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    支持批量上传，可留空。
-                  </p>
-                  <input
-                    type="file"
-                    multiple
-                    disabled={
-                      snapshot?.applicationStatus === "SUBMITTED" || isPending
-                    }
-                    onChange={(event) =>
-                      handleUpload(category.key, event.target.files)
-                    }
-                    className="mt-4 block w-full text-sm text-slate-600"
-                  />
-                  <div className="mt-4 space-y-2">
-                    {records.map((record) => (
-                      <div
-                        key={record.id}
-                        className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-slate-700"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="truncate">{record.fileName}</span>
-                          {snapshot?.applicationStatus !== "SUBMITTED" ? (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(record.id)}
-                              className="text-xs text-rose-600"
-                            >
-                              删除
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                    {records.length === 0 ? (
-                      <p className="text-xs text-slate-500">暂无已上传文件</p>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={
-              snapshot?.applicationStatus === "SUBMITTED" ||
-              isPending ||
-              isLoading
-            }
-            className="rounded-full bg-teal-700 px-5 py-3 font-medium text-white disabled:opacity-60"
+    <PageFrame>
+      <PageShell
+        eyebrow="Supporting Materials"
+        title="Complete the application package with the supporting evidence you wish to provide."
+        description="Upload supporting materials by category, review what is already included, and confirm the final package when it is ready."
+        steps={APPLICATION_FLOW_STEPS}
+        currentStep={snapshot?.applicationStatus === "SUBMITTED" ? 4 : 3}
+        headerSlot={
+          <SectionCard
+            title="Submission rhythm"
+            description="This stage is intentionally flexible. Upload category by category, review what has already been stored, and confirm only when you are ready."
+            className="bg-white/90"
           >
-            {snapshot?.applicationStatus === "SUBMITTED"
-              ? "已提交"
-              : "确认提交"}
-          </button>
+            <div className="space-y-3">
+              <DetailCard
+                eyebrow="Flexibility"
+                title="Upload only the evidence you want to include"
+                description="Each category accepts multiple files, so the package can be assembled in a clear and organized way."
+              />
+              <DetailCard
+                eyebrow="Confirmation"
+                title="Submission is an explicit final step"
+                description="The application stays editable until you confirm the final submission."
+              />
+            </div>
+          </SectionCard>
+        }
+      >
+        <div className="space-y-6">
+          {snapshot?.applicationStatus === "SUBMITTED" || notice ? (
+            <StatusBanner
+              tone="success"
+              title="Your materials have been received"
+              description={
+                notice ??
+                "We have received your materials and will respond within 1 to 3 business days."
+              }
+            />
+          ) : null}
+
+          {error ? (
+            <StatusBanner
+              tone="danger"
+              title="A materials action could not be completed"
+              description={error}
+            />
+          ) : null}
+
+          {isLoading ? (
+            <StatusBanner
+              tone="loading"
+              title="Loading uploaded materials"
+              description="Restoring the saved file summary for each category."
+            />
+          ) : null}
+
+          <SectionCard
+            title="Upload by category"
+            description="Multiple files are supported in every category. Uploaded files remain available across sessions until final submission."
+          >
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {MATERIAL_CATEGORIES.map((category) => {
+                const records = materials?.[category.key.toLowerCase()] ?? [];
+
+                return (
+                  <div
+                    key={category.key}
+                    className="rounded-[1.6rem] border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,244,236,0.88))] p-5 shadow-[0_14px_32px_rgba(28,25,23,0.04)]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-base font-semibold text-stone-950">
+                          {category.label}
+                        </h2>
+                        <p className="mt-2 text-sm leading-6 text-stone-600">
+                          Multiple files supported. This category may be left
+                          empty.
+                        </p>
+                      </div>
+                      <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-stone-300 bg-stone-50 px-2 text-xs font-semibold text-stone-700">
+                        {records.length}
+                      </span>
+                    </div>
+
+                    <label className="mt-4 block">
+                      <input
+                        type="file"
+                        multiple
+                        disabled={
+                          snapshot?.applicationStatus === "SUBMITTED" ||
+                          isPending
+                        }
+                        onChange={(event) =>
+                          handleUpload(category.key, event.target.files)
+                        }
+                        className="sr-only"
+                      />
+                      <div className="rounded-[1.4rem] border border-dashed border-stone-300 bg-stone-50/80 px-4 py-6 text-center transition hover:border-stone-400 hover:bg-white">
+                        <p className="text-[0.68rem] font-semibold tracking-[0.22em] text-stone-500 uppercase">
+                          Add Files
+                        </p>
+                        <p className="mt-2 text-sm font-medium text-stone-900">
+                          Select one or more files
+                        </p>
+                      </div>
+                    </label>
+
+                    <div className="mt-4 space-y-2">
+                      {records.map((record) => (
+                        <div
+                          key={record.id}
+                          className="rounded-[1.1rem] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-700"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="truncate">{record.fileName}</span>
+                            {snapshot?.applicationStatus !== "SUBMITTED" ? (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(record.id)}
+                                className="text-xs font-medium text-rose-700 transition hover:text-rose-900"
+                              >
+                                Delete
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                      {records.length === 0 ? (
+                        <p className="rounded-[1.1rem] border border-dashed border-stone-200 bg-white/70 px-3 py-4 text-xs tracking-[0.16em] text-stone-500 uppercase">
+                          No files uploaded yet
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Final submission"
+            description="Use the final confirmation only when you are satisfied with the uploaded package. Once submitted, the application is treated as complete."
+          >
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <p className="max-w-2xl text-sm leading-7 text-stone-600">
+                You may leave categories empty, upload additional evidence in
+                stages, and revisit this page before final confirmation.
+              </p>
+              <ActionButton
+                onClick={handleSubmit}
+                disabled={
+                  snapshot?.applicationStatus === "SUBMITTED" ||
+                  isPending ||
+                  isLoading
+                }
+                className="w-full sm:w-auto"
+              >
+                {snapshot?.applicationStatus === "SUBMITTED"
+                  ? "Submitted"
+                  : "Confirm Submission"}
+              </ActionButton>
+            </div>
+          </SectionCard>
         </div>
-      </section>
-    </main>
+      </PageShell>
+    </PageFrame>
   );
 }

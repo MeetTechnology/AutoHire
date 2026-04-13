@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { confirmIntro } from "@/lib/application/service";
+import { startSecondaryAnalysis } from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError } from "@/lib/http";
+import { getResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
@@ -19,15 +20,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
   }
 
-  const application = await confirmIntro(applicationId);
+  try {
+    const secondary = await startSecondaryAnalysis(applicationId);
 
-  if (!application) {
-    return jsonError("The application could not be found.", 404);
+    return NextResponse.json(
+      {
+        applicationId,
+        runId: secondary.runId,
+        status: secondary.status,
+      },
+      { status: 202 },
+    );
+  } catch (error) {
+    return jsonError(getResumeAnalysisErrorMessage(error), 502, {
+      code: "SECONDARY_ANALYSIS_START_FAILED",
+    });
   }
-
-  return NextResponse.json({
-    applicationId,
-    applicationStatus: application.applicationStatus,
-    currentStep: application.currentStep,
-  });
 }

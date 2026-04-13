@@ -5,6 +5,7 @@
 - 当前接口契约已按代码实现更新为“upload intent + confirm”两步上传模式
 - 当前 `expert-session`、`resume`、`materials`、`submit` 已在真实 PostgreSQL 模式下验证通过
 - 当前阿里云 OSS 预签名 `PUT` 上传已完成服务端联调验证
+- 当前 live 简历分析适配层已改为对接既有 `resume-process` 上传与详情接口
 - 当前“受控下载 / 受控预览”接口尚未补齐，仍为后续切片
 
 ## 1. 专家会话与申请初始化
@@ -41,6 +42,7 @@
     "missingFields": [
       {
         "fieldKey": "highest_degree",
+        "sourceItemName": "最高学位",
         "label": "最高学历",
         "type": "select",
         "required": true,
@@ -116,6 +118,7 @@
 
 - 路由仍保留为“确认上传并触发首次分析”的语义
 - 别名路由 `/api/applications/{applicationId}/resume/confirm` 也可用
+- 若 live 上游建任务失败，返回 `502`，当前申请保持在 `CV_UPLOADED`
 
 响应：
 
@@ -160,6 +163,7 @@
   "missingFields": [
     {
       "fieldKey": "highest_degree",
+      "sourceItemName": "最高学位",
       "label": "最高学历",
       "type": "select",
       "required": true,
@@ -168,6 +172,7 @@
     },
     {
       "fieldKey": "current_employer",
+      "sourceItemName": "当前工作单位",
       "label": "当前工作单位",
       "type": "text",
       "required": true
@@ -192,6 +197,17 @@
   }
 }
 ```
+
+实现说明：
+
+- 前端请求体仍保持 `{ "fields": { ... } }`
+- 后端落库时会额外保存：
+  - `valuesByFieldKey`
+  - `valuesBySourceItemName`
+  - `fieldMeta`
+  - `missingFieldsSnapshot`
+- 这样后续新增缺失项或接入正式重分析接口时，无需改动前端请求体
+- 若 live 上游重新分析建任务失败，返回 `502`，当前申请保持在 `INFO_REQUIRED`
 
 响应：
 
@@ -335,21 +351,130 @@
 }
 ```
 
-## 13. 内部简历分析适配接口
+## 13. live 简历分析适配说明
 
-### POST `/internal/resume-analysis/jobs`
+当前专家端公开接口不直接透传上游 `resume-process` 结构，内部适配规则如下：
 
-用途：创建分析任务
+- 首次分析创建：
+  - `POST {RESUME_ANALYSIS_BASE_URL}/resume-process/upload`
+  - 请求体为 `multipart/form-data`
+  - 字段名使用 `file`
+- 状态轮询 / 结果读取：
+  - `GET {RESUME_ANALYSIS_BASE_URL}/resume-process/jobs/{jobId}`
+  - 读取 `job.status` 与 `initial_result`
+- 补填后二次分析：
+  - `POST {RESUME_ANALYSIS_REANALYZE_PATH}`
+  - 默认模板路径：
+    `/internal/resume-analysis/jobs/{jobId}/reanalyze`
+  - 请求体仍使用补填后的结构化字段值
 
-### GET `/internal/resume-analysis/jobs/{jobId}`
+适配说明：
 
-用途：查询任务状态
-
-### GET `/internal/resume-analysis/jobs/{jobId}/result`
-
-用途：获取结构化分析结果
+- `job.status` 会被映射到：
+  - `pending` / `queued` -> `QUEUED`
+  - `processing` / `retrying` -> `PROCESSING`
+  - `completed` -> `COMPLETED`
+  - `failed` -> `FAILED`
+- 若 `job.status=completed` 但 `initial_result` 尚未可用：
+  - 专家端仍返回 `PROCESSING`
+  - `stageText=正在同步分析结果`
+- live 结果会优先解析首次判断正文中的：
+  - `[[[...]]]`：内部推理块
+  - `{{{...}}}`：正式结论
+  - `!!!信息项名称!!!`：缺失项列表
+- 专家端 `missingFields` 以 `!!!...!!!` 解析结果为准
+- `extractedFields` 用于展示“已识别信息摘要”，前端会按旧项目字段规则做隐藏、标题改名和默认值清洗
+- 状态轮询遇到上游超时、网络错误、429、5xx 时，当前任务不会立刻置为失败，而是继续维持轮询态
 
 ## 14. 当前未完成接口
 
 - 受控下载 / 受控预览接口仍未补齐
-- 当前前端不直接持有底层存储地址，但仍缺少正式文件读取网关
+- 当前前端不直接持有底层存储地址
+- 真实上游服务的联通验证仍依赖正确配置：
+  - `RESUME_ANALYSIS_MODE=live`
+  - `RESUME_ANALYSIS_BASE_URL`
+  - `RESUME_ANALYSIS_API_KEY`
+  - `RESUME_ANALYSIS_REANALYZE_PATH`（若上游未使用默认路径）
+
+## 15. 触发进一步分析（secondary analysis）
+
+### POST `/api/applications/{applicationId}/secondary-analysis`
+
+用途：基于当前申请最近一次分析任务，触发既有 `resume-process` 的二次分析流程。
+
+实现说明：
+
+- 当前路由会先校验专家会话与申请归属
+- 内部会读取当前申请最新 `analysis_job.external_job_id`
+- 然后调用上游：
+  - `POST {RESUME_ANALYSIS_BASE_URL}/resume-process/jobs/{externalJobId}/trigger-secondary`
+
+响应示例：
+
+```json
+{
+  "applicationId": "app_001",
+  "runId": "123",
+  "status": "pending"
+}
+```
+
+## 16. 查询进一步分析结果
+
+### GET `/api/applications/{applicationId}/secondary-analysis/result`
+
+可选查询参数：
+
+- `runId`
+
+用途：读取上游 `resume-process` 二次分析状态与结果，并在专家端返回已过滤、可直接展示的字段列表。
+
+实现说明：
+
+- 当前内部通过上游：
+  - `GET {RESUME_ANALYSIS_BASE_URL}/resume-process/jobs/{externalJobId}?run_id={runId}`
+- 读取：
+  - `job.secondary_status`
+  - `job.secondary_error_message`
+  - `secondary_run`
+  - `secondary_results[].generated_text`
+- 专家端按 `NO.{n}###` 规则解析字段
+- 当前展示时会隐藏以下字段：`8/9/10/11/28/30/31/34`
+- 当前展示时会做占位值清洗：
+  - `1900-01-01` / `1900/01/01` -> 空
+  - `无+客户号` -> 空
+- `NO.29` 展示文案统一改为：
+  `是否曾入选过中国省级或国家级人才计划（若是请填写计划名称及年份）`
+
+响应示例：
+
+```json
+{
+  "applicationId": "app_001",
+  "runId": "123",
+  "status": "completed",
+  "errorMessage": null,
+  "run": {
+    "id": "123",
+    "status": "completed",
+    "totalPrompts": 2,
+    "completedPrompts": 2,
+    "failedPromptIds": [],
+    "errorMessage": null
+  },
+  "fields": [
+    {
+      "no": 1,
+      "column": "K",
+      "label": "*姓名",
+      "value": "Jane Doe"
+    },
+    {
+      "no": 29,
+      "column": "AM",
+      "label": "是否曾入选过中国省级或国家级人才计划（若是请填写计划名称及年份）",
+      "value": "国家级人才计划（2023）"
+    }
+  ]
+}
+```

@@ -9,8 +9,16 @@
 - 当前已完成真实 PostgreSQL 建库、migration、seed 与关键状态落库验证
 - 当前已完成申请唯一性、分析关联与材料软删除审计字段的 schema hardening
 - 当前已完成阿里云 OSS 预签名 `PUT` 上传的服务端联调验证，对象 key 规则已稳定
+- 当前已完成首次判断正文解析、缺失项注册表映射、补填值富结构落库与专家端已识别信息摘要展示
+- 当前已完成 live 简历分析适配器代码接入：
+  - 读取已上传简历文件
+  - 调用 `resume-process/upload`
+  - 轮询 `resume-process/jobs/{jobId}`
+  - 消费 `initial_result`
+  - 支持可配置的补填后重分析路径
+- 当前 `mock-storage` 已补齐本地字节落盘能力，可用于非 OSS 环境下驱动 live 上传链路
 - 当前浏览器端 OSS 直传在本地 E2E 中已基本可用，但回归稳定性仍需继续收口
-- 当前仍待完成的外部联调部分包括：受控下载 / 预览链路、既有简历分析服务 `live` 模式、真实邀约数据校验
+- 当前仍待完成的外部联调部分包括：受控下载 / 预览链路、真实简历分析服务地址与鉴权配置校验、真实邀约数据校验
 
 ## 当前切片完成情况
 
@@ -117,13 +125,26 @@
 
 ### Milestone D: 真实简历分析服务联调
 
-状态：未开始
+状态：代码已接入，等待真实环境验收
 
 目标：
 
 - 切换 `RESUME_ANALYSIS_MODE=live`
 - 冻结 `status/result/missing_fields` 返回结构
 - 验证失败、超时、重试场景
+
+当前进展：
+
+- 已按 `resume-process` 文档改造首次分析为 multipart 上传
+- 已改造状态查询为读取任务详情 `job + initial_result`
+- 已实现“上游暂时失败继续轮询、结构非法终态失败”的应用层语义
+- 已为补填后二次分析增加 `RESUME_ANALYSIS_REANALYZE_PATH` 配置入口
+
+当前阻塞：
+
+- 本地 `.env` 仍为 `RESUME_ANALYSIS_MODE=mock`
+- `RESUME_ANALYSIS_BASE_URL` 仍是占位值
+- `RESUME_ANALYSIS_REANALYZE_PATH` 尚未在本地环境中明确配置
 
 ## 1. 实施策略
 

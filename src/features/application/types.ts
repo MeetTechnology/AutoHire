@@ -1,4 +1,5 @@
 import type { MissingField } from "@/features/analysis/types";
+import type { SecondaryVisibleField } from "@/features/analysis/secondary";
 
 export type ApplicationStatus =
   | "INIT"
@@ -18,6 +19,15 @@ export type AnalysisJobStatus =
   | "PROCESSING"
   | "COMPLETED"
   | "FAILED";
+
+export type SecondaryAnalysisStatus =
+  | "idle"
+  | "pending"
+  | "processing"
+  | "retrying"
+  | "completed"
+  | "completed_partial"
+  | "failed";
 
 export type EligibilityResult =
   | "UNKNOWN"
@@ -42,6 +52,23 @@ export type UploadedFileSummary = {
   fileSize: number;
   uploadedAt: string;
   category?: MaterialCategory;
+};
+
+export type SecondaryAnalysisRunSummary = {
+  id: string | null;
+  status: SecondaryAnalysisStatus | null;
+  totalPrompts: number | null;
+  completedPrompts: number | null;
+  failedPromptIds: string[];
+  errorMessage: string | null;
+};
+
+export type SecondaryAnalysisSnapshot = {
+  runId: string | null;
+  status: SecondaryAnalysisStatus;
+  errorMessage: string | null;
+  fields: SecondaryVisibleField[];
+  run: SecondaryAnalysisRunSummary | null;
 };
 
 export type ApplicationSnapshot = {

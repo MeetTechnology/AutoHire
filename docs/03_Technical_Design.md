@@ -79,6 +79,15 @@
 - 获取分析结果
 - 提交补充字段后二次分析
 
+当前 live 实现约束：
+
+- 首次分析通过 `POST /resume-process/upload` 以 `multipart/form-data` 上传已落库简历文件
+- 轮询通过 `GET /resume-process/jobs/{jobId}` 读取 `job` 与 `initial_result`
+- 首次结果只消费 `initial_result`，不消费 `secondary_results`
+- 补填后二次分析通过可配置内部接口触发，默认路径为
+  `RESUME_ANALYSIS_REANALYZE_PATH=/internal/resume-analysis/jobs/{jobId}/reanalyze`
+- 适配层会先从本项目存储读取简历文件内容，因此 `mock` 与 `oss` 两种文件模式都可驱动 live 分析调用
+
 ### 5.3 标准返回结构
 
 分析结果至少包含：
@@ -89,11 +98,18 @@
 - `extracted_fields`
 - `missing_fields`
 
+在 `live` 适配模式下：
+
+- 首次判断正文中的 `[[[...]]]` 仅用于内部推理与审计
+- `{{{...}}}` 用于解析“符合 / 不符合”正式结论
+- `!!!信息项名称!!!` 用于解析结构化缺失项
+
 ## 6. 缺失字段动态渲染
 
 `missing_fields` 每项建议包含：
 
 - `field_key`
+- `source_item_name`
 - `label`
 - `type`
 - `required`
@@ -109,6 +125,12 @@
 - `date`
 - `select`
 - `radio`
+
+实现约束：
+
+- 已知缺失项通过注册表映射到固定字段
+- 未知缺失项自动退化为通用文本输入
+- 前端提交时仍使用 `{ fields }`，后端额外保存 `field_key -> source_item_name` 映射，便于后续重分析接口复用
 
 ## 7. 文件上传设计
 
@@ -133,6 +155,21 @@
 - `processing`
 - `completed`
 - `failed`
+
+当前 live 错误策略：
+
+- 上传建任务 / 重新分析建任务：
+  - 超时、网络异常、429、5xx 直接返回可重试错误
+  - 首次分析创建失败时申请保持在 `CV_UPLOADED`
+  - 二次分析创建失败时申请保持在 `INFO_REQUIRED`
+- 状态轮询：
+  - 上游暂时不可用、超时、429、5xx 不直接把本地任务置为失败
+  - 本地继续维持 `QUEUED` 或 `PROCESSING`
+- 上游状态已 `completed` 但结果暂未同步：
+  - 本地回退为 `PROCESSING`
+  - `stage_text` 固定为“正在同步分析结果”
+- 上游明确失败、状态结构非法、结果结构非法：
+  - 本地置为 `FAILED`
 
 ## 9. 安全设计
 

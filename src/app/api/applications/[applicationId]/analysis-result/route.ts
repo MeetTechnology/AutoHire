@@ -13,14 +13,17 @@ export async function GET(request: NextRequest, { params }: Params) {
   const access = await requireApplicationSession(request, applicationId);
 
   if (!access) {
-    return jsonError("当前会话无权访问该申请。", 403);
+    return jsonError(
+      "The current session is not authorized to access this application.",
+      403,
+    );
   }
 
   await refreshAnalysisState(applicationId);
   const snapshot = await getSnapshot(applicationId);
 
   if (!snapshot) {
-    return jsonError("申请不存在。", 404);
+    return jsonError("The application could not be found.", 404);
   }
 
   return NextResponse.json({

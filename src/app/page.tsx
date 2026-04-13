@@ -1,56 +1,129 @@
 import Link from "next/link";
 
+import {
+  DetailCard,
+  PageFrame,
+  PageShell,
+  SectionCard,
+  getButtonClassName,
+} from "@/components/ui/page-shell";
+
+const highlights = [
+  {
+    eyebrow: "Assisted Review",
+    title: "Resume review with structured follow-up",
+    description:
+      "Applicants upload a resume once, receive a clear review state, and only complete the information that is genuinely missing.",
+  },
+  {
+    eyebrow: "Safe Continuity",
+    title: "Resume progress across visits",
+    description:
+      "The invitation link restores the application state, so experts can continue the process without restarting from the beginning.",
+  },
+  {
+    eyebrow: "Controlled Delivery",
+    title: "Materials grouped by evidence category",
+    description:
+      "Supporting documents are uploaded in a controlled sequence and confirmed with an explicit final submission step.",
+  },
+];
+
+const pillars = [
+  "Clear editorial layout with strong reading hierarchy",
+  "Server-driven status recovery across the full application flow",
+  "Asynchronous resume analysis with visible progress feedback",
+  "Structured supplemental fields instead of free-form guesswork",
+];
+
 export default function HomePage() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-6 py-16">
-      <div className="grid gap-10 lg:grid-cols-[1.3fr_0.9fr] lg:items-end">
-        <section className="space-y-6">
-          <p className="text-sm font-semibold tracking-[0.24em] text-teal-700 uppercase">
-            AutoHire Skeleton
-          </p>
-          <div className="space-y-4">
-            <h1 className="max-w-3xl font-[family-name:var(--font-serif)] text-5xl leading-tight text-slate-900 md:text-7xl">
-              专家邀约申请流程的 Next.js 项目骨架已经就位。
-            </h1>
-            <p className="max-w-2xl text-lg leading-8 text-slate-700">
-              当前版本已完成 App Router、Prisma、OSS
-              上传预留、简历分析适配层、API
-              骨架和专家端流程路由结构，适合作为后续功能切片开发的起点。
+    <PageFrame className="justify-center">
+      <PageShell
+        eyebrow="AutoHire / Global Expert Application"
+        title="A calmer, clearer application journey for invited global experts."
+        description="This experience is designed for invited applicants who need a trustworthy, elegant path from invitation entry to resume review, supplemental details, materials upload, and final confirmation."
+        headerSlot={
+          <div className="rounded-[1.75rem] border border-stone-200 bg-white/88 p-5 shadow-[0_16px_40px_rgba(28,25,23,0.05)]">
+            <p className="text-[0.7rem] font-semibold tracking-[0.24em] text-stone-500 uppercase">
+              Application Flow
             </p>
+            <div className="mt-4 space-y-3">
+              <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                <p className="text-sm font-medium text-stone-900">
+                  Invitation and secure session recovery
+                </p>
+              </div>
+              <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                <p className="text-sm font-medium text-stone-900">
+                  Resume upload and eligibility review
+                </p>
+              </div>
+              <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                <p className="text-sm font-medium text-stone-900">
+                  Materials collection and final submission
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/apply"
-              className="rounded-full bg-teal-700 px-5 py-3 font-medium text-white transition hover:bg-teal-800"
-            >
-              查看申请入口
-            </Link>
-            <Link
-              href="/api/health"
-              className="rounded-full border border-stone-300 bg-white/70 px-5 py-3 font-medium text-slate-900 transition hover:bg-white"
-            >
-              API 健康检查
-            </Link>
-          </div>
-        </section>
-        <aside className="rounded-[2rem] border border-stone-200 bg-white/80 p-6 shadow-[0_30px_80px_rgba(15,23,42,0.08)] backdrop-blur">
-          <h2 className="text-xl font-semibold text-slate-900">已配置内容</h2>
-          <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
-            <li>Next.js App Router + TypeScript + Tailwind CSS</li>
-            <li>Bun package manager and lockfile</li>
-            <li>
-              Prisma schema for invitation, application, jobs, and materials
-            </li>
-            <li>
-              API route placeholders for session, analysis, upload, and submit
-            </li>
-            <li>
-              Environment template for PostgreSQL, OSS, and resume analysis
-              service
-            </li>
-          </ul>
-        </aside>
-      </div>
-    </main>
+        }
+      >
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <SectionCard className="bg-transparent p-0 shadow-none md:p-0">
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <p className="max-w-2xl text-base leading-8 text-stone-700">
+                  Built on Next.js App Router with resume analysis integration,
+                  controlled file upload, and server-side application recovery,
+                  the experience favors confidence over complexity and keeps
+                  each step visibly grounded.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Link href="/apply" className={getButtonClassName("primary")}>
+                    Open Application Entry
+                  </Link>
+                  <Link
+                    href="/api/health"
+                    className={getButtonClassName("secondary")}
+                  >
+                    Check API Health
+                  </Link>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                {highlights.map((item) => (
+                  <DetailCard
+                    key={item.title}
+                    eyebrow={item.eyebrow}
+                    title={item.title}
+                    description={item.description}
+                  />
+                ))}
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Experience Principles"
+            description="The interface intentionally balances a premium editorial tone with operational clarity, so applicants always know what the system needs next."
+          >
+            <ul className="space-y-4">
+              {pillars.map((pillar, index) => (
+                <li
+                  key={pillar}
+                  className="flex items-start gap-4 border-b border-stone-200/80 pb-4 last:border-b-0 last:pb-0"
+                >
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-stone-300 bg-stone-50 text-xs font-semibold text-stone-700">
+                    {index + 1}
+                  </span>
+                  <p className="text-sm leading-7 text-stone-700">{pillar}</p>
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        </div>
+      </PageShell>
+    </PageFrame>
   );
 }

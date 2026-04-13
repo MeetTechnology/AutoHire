@@ -1,10 +1,10 @@
 export const MATERIAL_CATEGORIES = [
-  { key: "IDENTITY", label: "身份证明" },
-  { key: "EMPLOYMENT", label: "工作证明" },
-  { key: "EDUCATION", label: "学历证明" },
-  { key: "HONOR", label: "荣誉证明" },
-  { key: "PATENT", label: "专利证明" },
-  { key: "PROJECT", label: "项目证明" },
+  { key: "IDENTITY", label: "Identity Documents" },
+  { key: "EMPLOYMENT", label: "Employment Documents" },
+  { key: "EDUCATION", label: "Education Documents" },
+  { key: "HONOR", label: "Honors and Awards" },
+  { key: "PATENT", label: "Patent Documents" },
+  { key: "PROJECT", label: "Project Documents" },
 ] as const;
 
 export const APPLICATION_STATUSES = [
@@ -19,4 +19,23 @@ export const APPLICATION_STATUSES = [
   "MATERIALS_IN_PROGRESS",
   "SUBMITTED",
   "CLOSED",
+] as const;
+
+export const APPLICATION_FLOW_STEPS = [
+  {
+    label: "Resume",
+    hint: "Upload your CV for the initial review",
+  },
+  {
+    label: "Review",
+    hint: "Read the assessment and complete missing fields if needed",
+  },
+  {
+    label: "Materials",
+    hint: "Upload supporting documents by category",
+  },
+  {
+    label: "Submit",
+    hint: "Confirm the final package",
+  },
 ] as const;

@@ -20,15 +20,21 @@ export async function GET(request: NextRequest) {
     const invitation = await resolveInviteToken(token);
 
     if (!invitation) {
-      return jsonError("无效的邀约链接。", 401, { code: "INVALID_TOKEN" });
+      return jsonError("The invitation link is invalid.", 401, {
+        code: "INVALID_TOKEN",
+      });
     }
 
     if (invitation.tokenStatus === "DISABLED") {
-      return jsonError("当前邀约链接已禁用。", 403, { code: "DISABLED_TOKEN" });
+      return jsonError("This invitation link has been disabled.", 403, {
+        code: "DISABLED_TOKEN",
+      });
     }
 
     if (invitation.expiredAt && invitation.expiredAt.getTime() < Date.now()) {
-      return jsonError("当前邀约链接已过期。", 410, { code: "EXPIRED_TOKEN" });
+      return jsonError("This invitation link has expired.", 410, {
+        code: "EXPIRED_TOKEN",
+      });
     }
 
     const application = await createOrRestoreApplication({
@@ -39,7 +45,7 @@ export async function GET(request: NextRequest) {
     const sessionToken = await createSessionForApplication(application.id);
 
     if (!snapshot || !sessionToken) {
-      return jsonError("无法初始化申请会话。", 500);
+      return jsonError("Unable to initialize the application session.", 500);
     }
 
     const response = NextResponse.json(snapshot);
@@ -60,7 +66,7 @@ export async function GET(request: NextRequest) {
   const session = verifySessionToken(cookieValue);
 
   if (!session) {
-    return jsonError("未找到有效会话，请重新通过邀约链接进入。", 401, {
+    return jsonError("No valid session was found. Please reopen the invitation link.", 401, {
       code: "SESSION_REQUIRED",
     });
   }
@@ -68,7 +74,7 @@ export async function GET(request: NextRequest) {
   const snapshot = await getSnapshot(session.applicationId);
 
   if (!snapshot) {
-    return jsonError("当前申请记录不存在。", 404, {
+    return jsonError("The application record could not be found.", 404, {
       code: "APPLICATION_NOT_FOUND",
     });
   }

@@ -1,6 +1,7 @@
 import type {
   ApplicationSnapshot,
   MaterialCategory,
+  SecondaryAnalysisSnapshot,
 } from "@/features/application/types";
 
 type UploadIntent = {
@@ -20,7 +21,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
     const error = (await response.json().catch(() => ({}))) as {
       error?: string;
     };
-    throw new Error(error.error ?? "请求失败");
+    throw new Error(error.error ?? "Request failed.");
   }
 
   return response.json() as Promise<T>;
@@ -111,7 +112,7 @@ export async function uploadBinary(intent: UploadIntent, file: File) {
   });
 
   if (!response.ok && response.status !== 204) {
-    throw new Error("文件上传失败");
+    throw new Error("File upload failed.");
   }
 }
 
@@ -128,6 +129,7 @@ export async function fetchAnalysisStatus(applicationId: string) {
     jobStatus: string;
     stageText: string;
     progressMessage: string;
+    errorMessage?: string | null;
   }>(response);
 }
 
@@ -147,6 +149,7 @@ export async function fetchAnalysisResult(applicationId: string) {
     extractedFields: Record<string, unknown>;
     missingFields: Array<{
       fieldKey: string;
+      sourceItemName: string;
       label: string;
       type: "text" | "textarea" | "number" | "date" | "select" | "radio";
       required: boolean;
@@ -176,6 +179,40 @@ export async function submitSupplementalFields(
   );
 
   return parseResponse<{ analysisJobId: string; applicationStatus: string }>(
+    response,
+  );
+}
+
+export async function triggerSecondaryAnalysis(applicationId: string) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/secondary-analysis`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+
+  return parseResponse<{
+    applicationId: string;
+    runId: string | null;
+    status: SecondaryAnalysisSnapshot["status"];
+  }>(response);
+}
+
+export async function fetchSecondaryAnalysisResult(
+  applicationId: string,
+  runId?: string | null,
+) {
+  const query = runId ? `?runId=${encodeURIComponent(runId)}` : "";
+  const response = await fetch(
+    `/api/applications/${applicationId}/secondary-analysis/result${query}`,
+    {
+      credentials: "include",
+      cache: "no-store",
+    },
+  );
+
+  return parseResponse<SecondaryAnalysisSnapshot & { applicationId: string }>(
     response,
   );
 }

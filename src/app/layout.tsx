@@ -14,8 +14,9 @@ const serif = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  title: "AutoHire",
-  description: "Expert application flow for GESF invitees.",
+  title: "AutoHire | Global Expert Application",
+  description:
+    "Editorial-style expert application flow for GESF invitees, including resume review, supplemental information, and supporting materials.",
 };
 
 export default function RootLayout({
@@ -24,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" data-scroll-behavior="smooth">
+    <html lang="en" data-scroll-behavior="smooth">
       <body className={`${sans.variable} ${serif.variable}`}>{children}</body>
     </html>
   );

@@ -18,7 +18,10 @@ export async function GET(request: NextRequest, { params }: Params) {
   const access = await requireApplicationSession(request, applicationId);
 
   if (!access) {
-    return jsonError("当前会话无权访问该申请。", 403);
+    return jsonError(
+      "The current session is not authorized to access this application.",
+      403,
+    );
   }
 
   return NextResponse.json(await getMaterialsByCategory(applicationId));
@@ -29,14 +32,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   const access = await requireApplicationSession(request, applicationId);
 
   if (!access) {
-    return jsonError("当前会话无权访问该申请。", 403);
+    return jsonError(
+      "The current session is not authorized to access this application.",
+      403,
+    );
   }
 
   const body = await parseJsonBody(request);
   const parsed = materialConfirmSchema.safeParse(body);
 
   if (!parsed.success) {
-    return jsonError("材料上传确认参数不合法。", 400, {
+    return jsonError("The material upload confirmation payload is invalid.", 400, {
       details: parsed.error.flatten(),
     });
   }
@@ -44,7 +50,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   const validation = validateUpload(parsed.data.fileName, parsed.data.fileSize);
 
   if (!validation.valid) {
-    return jsonError("文件不符合上传要求。", 400, { code: validation.reason });
+    return jsonError("The file does not meet the upload requirements.", 400, {
+      code: validation.reason,
+    });
   }
 
   await addMaterialRecord({

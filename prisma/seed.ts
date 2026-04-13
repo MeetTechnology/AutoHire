@@ -81,10 +81,21 @@ async function main() {
           eligibilityResult: "INSUFFICIENT_INFO",
           reasonText: "缺少最高学历与当前工作单位信息。",
           displaySummary: "当前无法完成资格判断，缺少关键信息。",
-          extractedFields: { name: "Progress Expert" },
+          extractedFields: {
+            "*姓名": "Progress Expert",
+            "性别": "女",
+            "*出生日期（无则1900-01-01）": "1900-01-01",
+            "最高学位": "",
+            "就职单位中文": "",
+            "（省/国）入选信息": "国家级人才计划（2021）",
+            "备注": "内部字段不面向专家展示",
+            __rawReasoning:
+              "系统已识别部分背景信息，但仍缺少关键资格判断字段。",
+          },
           missingFields: [
             {
               fieldKey: "highest_degree",
+              sourceItemName: "最高学位",
               label: "最高学历",
               type: "select",
               required: true,
@@ -92,6 +103,7 @@ async function main() {
             },
             {
               fieldKey: "current_employer",
+              sourceItemName: "当前工作单位",
               label: "当前工作单位",
               type: "text",
               required: true,
@@ -146,7 +158,11 @@ async function main() {
           eligibilityResult: "ELIGIBLE",
           reasonText: "符合基本申报条件。",
           displaySummary: "您已通过初步资格判断，请继续上传证明材料。",
-          extractedFields: { name: "Submitted Expert" },
+          extractedFields: {
+            "*姓名": "Submitted Expert",
+            "最高学位": "博士",
+            "就职单位中文": "Example University",
+          },
           missingFields: [],
           createdAt: now,
         },

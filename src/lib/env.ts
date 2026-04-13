@@ -21,6 +21,7 @@ const envSchema = z.object({
   RESUME_ANALYSIS_MODE: z.enum(["mock", "live"]).default("mock"),
   RESUME_ANALYSIS_BASE_URL: z.string().optional(),
   RESUME_ANALYSIS_API_KEY: z.string().optional(),
+  RESUME_ANALYSIS_REANALYZE_PATH: z.string().optional(),
   SENTRY_DSN: z.string().optional().default(""),
 });
 

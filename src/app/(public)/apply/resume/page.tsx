@@ -4,11 +4,21 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  ActionButton,
+  DetailCard,
+  PageFrame,
+  PageShell,
+  SectionCard,
+  StatusBanner,
+  getInputClassName,
+} from "@/components/ui/page-shell";
+import {
   confirmResumeUpload,
   createResumeUploadIntent,
   fetchSession,
   uploadBinary,
 } from "@/features/application/client";
+import { APPLICATION_FLOW_STEPS } from "@/features/application/constants";
 import { resolveRouteFromStatus } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
 
@@ -48,7 +58,7 @@ export default function ResumePage() {
           setError(
             nextError instanceof Error
               ? nextError.message
-              : "无法读取当前申请。",
+              : "Unable to load the current application.",
           );
         }
       } finally {
@@ -86,59 +96,149 @@ export default function ResumePage() {
         router.push("/apply/result");
       } catch (nextError) {
         setError(
-          nextError instanceof Error ? nextError.message : "简历上传失败。",
+          nextError instanceof Error
+            ? nextError.message
+            : "Resume upload failed.",
         );
       }
     });
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-12">
-      <section className="rounded-[2rem] border border-stone-200 bg-white/85 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-        <div className="space-y-4">
-          <h1 className="text-3xl font-semibold text-slate-900">简历上传</h1>
-          <p className="text-slate-700">
-            上传简历后，系统会调用既有简历分析服务做资格初判，并在分析期间持续反馈处理状态。
-          </p>
-          <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-6 text-sm text-slate-600">
-            支持文件格式：PDF、Word、压缩包
-            <br />
-            单文件最大 20MB，压缩包最大 100MB
-          </div>
-          {snapshot?.latestResumeFile ? (
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm text-slate-700">
-              上次已上传：{snapshot.latestResumeFile.fileName}
-            </div>
-          ) : null}
-          <input
-            type="file"
-            onChange={(event) => {
-              const nextFile = event.target.files?.[0] ?? null;
-              setSelectedFile(nextFile);
-            }}
-            className="block w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-slate-700"
-          />
-          {selectedFile ? (
-            <p className="text-sm text-slate-600">
-              已选择：{selectedFile.name}（{Math.ceil(selectedFile.size / 1024)}{" "}
-              KB）
-            </p>
-          ) : null}
-          {error ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-              {error}
-            </div>
-          ) : null}
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={!selectedFile || isPending || isLoading}
-            className="rounded-full bg-teal-700 px-5 py-3 font-medium text-white disabled:opacity-60"
+    <PageFrame>
+      <PageShell
+        eyebrow="Resume Stage"
+        title="Upload the resume that best represents your current profile."
+        description="The system uses your resume for the initial eligibility review. After upload, the application moves directly into analysis and keeps you informed while processing is underway."
+        steps={APPLICATION_FLOW_STEPS}
+        currentStep={1}
+        headerSlot={
+          <SectionCard
+            title="File guidance"
+            description="Use a clean, readable version of your resume. If you already uploaded a file earlier, you may replace it with a newer version."
+            className="bg-white/90"
           >
-            {isPending ? "上传中..." : "上传并开始分析"}
-          </button>
+            <div className="space-y-3">
+              <DetailCard
+                eyebrow="Formats"
+                title="PDF, Word, or ZIP"
+                description="A standard PDF is preferred, though Word documents and ZIP archives are also accepted."
+              />
+              <DetailCard
+                eyebrow="Limits"
+                title="20 MB per file, 100 MB for ZIP"
+                description="Larger submissions should be prepared as a ZIP archive to stay within the supported upload limits."
+              />
+            </div>
+          </SectionCard>
+        }
+      >
+        <div className="space-y-6">
+          {isLoading ? (
+            <StatusBanner
+              tone="loading"
+              title="Restoring your application"
+              description="Checking your current progress before the upload step becomes available."
+            />
+          ) : null}
+
+          {error ? (
+            <StatusBanner
+              tone="danger"
+              title="The resume could not be uploaded"
+              description={error}
+            />
+          ) : null}
+
+          <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+            <SectionCard
+              title="Submission notes"
+              description="The first analysis is based on the uploaded resume. If additional fields are needed later, the system will ask only for those missing items."
+            >
+              <div className="space-y-4">
+                <DetailCard
+                  eyebrow="Progress"
+                  title="The next page shows a live review state"
+                  description="You will be redirected to the analysis result page as soon as the upload confirmation completes."
+                />
+                {snapshot?.latestResumeFile ? (
+                  <DetailCard
+                    eyebrow="Existing file"
+                    title={snapshot.latestResumeFile.fileName}
+                    description={`Previously uploaded on ${new Date(
+                      snapshot.latestResumeFile.uploadedAt,
+                    ).toLocaleString("en-US", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}.`}
+                  />
+                ) : null}
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Upload resume"
+              description="Select one file and confirm the upload to start the initial review."
+            >
+              <div className="space-y-5">
+                <label className="block">
+                  <input
+                    type="file"
+                    onChange={(event) => {
+                      const nextFile = event.target.files?.[0] ?? null;
+                      setSelectedFile(nextFile);
+                    }}
+                    className="sr-only"
+                  />
+                  <div className="rounded-[1.6rem] border border-dashed border-stone-300 bg-[linear-gradient(180deg,rgba(251,247,240,0.88),rgba(255,255,255,0.96))] px-6 py-10 text-center transition hover:border-stone-400 hover:bg-white">
+                    <p className="text-sm font-semibold tracking-[0.22em] text-stone-500 uppercase">
+                      Drag or Select
+                    </p>
+                    <p className="mt-3 font-[family-name:var(--font-serif)] text-3xl text-stone-950">
+                      Choose your resume file
+                    </p>
+                    <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-stone-600">
+                      Click anywhere in this panel to choose a file from your
+                      device. The upload starts only after you confirm below.
+                    </p>
+                  </div>
+                </label>
+
+                <input
+                  value={selectedFile?.name ?? ""}
+                  readOnly
+                  placeholder="No file selected yet"
+                  className={getInputClassName("pointer-events-none")}
+                />
+
+                {selectedFile ? (
+                  <div className="rounded-[1.4rem] border border-stone-200 bg-stone-50/80 p-4">
+                    <p className="text-sm font-medium text-stone-950">
+                      Selected file
+                    </p>
+                    <p className="mt-2 text-sm text-stone-700">
+                      {selectedFile.name}
+                    </p>
+                    <p className="mt-1 text-xs tracking-[0.18em] text-stone-500 uppercase">
+                      {Math.ceil(selectedFile.size / 1024)} KB
+                    </p>
+                  </div>
+                ) : null}
+
+                <ActionButton
+                  onClick={handleUpload}
+                  disabled={!selectedFile || isPending || isLoading}
+                  className="w-full sm:w-auto"
+                >
+                  {isPending
+                    ? "Uploading Resume..."
+                    : "Upload and Start Analysis"}
+                </ActionButton>
+              </div>
+            </SectionCard>
+          </div>
         </div>
-      </section>
-    </main>
+      </PageShell>
+    </PageFrame>
   );
 }

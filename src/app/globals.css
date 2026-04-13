@@ -1,18 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f4ea;
-  --foreground: #101828;
+  --background: #f6f0e4;
+  --background-elevated: #fffdf7;
+  --foreground: #1d1a16;
+  --foreground-soft: #5f5649;
   --card: #fffdf8;
-  --card-foreground: #101828;
-  --muted: #ebe3d1;
-  --muted-foreground: #465467;
+  --card-foreground: #1d1a16;
+  --muted: #efe6d7;
+  --muted-foreground: #71675b;
   --primary: #0f766e;
+  --primary-strong: #14532d;
   --primary-foreground: #f5fffd;
-  --secondary: #dcc79f;
-  --secondary-foreground: #2f2415;
-  --border: #d8cdb9;
+  --secondary: #d7bf98;
+  --secondary-foreground: #33281a;
+  --border: #d8cbb7;
+  --border-strong: #bda98b;
   --ring: #0f766e;
+  --shadow-soft: 0 24px 80px rgba(36, 29, 20, 0.08);
 }
 
 * {
@@ -26,11 +31,11 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top, rgba(220, 199, 159, 0.3), transparent 35%),
-    linear-gradient(180deg, #f7f4ea 0%, #f0e8d8 100%);
+  background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -43,4 +48,13 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+::selection {
+  background: rgba(15, 118, 110, 0.18);
+  color: var(--foreground);
+}
+
+:focus-visible {
+  outline-color: rgba(15, 118, 110, 0.35);
 }

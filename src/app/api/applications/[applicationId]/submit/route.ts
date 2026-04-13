@@ -13,18 +13,19 @@ export async function POST(request: NextRequest, { params }: Params) {
   const access = await requireApplicationSession(request, applicationId);
 
   if (!access) {
-    return jsonError("当前会话无权访问该申请。", 403);
+    return jsonError("The current session is not authorized to access this application.", 403);
   }
 
   const application = await submitApplication(applicationId);
 
   if (!application) {
-    return jsonError("申请不存在。", 404);
+    return jsonError("The application could not be found.", 404);
   }
 
   return NextResponse.json({
     applicationId,
     applicationStatus: application.applicationStatus,
-    message: "已收到材料信息，将在 1-3 个工作日内答复。",
+    message:
+      "We have received your materials and will respond within 1 to 3 business days.",
   });
 }
