@@ -6,10 +6,8 @@ import { useRouter } from "next/navigation";
 
 import {
   ActionButton,
-  DetailCard,
   PageFrame,
   PageShell,
-  SectionCard,
   StatusBanner,
 } from "@/components/ui/page-shell";
 import { fetchSession, postIntroConfirm } from "@/features/application/client";
@@ -21,6 +19,7 @@ import {
   shouldRedirectFromApply,
 } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
+import { cn } from "@/lib/utils";
 
 type ApplyEntryClientProps = {
   token: string | null;
@@ -49,6 +48,7 @@ const PROCESS = [
   "Additional Information",
   "Submission Complete",
 ] as const;
+const APPLICATION_PERIOD = "Application Period: Q2 2026";
 const FLOW_STEP_LINKS = [
   "/apply",
   "/apply/resume",
@@ -56,6 +56,37 @@ const FLOW_STEP_LINKS = [
   "/apply/result?view=additional",
   "/apply/materials",
 ] as const;
+const INTRO_SECTION_ITEMS = [
+  {
+    id: "overview",
+    title: "What is GESF",
+    summary:
+      "Understand the program mission and the target candidate profile.",
+  },
+  {
+    id: "benefits",
+    title: "Benefits",
+    summary: "Review compensation, rewards, and practical support.",
+  },
+  {
+    id: "eligibility",
+    title: "Eligibility",
+    summary: "Check the minimum degree, experience, and role criteria.",
+  },
+  {
+    id: "process",
+    title: "Process",
+    summary: "See the five-step application journey before you begin.",
+  },
+  {
+    id: "about",
+    title: "About the Service Provider",
+    summary:
+      "Learn the role of Meet Technology (Wuhan) Co., Ltd. in this process.",
+  },
+] as const;
+
+type IntroSectionId = (typeof INTRO_SECTION_ITEMS)[number]["id"];
 
 const ABOUT_US =
   "Meet Technology (Wuhan) Co., Ltd. is a professional talent intermediary company specializing in assisting overseas high-level talents in applying for talent programs in China. We have served more than 100 cities and regions nationwide, organized over 200 meetings, forums, competitions, training sessions, and project investigation activities, connected more than 5,000 overseas high-level talents with local governments and enterprises, and successfully introduced more than 200 overseas high-level talents. More than 20 of those candidates were selected into national and provincial talent programs. We are one of multiple professional service providers participating in the GESF ecosystem.";
@@ -66,6 +97,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const [activeSection, setActiveSection] = useState<IntroSectionId>("overview");
 
   useEffect(() => {
     let active = true;
@@ -148,12 +180,92 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
     ? isFlowStepReadOnly(snapshot.applicationStatus, 0)
     : false;
 
+  function renderSectionContent(sectionId: IntroSectionId) {
+    switch (sectionId) {
+      case "overview":
+        return (
+          <div className="space-y-3 text-sm leading-7 text-[color:var(--foreground-soft)]">
+            <p>
+              GESF, the Global Excellent Scientists Fund, is a national-level
+              talent program designed to attract world-class researchers and
+              experts.
+            </p>
+            <p>
+              The program is hosted by relevant government departments and
+              targets high-level researchers and experts currently working
+              overseas, including Hong Kong, Macau, and Taiwan.
+            </p>
+          </div>
+        );
+      case "benefits":
+        return (
+          <ul className="space-y-2 text-sm leading-7 text-[color:var(--foreground-soft)]">
+            {BENEFITS.map((item) => (
+              <li
+                key={item}
+                className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-3"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        );
+      case "eligibility":
+        return (
+          <ul className="space-y-2 text-sm leading-7 text-[color:var(--foreground-soft)]">
+            {ELIGIBILITY.map((item) => (
+              <li
+                key={item}
+                className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-3"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        );
+      case "process":
+        return (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-5">
+              {PROCESS.map((item, index) => (
+                <div
+                  key={item}
+                  className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-3"
+                >
+                  <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
+                    Step {index + 1}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-[color:var(--primary)]">
+                    {item}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <p className="text-sm leading-7 text-[color:var(--foreground-soft)]">
+              The journey is intentionally linear: introduction first, then CV
+              upload, AI review, any required follow-up fields, and finally the
+              submission package.
+            </p>
+          </div>
+        );
+      case "about":
+        return (
+          <p className="text-sm leading-7 text-[color:var(--foreground-soft)]">
+            {ABOUT_US}
+          </p>
+        );
+      default:
+        return null;
+    }
+  }
+
   return (
     <PageFrame>
       <PageShell
-        eyebrow="GESF Application"
-        title="Global Excellent Scientists Fund high-end scientific talent program."
-        description="GESF is a national-level talent program designed to attract world-class researchers and experts. This application flow provides a compact, review-oriented route from project briefing to CV screening, additional information, and final submission."
+        eyebrow="GESF"
+        title="Global Excellent Scientists Fund"
+        description="A concise introduction before you move into CV submission and review."
+        headerVariant="centered"
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
         currentStep={0}
         stepIndexing="zero"
@@ -162,156 +274,21 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
           snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 0
         }
         headerSlot={
-          <SectionCard
-            title="Process snapshot"
-            description="The journey is intentionally linear and concise."
-          >
-            <div className="space-y-3">
-              <DetailCard
-                eyebrow="Current"
-                title="Five-step guided flow"
-                description="Introduction, CV upload, AI review, additional information, and final completion tracking."
-              />
-              <DetailCard
-                eyebrow="Recovery"
-                title="Progress resumes automatically"
-                description="If you pause, the invitation can reopen the latest saved stage on your next visit."
-              />
-            </div>
-          </SectionCard>
+          <div className="flex justify-center">
+            <span className="inline-flex min-h-11 items-center rounded-full bg-[color:var(--primary)] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(10,25,47,0.16)]">
+              {APPLICATION_PERIOD}
+            </span>
+          </div>
         }
       >
-        <div className="space-y-4">
-          <SectionCard
-            title="Program overview"
-            description="Direct briefing for invited candidates before formal submission begins."
-          >
-            <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-              <DetailCard
-                eyebrow="What is GESF"
-                title="National-level talent attraction program"
-                description="GESF focuses on world-class researchers and experts currently working overseas, including Hong Kong, Macau, and Taiwan."
-              />
-              <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/70 p-3.5">
-                <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                  Compact process timeline
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-5">
-                  {PROCESS.map((item, index) => (
-                    <div
-                      key={item}
-                      className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2"
-                    >
-                      <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                        Step {index + 1}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-[color:var(--primary)]">
-                        {item}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </SectionCard>
-
-          <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
-            <SectionCard
-              title="Program details"
-              description="Expand each section only when you need more context."
-            >
-              <div className="space-y-3">
-                <details
-                  open
-                  className="group rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/60 px-4 py-3"
-                >
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-[color:var(--primary)]">
-                    Benefits
-                  </summary>
-                  <ul className="mt-3 space-y-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                    {BENEFITS.map((item) => (
-                      <li key={item} className="rounded-lg bg-white px-3 py-2">
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-
-                <details className="group rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/60 px-4 py-3">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-[color:var(--primary)]">
-                    Eligibility
-                  </summary>
-                  <ul className="mt-3 space-y-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                    {ELIGIBILITY.map((item) => (
-                      <li key={item} className="rounded-lg bg-white px-3 py-2">
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-
-                <details className="group rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/60 px-4 py-3">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-[color:var(--primary)]">
-                    About us
-                  </summary>
-                  <p className="mt-3 rounded-lg bg-white px-3 py-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                    {ABOUT_US}
-                  </p>
-                </details>
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              title={invitationTitle}
-              description={invitationDescription}
-            >
-              <div className="space-y-4">
-                {isReadOnlyReview ? (
-                  <StatusBanner
-                    tone="neutral"
-                    title="Reference-only access"
-                    description="This invitation has already moved beyond the introduction stage. You may review it here, but the active workflow continues from a later page."
-                  />
-                ) : null}
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <DetailCard
-                    eyebrow="Preparation"
-                    title="Use your latest CV"
-                    description="Ensure your passport name, email, current role, and key academic milestones are up to date before continuing."
-                  />
-                  <DetailCard
-                    eyebrow="Review cadence"
-                    title="Asynchronous evaluation"
-                    description="After submission, the system may request only the additional items needed to complete accelerated evaluation."
-                  />
-                </div>
-
-                <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)] px-4 py-3">
-                  <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                    Next action
-                  </p>
-                  <p className="mt-1.5 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                    Continue to the CV stage when you are ready to provide your
-                    passport name, email address, and latest resume file.
-                  </p>
-                </div>
-
-                <div className="flex justify-end">
-                  <ActionButton
-                    onClick={handleStart}
-                    disabled={isPending || isReadOnlyReview}
-                    className="w-full sm:w-auto"
-                  >
-                    <span>
-                      {isPending ? "Opening CV Step..." : buttonLabel}
-                    </span>
-                    <ChevronRight className="h-4 w-4" aria-hidden />
-                  </ActionButton>
-                </div>
-              </div>
-            </SectionCard>
-          </div>
+        <div className="mx-auto max-w-4xl space-y-4">
+          {isReadOnlyReview ? (
+            <StatusBanner
+              tone="neutral"
+              title="Reference-only access"
+              description="This invitation has already moved beyond the introduction stage. You may review this page, but the active workflow continues from a later step."
+            />
+          ) : null}
 
           {isLoading ? (
             <StatusBanner
@@ -335,6 +312,70 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
               </p>
             </StatusBanner>
           ) : null}
+
+          <section className="overflow-hidden rounded-[1.75rem] border border-[color:var(--border)] bg-[color:var(--background-elevated)] shadow-[var(--shadow-card)]">
+            <div className="divide-y divide-[color:var(--border)]">
+              {INTRO_SECTION_ITEMS.map((section) => {
+                const isOpen = activeSection === section.id;
+
+                return (
+                  <div key={section.id} className="bg-white/72">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left transition hover:bg-[color:var(--muted)]/55 sm:px-6"
+                      onClick={() =>
+                        setActiveSection((current) =>
+                          current === section.id ? current : section.id,
+                        )
+                      }
+                    >
+                      <div className="min-w-0">
+                        <p className="text-lg font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
+                          {section.title}
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-[color:var(--foreground-soft)]">
+                          {section.summary}
+                        </p>
+                      </div>
+                      <ChevronRight
+                        className={cn(
+                          "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200",
+                          isOpen ? "rotate-90 text-[color:var(--primary)]" : "",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                    {isOpen ? (
+                      <div className="border-t border-[color:var(--border)] bg-[color:var(--muted)]/38 px-5 py-5 sm:px-6">
+                        {renderSectionContent(section.id)}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-[1.75rem] border border-[color:var(--border)] bg-[color:var(--background-elevated)] px-5 py-5 shadow-[var(--shadow-card)] sm:px-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1.5">
+                <p className="text-sm font-semibold text-[color:var(--primary)]">
+                  {invitationTitle}
+                </p>
+                <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
+                  {invitationDescription}
+                </p>
+              </div>
+              <ActionButton
+                onClick={handleStart}
+                disabled={isPending || isReadOnlyReview}
+                className="w-full sm:w-auto"
+              >
+                <span>{isPending ? "Opening CV Step..." : buttonLabel}</span>
+                <ChevronRight className="h-4 w-4" aria-hidden />
+              </ActionButton>
+            </div>
+          </section>
         </div>
       </PageShell>
     </PageFrame>

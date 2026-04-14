@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 
 import {
   ActionButton,
-  DetailCard,
+  DisclosureSection,
+  MetaStrip,
   MobileSupportCard,
   PageFrame,
   PageShell,
@@ -224,6 +225,7 @@ export default function MaterialsPage() {
             ? "The final page now acts as a compact tracking dashboard with your application number, expected review timing, and uploaded evidence summary."
             : "Upload the remaining supporting materials, satisfy the minimum categories, and then convert the application into a completed review package."
         }
+        headerVariant="centered"
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
         currentStep={4}
         stepIndexing="zero"
@@ -231,31 +233,23 @@ export default function MaterialsPage() {
         maxAccessibleStep={
           snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 4
         }
-        headerSlot={
-          <SectionCard
-            title={isSubmitted ? "Tracking summary" : "Final package rules"}
-            description={
-              isSubmitted
-                ? "This page is now read-only and keeps the final evidence summary visible."
-                : "Three minimum evidence categories are required before final confirmation."
-            }
-          >
-            <div className="space-y-3">
-              <DetailCard
-                eyebrow="Application number"
-                title={snapshot?.applicationId ?? "Pending"}
-                description="The current application ID doubles as your reference number in this implementation."
-              />
-              <DetailCard
-                eyebrow="Estimated review time"
-                title="1–3 business days"
-                description="The review team responds asynchronously after package completion."
-              />
-            </div>
-          </SectionCard>
-        }
       >
-        <div className="space-y-4">
+        <div className="mx-auto max-w-4xl space-y-4">
+          {snapshot ? (
+            <MetaStrip
+              items={[
+                {
+                  label: "Application number",
+                  value: snapshot.applicationId,
+                },
+                {
+                  label: "Estimated review time",
+                  value: "1-3 business days",
+                },
+              ]}
+            />
+          ) : null}
+
           {!isSubmitted ? <MobileSupportCard href={mailtoHref} /> : null}
 
           {notice || isSubmitted ? (
@@ -290,13 +284,13 @@ export default function MaterialsPage() {
               title="Application complete"
               description="The flow has reached its final state. Uploaded evidence remains visible below for tracking and reference."
             >
-              <div className="grid gap-4 lg:grid-cols-[0.94fr_1.06fr]">
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-                  <CheckCircle2
-                    className="h-10 w-10 text-[color:var(--accent)]"
-                    aria-hidden
-                  />
-                  <h2 className="mt-3 text-xl font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
+              <div className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+                <CheckCircle2
+                  className="h-10 w-10 text-[color:var(--accent)]"
+                  aria-hidden
+                />
+                <div>
+                  <h2 className="text-xl font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
                     Congratulations on completing your application
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
@@ -305,24 +299,22 @@ export default function MaterialsPage() {
                     number or a snapshot of the submitted evidence package.
                   </p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <DetailCard
-                    eyebrow="Application Number"
-                    title={snapshot?.applicationId ?? "Unavailable"}
-                    description="Use this number when you need to reference your completed package."
-                  />
-                  <DetailCard
-                    eyebrow="Estimated Review Time"
-                    title="1–3 business days"
-                    description="The team continues processing after the final package is locked."
-                  />
-                  <DetailCard
-                    eyebrow="Evidence Summary"
-                    title={`${uploadedCount} uploaded files`}
-                    description="All uploaded records remain visible below in categorized sections."
-                    className="sm:col-span-2"
-                  />
-                </div>
+                <MetaStrip
+                  items={[
+                    {
+                      label: "Application Number",
+                      value: snapshot?.applicationId ?? "Unavailable",
+                    },
+                    {
+                      label: "Estimated Review Time",
+                      value: "1-3 business days",
+                    },
+                    {
+                      label: "Evidence Summary",
+                      value: `${uploadedCount} uploaded files`,
+                    },
+                  ]}
+                />
               </div>
             </SectionCard>
           ) : null}
@@ -335,7 +327,7 @@ export default function MaterialsPage() {
                 : "Attach one or more files per category. Identity documents, doctoral education evidence, and latest employment evidence are mandatory before final confirmation."
             }
           >
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="space-y-3">
               {MATERIAL_CATEGORIES.map((category) => {
                 const categoryKey =
                   category.key.toLowerCase() as Lowercase<MaterialCategory>;
@@ -346,85 +338,93 @@ export default function MaterialsPage() {
                 const requirementMet = records.length > 0;
 
                 return (
-                  <div
+                  <DisclosureSection
                     key={category.key}
-                    className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 p-4"
+                    title={category.label}
+                    summary={
+                      isSubmitted
+                        ? "Read-only uploaded evidence for this category."
+                        : "Expand to review guidance, upload files, and manage the current list."
+                    }
+                    defaultOpen={isRequiredCategory && !requirementMet && !isSubmitted}
+                    meta={
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isRequiredCategory ? (
+                          <span className="inline-flex rounded-full border border-[color:var(--accent)] bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.12em] text-[color:var(--accent)] uppercase">
+                            Required
+                          </span>
+                        ) : null}
+                        <span className="inline-flex rounded-full border border-[color:var(--border)] bg-white px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.12em] text-[color:var(--primary)] uppercase">
+                          {records.length} file{records.length === 1 ? "" : "s"}
+                        </span>
+                        <span className="inline-flex rounded-full border border-[color:var(--border)] bg-white px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-600 uppercase">
+                          {requirementMet ? "Ready" : "Pending"}
+                        </span>
+                      </div>
+                    }
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-sm font-semibold text-[color:var(--primary)]">
-                            {category.label}
-                          </h2>
-                          {isRequiredCategory ? (
-                            <span className="inline-flex rounded-full border border-[color:var(--accent)] bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.12em] text-[color:var(--accent)] uppercase">
-                              Required
-                            </span>
-                          ) : null}
-                        </div>
+                    <div className="space-y-4">
+                      <div className="text-sm leading-6 text-[color:var(--foreground-soft)]">
                         <MaterialCategoryGuidance category={category.key} />
                       </div>
-                      <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-[color:var(--border-strong)] bg-white px-2 text-xs font-semibold text-[color:var(--primary)]">
-                        {records.length}
-                      </span>
-                    </div>
 
-                    {isRequiredCategory && !requirementMet && !isSubmitted ? (
-                      <p className="mt-3 rounded-xl border border-[color:var(--border-strong)] bg-white px-3 py-2 text-xs leading-5 text-[color:var(--foreground-soft)]">
-                        Upload at least one file in this category to unlock
-                        final confirmation.
-                      </p>
-                    ) : null}
-
-                    {!isSubmitted ? (
-                      <label className="mt-4 block">
-                        <input
-                          type="file"
-                          multiple
-                          disabled={isPending}
-                          onChange={(event) =>
-                            handleUpload(category.key, event.target.files)
-                          }
-                          className="sr-only"
-                        />
-                        <div className="rounded-xl border border-dashed border-[color:var(--border-strong)] bg-white px-4 py-4 text-center transition hover:border-[color:var(--primary)] hover:bg-slate-50">
-                          <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                            Add files
-                          </p>
-                          <p className="mt-1 text-sm font-medium text-[color:var(--primary)]">
-                            Select one or more files
-                          </p>
+                      {isRequiredCategory && !requirementMet && !isSubmitted ? (
+                        <div className="rounded-xl border border-[color:var(--border-strong)] bg-white px-4 py-3 text-sm text-[color:var(--foreground-soft)]">
+                          Upload at least one file in this category to unlock
+                          final confirmation.
                         </div>
-                      </label>
-                    ) : null}
-
-                    <div className="mt-4 space-y-2">
-                      {records.map((record) => (
-                        <div
-                          key={record.id}
-                          className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground-soft)]"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="truncate">{record.fileName}</span>
-                            {!isSubmitted ? (
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(record.id)}
-                                className="text-xs font-medium text-[color:var(--accent)] transition hover:text-[#14532d]"
-                              >
-                                Delete
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                      {records.length === 0 ? (
-                        <p className="rounded-xl border border-dashed border-[color:var(--border)] bg-white px-3 py-3 text-xs tracking-[0.12em] text-slate-500 uppercase">
-                          No files uploaded yet
-                        </p>
                       ) : null}
+
+                      {!isSubmitted ? (
+                        <label className="block">
+                          <input
+                            type="file"
+                            multiple
+                            disabled={isPending}
+                            onChange={(event) =>
+                              handleUpload(category.key, event.target.files)
+                            }
+                            className="sr-only"
+                          />
+                          <div className="rounded-xl border border-dashed border-[color:var(--border-strong)] bg-white px-4 py-4 text-center transition hover:border-[color:var(--primary)] hover:bg-slate-50">
+                            <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
+                              Add files
+                            </p>
+                            <p className="mt-1 text-sm font-medium text-[color:var(--primary)]">
+                              Select one or more files
+                            </p>
+                          </div>
+                        </label>
+                      ) : null}
+
+                      <div className="space-y-2">
+                        {records.map((record) => (
+                          <div
+                            key={record.id}
+                            className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground-soft)]"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="truncate">{record.fileName}</span>
+                              {!isSubmitted ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(record.id)}
+                                  className="text-xs font-medium text-[color:var(--accent)] transition hover:text-[#14532d]"
+                                >
+                                  Delete
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                        {records.length === 0 ? (
+                          <p className="rounded-xl border border-dashed border-[color:var(--border)] bg-white px-3 py-3 text-xs tracking-[0.12em] text-slate-500 uppercase">
+                            No files uploaded yet
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
+                  </DisclosureSection>
                 );
               })}
             </div>
@@ -435,35 +435,35 @@ export default function MaterialsPage() {
               title="Final submission"
               description="Confirm only when the evidence package is complete enough for review."
             >
-              <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-                <div className="space-y-3">
-                  <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
-                    You may upload evidence in multiple rounds before final
-                    confirmation. Once submitted, the page becomes a tracking
-                    dashboard and further edits are disabled.
-                  </p>
-                  {!minimumRequirementsMet ? (
-                    <div className="rounded-xl border border-[color:var(--border-strong)] bg-[color:var(--muted)] px-4 py-3 text-sm text-[color:var(--foreground)]">
-                      <p className="font-medium">
-                        Final submission is locked until the minimum files are
-                        uploaded.
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-[color:var(--foreground-soft)]">
-                        Missing:{" "}
-                        {missingRequiredCategories
-                          .map((category) => category.label)
-                          .join(", ")}
-                      </p>
-                    </div>
-                  ) : null}
+              <div className="space-y-4">
+                <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
+                  You may upload evidence in multiple rounds before final
+                  confirmation. Once submitted, the page becomes a tracking
+                  dashboard and further edits are disabled.
+                </p>
+                {!minimumRequirementsMet ? (
+                  <div className="rounded-xl border border-[color:var(--border-strong)] bg-[color:var(--muted)] px-4 py-3 text-sm text-[color:var(--foreground)]">
+                    <p className="font-medium">
+                      Final submission is locked until the minimum files are
+                      uploaded.
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[color:var(--foreground-soft)]">
+                      Missing:{" "}
+                      {missingRequiredCategories
+                        .map((category) => category.label)
+                        .join(", ")}
+                    </p>
+                  </div>
+                ) : null}
+                <div className="flex justify-end">
+                  <ActionButton
+                    onClick={handleSubmit}
+                    disabled={isPending || isLoading || !minimumRequirementsMet}
+                    className="w-full sm:w-auto"
+                  >
+                    Confirm Submission
+                  </ActionButton>
                 </div>
-                <ActionButton
-                  onClick={handleSubmit}
-                  disabled={isPending || isLoading || !minimumRequirementsMet}
-                  className="w-full sm:w-auto"
-                >
-                  Confirm Submission
-                </ActionButton>
               </div>
             </SectionCard>
           ) : null}

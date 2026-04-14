@@ -8,7 +8,7 @@ import {
   useTransition,
   type ChangeEvent,
 } from "react";
-import { ChevronDown, ChevronsDown } from "lucide-react";
+import { ChevronsDown } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { flushSync } from "react-dom";
 import { useForm } from "react-hook-form";
@@ -22,7 +22,8 @@ import {
 import { MarkdownProse } from "@/components/ui/markdown-prose";
 import {
   ActionButton,
-  DetailCard,
+  DisclosureSection,
+  MetaStrip,
   MobileSupportCard,
   PageFrame,
   PageShell,
@@ -701,43 +702,18 @@ function getInitialBanner(
 
 function InitialAnalysisNotesSection({
   rawReasoning,
-  expanded,
-  onToggle,
 }: {
   rawReasoning: string;
-  expanded: boolean;
-  onToggle: () => void;
 }) {
   return (
-    <SectionCard
+    <DisclosureSection
       title="Initial analysis notes"
-      description="Reference notes retained from the initial eligibility pass."
-      action={
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          aria-label={
-            expanded ? "Collapse analysis notes" : "Expand analysis notes"
-          }
-          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 transition hover:border-slate-500 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-[#22C55E]/35 focus-visible:outline-none"
-        >
-          <ChevronDown
-            aria-hidden
-            className={cn(
-              "h-5 w-5 transition-transform duration-200",
-              expanded ? "rotate-180" : "rotate-0",
-            )}
-          />
-        </button>
-      }
+      summary="Reference notes retained from the initial eligibility pass."
     >
-      {expanded ? (
-        <div className="rounded-md border border-slate-300 bg-slate-100 p-4">
-          <MarkdownProse markdown={rawReasoning} />
-        </div>
-      ) : null}
-    </SectionCard>
+      <div className="rounded-md border border-slate-300 bg-white p-4">
+        <MarkdownProse markdown={rawReasoning} />
+      </div>
+    </DisclosureSection>
   );
 }
 
@@ -767,7 +743,6 @@ export default function ResultPage() {
   const [isSavingSecondary, startSecondarySaveTransition] = useTransition();
   const [isEnteringMaterials, startMaterialsTransition] = useTransition();
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const [isDetailedAnalysisOpen, setIsDetailedAnalysisOpen] = useState(true);
   const [analysisMessageIndex, setAnalysisMessageIndex] = useState(0);
   const [supplementalDraftSavedAt, setSupplementalDraftSavedAt] = useState<
     string | null
@@ -780,12 +755,6 @@ export default function ResultPage() {
     () => getRawReasoning(snapshot?.latestResult?.extractedFields),
     [snapshot?.latestResult?.extractedFields],
   );
-
-  useEffect(() => {
-    if (rawReasoning) {
-      setIsDetailedAnalysisOpen(true);
-    }
-  }, [rawReasoning, snapshot?.applicationStatus]);
 
   useEffect(() => {
     setMailtoHref(getMailtoHref());
@@ -1518,6 +1487,17 @@ export default function ResultPage() {
         return "The result page explains the current review state, surfaces recognized information, and provides the next appropriate action.";
     }
   }, [snapshot]);
+  const supplementalDraftLabel = supplementalDraftSavedAt
+    ? new Date(supplementalDraftSavedAt).toLocaleString("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "Autosaving locally";
+  const secondarySaveState = secondaryInputsDisabled
+    ? "Editing unlocks when ready"
+    : secondaryHasUnsavedChanges
+      ? "Unsaved changes"
+      : "All changes saved";
 
   return (
     <PageFrame>
@@ -1529,6 +1509,7 @@ export default function ResultPage() {
             : "Provide the remaining information needed to complete the review."
         }
         description={headerSummary}
+        headerVariant="centered"
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
         currentStep={currentResultStep}
         stepIndexing="zero"
@@ -1536,32 +1517,8 @@ export default function ResultPage() {
         maxAccessibleStep={
           snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 2
         }
-        headerSlot={
-          <SectionCard
-            title="Review outcomes"
-            description="The current page hosts both the screening state and the structured follow-up stage."
-          >
-            <div className="space-y-3">
-              <DetailCard
-                eyebrow="Outcome 01"
-                title="Analysis in progress"
-                description="The page refreshes the review state automatically until the result is ready."
-              />
-              <DetailCard
-                eyebrow="Outcome 02"
-                title="Additional information required"
-                description="You only need to complete the exact structured fields that were identified as missing."
-              />
-              <DetailCard
-                eyebrow="Outcome 03"
-                title="Detailed analysis before materials"
-                description="A successful initial review unlocks the detailed analysis first. Supporting materials open only after that step finishes."
-              />
-            </div>
-          </SectionCard>
-        }
       >
-        <div className="space-y-4">
+        <div className="mx-auto max-w-4xl space-y-4">
           {currentResultStep === 3 ? (
             <MobileSupportCard href={mailtoHref} />
           ) : null}
@@ -1624,21 +1581,26 @@ export default function ResultPage() {
               ) : null}
 
               {visibleExtractedFields.length > 0 ? (
-                <SectionCard
+                <DisclosureSection
                   title="Recognized information summary"
-                  description="These items were extracted from the current resume and normalized for display."
+                  summary="These items were extracted from the current resume and normalized for display."
                 >
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
                     {visibleExtractedFields.map((field) => (
-                      <DetailCard
+                      <div
                         key={`${field.no}-${field.label}`}
-                        eyebrow={`No. ${field.no}`}
-                        title={field.label}
-                        description={field.value}
-                      />
+                        className="flex flex-col gap-1 rounded-xl border border-[color:var(--border)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <span className="text-sm font-medium text-[color:var(--primary)]">
+                          {field.label}
+                        </span>
+                        <span className="text-sm text-[color:var(--foreground-soft)]">
+                          {field.value}
+                        </span>
+                      </div>
                     ))}
                   </div>
-                </SectionCard>
+                </DisclosureSection>
               ) : null}
 
               {hasMissingFields ? (
@@ -1652,36 +1614,22 @@ export default function ResultPage() {
                 >
                   <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
                     {snapshot.applicationStatus === "INFO_REQUIRED" ? (
-                      <div className="grid gap-3 md:grid-cols-3">
-                        <DetailCard
-                          eyebrow="Action"
-                          title="Complete only missing items"
-                          description="There is no need to repeat information that the system already recognized with confidence."
-                        />
-                        <DetailCard
-                          eyebrow="Draft"
-                          title={
-                            supplementalDraftSavedAt
-                              ? "Local draft saved"
-                              : "Draft saves automatically"
-                          }
-                          description={
-                            supplementalDraftSavedAt
-                              ? `Saved ${new Date(
-                                  supplementalDraftSavedAt,
-                                ).toLocaleString("en-US", {
-                                  dateStyle: "medium",
-                                  timeStyle: "short",
-                                })}.`
-                              : "Updates are cached locally in this browser while you type."
-                          }
-                        />
-                        <DetailCard
-                          eyebrow="Submission"
-                          title="Another review pass starts immediately"
-                          description="After you submit these fields, the AI review refreshes automatically on this page."
-                        />
-                      </div>
+                      <MetaStrip
+                        items={[
+                          {
+                            label: "Scope",
+                            value: "Complete missing items only",
+                          },
+                          {
+                            label: "Draft",
+                            value: supplementalDraftLabel,
+                          },
+                          {
+                            label: "After submit",
+                            value: "Review runs again immediately",
+                          },
+                        ]}
+                      />
                     ) : null}
                     <div className="grid gap-4">
                       {missingFields.map((field) =>
@@ -1715,13 +1663,7 @@ export default function ResultPage() {
               ) : null}
 
               {rawReasoning ? (
-                <InitialAnalysisNotesSection
-                  rawReasoning={rawReasoning}
-                  expanded={isDetailedAnalysisOpen}
-                  onToggle={() =>
-                    setIsDetailedAnalysisOpen((previous) => !previous)
-                  }
-                />
+                <InitialAnalysisNotesSection rawReasoning={rawReasoning} />
               ) : null}
 
               {showDetailedAnalysisSection ? (
@@ -1764,13 +1706,46 @@ export default function ResultPage() {
               ) : null}
 
               {shouldShowDetailedResult ? (
-                <SectionCard
+                <DisclosureSection
                   title="Detailed analysis result"
-                  description={getSecondaryStatusMessage(
+                  summary={getSecondaryStatusMessage(
                     editableSecondarySnapshot.status,
                   )}
-                  action={
-                    <div className="flex flex-wrap items-center gap-3">
+                  defaultOpen={snapshot.applicationStatus === "SECONDARY_REVIEW"}
+                  meta={
+                    canContinueToMaterials ? (
+                      <div className="hidden sm:block">
+                        <ActionButton
+                          variant="success"
+                          onClick={onContinueToMaterials}
+                          disabled={isEnteringMaterials || isReadOnlyReview}
+                        >
+                          {isEnteringMaterials
+                            ? "Opening Final Step..."
+                            : "Next: Submission Complete"}
+                        </ActionButton>
+                      </div>
+                    ) : undefined
+                  }
+                >
+                  <div className="space-y-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <MetaStrip
+                        items={[
+                          {
+                            label: "Needs attention",
+                            value: `${secondaryMissingCount} fields`,
+                          },
+                          {
+                            label: "Saved",
+                            value: formatSavedAt(editableSecondarySnapshot.savedAt),
+                          },
+                          {
+                            label: "Status",
+                            value: secondarySaveState,
+                          },
+                        ]}
+                      />
                       {editableSecondarySnapshot.runId ? (
                         <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold tracking-[0.12em] text-slate-600 uppercase">
                           Run #{editableSecondarySnapshot.runId}
@@ -1781,6 +1756,7 @@ export default function ResultPage() {
                           variant="success"
                           onClick={onContinueToMaterials}
                           disabled={isEnteringMaterials || isReadOnlyReview}
+                          className="sm:hidden"
                         >
                           {isEnteringMaterials
                             ? "Opening Final Step..."
@@ -1788,9 +1764,7 @@ export default function ResultPage() {
                         </ActionButton>
                       ) : null}
                     </div>
-                  }
-                >
-                  <div className="space-y-5">
+
                     {secondarySaveMessage ? (
                       <StatusBanner
                         tone="success"
@@ -1798,69 +1772,6 @@ export default function ResultPage() {
                         description={secondarySaveMessage}
                       />
                     ) : null}
-
-                    {editableSecondarySnapshot.run ? (
-                      <div className="rounded-md border border-slate-300 bg-slate-100 p-3.5 text-sm text-slate-700">
-                        <p>
-                          Status:{" "}
-                          {editableSecondarySnapshot.run.status ??
-                            editableSecondarySnapshot.status}
-                        </p>
-                        <p className="mt-1">
-                          Completed prompts:{" "}
-                          {editableSecondarySnapshot.run.completedPrompts ?? 0}
-                          {editableSecondarySnapshot.run.totalPrompts
-                            ? ` / ${editableSecondarySnapshot.run.totalPrompts}`
-                            : ""}
-                        </p>
-                        {editableSecondarySnapshot.run.failedPromptIds.length >
-                        0 ? (
-                          <p className="mt-1">
-                            Failed prompt IDs:{" "}
-                            {editableSecondarySnapshot.run.failedPromptIds.join(
-                              ", ",
-                            )}
-                          </p>
-                        ) : null}
-                        {editableSecondarySnapshot.run.errorMessage ? (
-                          <p className="mt-1 text-slate-700">
-                            {editableSecondarySnapshot.run.errorMessage}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    {editableSecondarySnapshot.errorMessage ? (
-                      <p className="text-sm text-slate-700">
-                        {editableSecondarySnapshot.errorMessage}
-                      </p>
-                    ) : null}
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <DetailCard
-                        eyebrow="Summary"
-                        title={`${secondaryMissingCount} fields still need attention`}
-                        description="Missing fields are grouped at the top whenever your edits are saved. While you have unsaved changes, the list keeps the same row order as before you started typing; after you save, it refreshes to missing-first order and scrolls to the next item that still needs attention when applicable."
-                      />
-                      <DetailCard
-                        eyebrow="Saved"
-                        title={formatSavedAt(editableSecondarySnapshot.savedAt)}
-                        description="This timestamp reflects the latest saved expert revision for the current secondary run."
-                      />
-                      <DetailCard
-                        eyebrow="Status"
-                        title={
-                          secondaryHasUnsavedChanges
-                            ? "Unsaved changes"
-                            : "All changes saved"
-                        }
-                        description={
-                          secondaryInputsDisabled
-                            ? "Editing will unlock as soon as the detailed analysis finishes."
-                            : "Use Save Detailed Analysis Fields to persist the current expert-reviewed values."
-                        }
-                      />
-                    </div>
 
                     {orderedSecondaryDraftFields.length > 0 ? (
                       <form
@@ -1914,19 +1825,61 @@ export default function ResultPage() {
                         field set. This page will update automatically.
                       </div>
                     )}
+
+                    {(editableSecondarySnapshot.run ||
+                      editableSecondarySnapshot.errorMessage) && (
+                      <DisclosureSection
+                        title="Technical details"
+                        summary="Low-priority run diagnostics and error details."
+                        className="shadow-none"
+                      >
+                        <div className="space-y-3 text-sm text-slate-700">
+                          {editableSecondarySnapshot.run ? (
+                            <div className="rounded-md border border-slate-300 bg-white p-3.5">
+                              <p>
+                                Status:{" "}
+                                {editableSecondarySnapshot.run.status ??
+                                  editableSecondarySnapshot.status}
+                              </p>
+                              <p className="mt-1">
+                                Completed prompts:{" "}
+                                {editableSecondarySnapshot.run.completedPrompts ??
+                                  0}
+                                {editableSecondarySnapshot.run.totalPrompts
+                                  ? ` / ${editableSecondarySnapshot.run.totalPrompts}`
+                                  : ""}
+                              </p>
+                              {editableSecondarySnapshot.run.failedPromptIds
+                                .length > 0 ? (
+                                <p className="mt-1">
+                                  Failed prompt IDs:{" "}
+                                  {editableSecondarySnapshot.run.failedPromptIds.join(
+                                    ", ",
+                                  )}
+                                </p>
+                              ) : null}
+                              {editableSecondarySnapshot.run.errorMessage ? (
+                                <p className="mt-1">
+                                  {editableSecondarySnapshot.run.errorMessage}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {editableSecondarySnapshot.errorMessage ? (
+                            <div className="rounded-md border border-slate-300 bg-white p-3.5">
+                              {editableSecondarySnapshot.errorMessage}
+                            </div>
+                          ) : null}
+                        </div>
+                      </DisclosureSection>
+                    )}
                   </div>
-                </SectionCard>
+                </DisclosureSection>
               ) : !isLoading && !error ? (
-                <SectionCard
-                  title="Detailed analysis result"
-                  description="No detailed analysis fields are currently available for this application state."
-                >
-                  <StatusBanner
-                    tone="neutral"
-                    title="No field data to display yet"
-                    description="If detailed analysis has not started, run it first. If this page should already include field data, refresh the session or reopen the workflow from the previous stage."
-                  />
-                </SectionCard>
+                <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--background-elevated)] px-4 py-4 text-sm leading-6 text-[color:var(--foreground-soft)] shadow-[var(--shadow-card)] sm:px-5">
+                  No detailed analysis fields are currently available for this
+                  application state.
+                </div>
               ) : null}
             </>
           ) : null}

@@ -1,7 +1,12 @@
 "use client";
 
-import { Fragment, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { Mail, type LucideIcon } from "lucide-react";
+import {
+  Fragment,
+  useState,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from "react";
+import { ChevronRight, Mail, type LucideIcon } from "lucide-react";
 import { MotionConfig, motion, useReducedMotion } from "motion/react";
 
 import { cn } from "@/lib/utils";
@@ -24,6 +29,7 @@ type PageShellProps = {
   children?: ReactNode;
   className?: string;
   headerSlot?: ReactNode;
+  headerVariant?: "default" | "centered";
   steps?: readonly FlowStep[];
   currentStep?: number;
   stepIndexing?: "zero" | "one";
@@ -64,6 +70,26 @@ type MobileSupportCardProps = {
   href?: string;
   actionLabel?: string;
   icon?: LucideIcon;
+  className?: string;
+};
+
+type DisclosureSectionProps = {
+  title: string;
+  summary?: ReactNode;
+  meta?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+  contentClassName?: string;
+  defaultOpen?: boolean;
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+};
+
+type MetaStripProps = {
+  items: Array<{
+    label: string;
+    value: string;
+  }>;
   className?: string;
 };
 
@@ -139,6 +165,7 @@ export function PageShell({
   children,
   className,
   headerSlot,
+  headerVariant = "default",
   steps,
   currentStep,
   stepIndexing = "one",
@@ -166,27 +193,45 @@ export function PageShell({
           </div>
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-          <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--background-elevated)] px-4 py-4 shadow-[var(--shadow-card)] sm:px-5 sm:py-5">
-            <div className="max-w-4xl space-y-3">
-              {eyebrow ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-strong)] bg-white px-3 py-1 text-[0.68rem] font-semibold tracking-[0.18em] text-[color:var(--primary)] uppercase">
-                  <span className="h-2 w-2 rounded-full bg-[color:var(--accent)]" />
-                  {eyebrow}
-                </span>
-              ) : null}
-              <div className="space-y-2">
-                <h1 className="max-w-4xl text-[1.8rem] leading-tight font-semibold tracking-[-0.03em] text-[color:var(--primary)] sm:text-[2.15rem]">
-                  {title}
-                </h1>
-                <p className="max-w-3xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.96rem]">
-                  {description}
-                </p>
+        {headerVariant === "centered" ? (
+          <div className="mx-auto flex max-w-4xl flex-col items-center px-3 py-7 text-center sm:px-4 sm:py-10">
+            {eyebrow ? (
+              <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-strong)] bg-white px-3 py-1 text-[0.68rem] font-semibold tracking-[0.18em] text-[color:var(--primary)] uppercase">
+                <span className="h-2 w-2 rounded-full bg-[color:var(--accent)]" />
+                {eyebrow}
+              </span>
+            ) : null}
+            <h1 className="mt-4 max-w-4xl text-[2rem] leading-tight font-semibold tracking-[-0.04em] text-[color:var(--primary)] sm:text-[2.6rem]">
+              {title}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.98rem]">
+              {description}
+            </p>
+            {headerSlot ? <div className="mt-5 w-full">{headerSlot}</div> : null}
+          </div>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+            <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--background-elevated)] px-4 py-4 shadow-[var(--shadow-card)] sm:px-5 sm:py-5">
+              <div className="max-w-4xl space-y-3">
+                {eyebrow ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-strong)] bg-white px-3 py-1 text-[0.68rem] font-semibold tracking-[0.18em] text-[color:var(--primary)] uppercase">
+                    <span className="h-2 w-2 rounded-full bg-[color:var(--accent)]" />
+                    {eyebrow}
+                  </span>
+                ) : null}
+                <div className="space-y-2">
+                  <h1 className="max-w-4xl text-[1.8rem] leading-tight font-semibold tracking-[-0.03em] text-[color:var(--primary)] sm:text-[2.15rem]">
+                    {title}
+                  </h1>
+                  <p className="max-w-3xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.96rem]">
+                    {description}
+                  </p>
+                </div>
               </div>
             </div>
+            {headerSlot ? <div className="w-full">{headerSlot}</div> : null}
           </div>
-          {headerSlot ? <div className="w-full">{headerSlot}</div> : null}
-        </div>
+        )}
 
         {children}
       </div>
@@ -453,6 +498,96 @@ export function DetailCard({
         {description}
       </p>
     </motion.div>
+  );
+}
+
+export function DisclosureSection({
+  title,
+  summary,
+  meta,
+  children,
+  className,
+  contentClassName,
+  defaultOpen = false,
+  open,
+  onToggle,
+}: DisclosureSectionProps) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const shouldReduceMotion = useReducedMotion();
+  const expanded = open ?? internalOpen;
+
+  function handleToggle() {
+    const nextOpen = !expanded;
+    setInternalOpen(nextOpen);
+    onToggle?.(nextOpen);
+  }
+
+  return (
+    <motion.section
+      className={cn(
+        "overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--background-elevated)] shadow-[var(--shadow-card)]",
+        className,
+      )}
+      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+      whileInView={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.2 }}
+    >
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition hover:bg-[color:var(--muted)]/45 sm:px-5"
+        onClick={handleToggle}
+        aria-expanded={expanded}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
+            {title}
+          </p>
+          {summary ? (
+            <div className="mt-1 text-sm leading-6 text-[color:var(--foreground-soft)]">
+              {summary}
+            </div>
+          ) : null}
+        </div>
+        {meta ? <div className="shrink-0">{meta}</div> : null}
+        <ChevronRight
+          className={cn(
+            "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200",
+            expanded ? "rotate-90 text-[color:var(--primary)]" : "",
+          )}
+          aria-hidden
+        />
+      </button>
+      {expanded ? (
+        <div
+          className={cn(
+            "border-t border-[color:var(--border)] bg-[color:var(--muted)]/35 px-4 py-4 sm:px-5",
+            contentClassName,
+          )}
+        >
+          {children}
+        </div>
+      ) : null}
+    </motion.section>
+  );
+}
+
+export function MetaStrip({ items, className }: MetaStripProps) {
+  return (
+    <div className={cn("flex flex-wrap gap-2", className)}>
+      {items.map((item) => (
+        <div
+          key={`${item.label}-${item.value}`}
+          className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[color:var(--border)] bg-white px-3 py-1.5 text-sm"
+        >
+          <span className="text-[color:var(--foreground-soft)]">
+            {item.label}
+          </span>
+          <span className="font-semibold text-[color:var(--primary)]">
+            {item.value}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { buildVisibleExtractedFieldSummary } from "@/features/analysis/display";
 import {
   ActionButton,
-  DetailCard,
+  DisclosureSection,
+  MetaStrip,
   MobileSupportCard,
   PageFrame,
   PageShell,
@@ -198,7 +199,8 @@ export default function ResumePage() {
       <PageShell
         eyebrow="Step 2"
         title="Upload your CV and confirm the core identity details used for screening."
-        description="This step collects the passport name, contact email, and latest CV file that will anchor the first AI screening pass. Draft text fields are saved locally in this browser to reduce accidental loss."
+        description="Provide the passport name, contact email, and latest CV file used for the first review pass."
+        headerVariant="centered"
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
         currentStep={1}
         stepIndexing="zero"
@@ -206,27 +208,8 @@ export default function ResumePage() {
         maxAccessibleStep={
           snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 1
         }
-        headerSlot={
-          <SectionCard
-            title="CV submission rules"
-            description="The first review uses the current CV file only."
-          >
-            <div className="space-y-3">
-              <DetailCard
-                eyebrow="Formats"
-                title="PDF and Word are preferred"
-                description="ZIP archives remain accepted for bundled supporting CV content, but a direct PDF or Word file is ideal."
-              />
-              <DetailCard
-                eyebrow="After upload"
-                title="The AI review begins immediately"
-                description="You will be taken to the review page, where the system shows live progress and requests additional information only if needed."
-              />
-            </div>
-          </SectionCard>
-        }
       >
-        <div className="space-y-4">
+        <div className="mx-auto max-w-4xl space-y-4">
           <MobileSupportCard href={mailtoHref} />
 
           {isReadOnly ? (
@@ -254,10 +237,10 @@ export default function ResumePage() {
           ) : null}
 
           <SectionCard
-            title="Applicant details"
-            description="These values are stored locally in this browser only and help you complete the step without losing progress on refresh."
+            title="Applicant details and CV"
+            description="Complete the identity fields, choose one current CV file, and submit the package for review."
           >
-            <div className="grid gap-4 lg:grid-cols-[1fr_0.84fr]">
+            <div className="space-y-5">
               <div className="grid gap-4">
                 <label className="block space-y-2">
                   <span className="text-sm font-semibold text-[color:var(--primary)]">
@@ -298,16 +281,17 @@ export default function ResumePage() {
                 </label>
               </div>
 
-              <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/70 p-3.5">
-                <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                  Local draft status
-                </p>
-                <p className="mt-1.5 text-sm font-semibold text-[color:var(--primary)]">
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 px-4 py-3 text-sm">
+                <Mail
+                  className="h-4 w-4 shrink-0 text-[color:var(--accent)]"
+                  aria-hidden
+                />
+                <span className="font-medium text-[color:var(--primary)]">
                   {draftSavedAt
                     ? "Draft saved in this browser"
-                    : "Draft will save automatically"}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-[color:var(--foreground-soft)]">
+                    : "Draft saves automatically"}
+                </span>
+                <span className="text-[color:var(--foreground-soft)]">
                   {draftSavedAt
                     ? `Last saved ${new Date(draftSavedAt).toLocaleString(
                         "en-US",
@@ -317,28 +301,9 @@ export default function ResumePage() {
                         },
                       )}.`
                     : "Typed values will be cached locally after a short pause."}
-                </p>
-                <div className="mt-3 rounded-xl border border-[color:var(--border)] bg-white p-3">
-                  <div className="flex items-center gap-2 text-sm text-[color:var(--foreground-soft)]">
-                    <Mail
-                      className="h-4 w-4 text-[color:var(--accent)]"
-                      aria-hidden
-                    />
-                    <span>
-                      Use the mobile card above to email this application link
-                      to yourself.
-                    </span>
-                  </div>
-                </div>
+                </span>
               </div>
-            </div>
-          </SectionCard>
 
-          <SectionCard
-            title="Upload CV"
-            description="Choose one current CV file. The upload card stays intentionally compact so the next action remains obvious."
-          >
-            <div className="space-y-4">
               <label className="block">
                 <input
                   type="file"
@@ -365,66 +330,28 @@ export default function ResumePage() {
                 </div>
               </label>
 
-              <div className="grid gap-4 lg:grid-cols-[1fr_0.84fr]">
-                <div className="space-y-3">
-                  <input
-                    value={selectedFile?.name ?? ""}
-                    readOnly
-                    placeholder="No file selected yet"
-                    className={getInputClassName(
-                      "pointer-events-none bg-[color:var(--muted)]/40",
-                    )}
-                  />
-
-                  {selectedFile ? (
-                    <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/70 p-3.5">
-                      <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                        Selected file
-                      </p>
-                      <p className="mt-1.5 text-sm font-semibold text-[color:var(--primary)]">
-                        {selectedFile.name}
-                      </p>
-                      <p className="mt-1 text-xs text-[color:var(--foreground-soft)]">
-                        {Math.ceil(selectedFile.size / 1024)} KB
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="rounded-xl border border-[color:var(--border)] bg-white p-3.5">
+              {selectedFile ? (
+                <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 px-4 py-3">
                   <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                    Parsed preview
+                    Selected file
                   </p>
-                  <p className="mt-1.5 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                    When prior AI-recognized profile data is available for this
-                    application, it appears here for a quick confirmation before
-                    you proceed.
+                  <p className="mt-1.5 text-sm font-semibold text-[color:var(--primary)]">
+                    {selectedFile.name}
                   </p>
-                  {previewFields.length > 0 ? (
-                    <div className="mt-3 grid gap-2">
-                      {previewFields.map((field) => (
-                        <div
-                          key={`${field.no}-${field.label}`}
-                          className="rounded-lg border border-[color:var(--border)] bg-[color:var(--muted)]/60 px-3 py-2"
-                        >
-                          <p className="text-[0.68rem] font-semibold tracking-[0.14em] text-slate-500 uppercase">
-                            {field.label}
-                          </p>
-                          <p className="mt-1 text-sm font-medium text-[color:var(--primary)]">
-                            {field.value}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-lg border border-dashed border-[color:var(--border)] bg-[color:var(--muted)]/50 px-3 py-3 text-sm text-[color:var(--foreground-soft)]">
-                      No parsed preview is available yet. The AI review page
-                      will generate and display recognized profile details after
-                      submission.
-                    </div>
-                  )}
+                  <p className="mt-1 text-xs text-[color:var(--foreground-soft)]">
+                    {Math.ceil(selectedFile.size / 1024)} KB
+                  </p>
                 </div>
-              </div>
+              ) : (
+                <input
+                  value=""
+                  readOnly
+                  placeholder="No file selected yet"
+                  className={getInputClassName(
+                    "pointer-events-none bg-[color:var(--muted)]/40",
+                  )}
+                />
+              )}
 
               <div className="flex justify-end">
                 <ActionButton
@@ -444,22 +371,76 @@ export default function ResumePage() {
             </div>
           </SectionCard>
 
-          {snapshot?.latestResumeFile ? (
-            <SectionCard
-              title="Previously uploaded CV"
-              description="The latest confirmed file remains available in your application history."
+          <DisclosureSection
+            title="Submission rules"
+            summary="PDF and Word are preferred. The AI review starts immediately after submission."
+          >
+            <div className="space-y-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
+              <p>
+                PDF and Word are preferred. ZIP archives remain accepted for
+                bundled supporting CV content when needed.
+              </p>
+              <p>
+                Once submitted, you will move to the review page and the system
+                will request additional information only if required.
+              </p>
+            </div>
+          </DisclosureSection>
+
+          {(previewFields.length > 0 || selectedFile) && (
+            <DisclosureSection
+              title="Parsed preview"
+              summary="Review the recognized profile details before you continue."
             >
-              <DetailCard
-                eyebrow="Latest upload"
-                title={snapshot.latestResumeFile.fileName}
-                description={`Uploaded on ${new Date(
-                  snapshot.latestResumeFile.uploadedAt,
-                ).toLocaleString("en-US", {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}.`}
+              {previewFields.length > 0 ? (
+                <div className="space-y-2">
+                  {previewFields.map((field) => (
+                    <div
+                      key={`${field.no}-${field.label}`}
+                      className="flex flex-col gap-1 rounded-xl border border-[color:var(--border)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <span className="text-sm font-medium text-[color:var(--primary)]">
+                        {field.label}
+                      </span>
+                      <span className="text-sm text-[color:var(--foreground-soft)]">
+                        {field.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
+                  No parsed preview is available yet. The AI review page will
+                  generate and display recognized profile details after
+                  submission.
+                </p>
+              )}
+            </DisclosureSection>
+          )}
+
+          {snapshot?.latestResumeFile ? (
+            <DisclosureSection
+              title="Previously uploaded CV"
+              summary="The latest confirmed file remains available in your application history."
+            >
+              <MetaStrip
+                items={[
+                  {
+                    label: "Latest upload",
+                    value: snapshot.latestResumeFile.fileName,
+                  },
+                  {
+                    label: "Uploaded on",
+                    value: new Date(
+                      snapshot.latestResumeFile.uploadedAt,
+                    ).toLocaleString("en-US", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    }),
+                  },
+                ]}
               />
-            </SectionCard>
+            </DisclosureSection>
           ) : null}
         </div>
       </PageShell>
