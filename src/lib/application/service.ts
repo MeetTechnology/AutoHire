@@ -1262,6 +1262,9 @@ export async function getMaterialsByCategory(applicationId: string) {
     honor: safeMaterials.filter((item) => item.category === "HONOR"),
     patent: safeMaterials.filter((item) => item.category === "PATENT"),
     project: safeMaterials.filter((item) => item.category === "PROJECT"),
+    paper: safeMaterials.filter((item) => item.category === "PAPER"),
+    book: safeMaterials.filter((item) => item.category === "BOOK"),
+    conference: safeMaterials.filter((item) => item.category === "CONFERENCE"),
   };
 }
 
@@ -1283,6 +1286,23 @@ export async function submitApplication(applicationId: string) {
       "The application can only be submitted after entering the materials stage.",
     code: "SUBMISSION_STAGE_NOT_READY",
   });
+
+  const materials = await listMaterials(applicationId);
+  const hasIdentity = materials.some((item) => item.category === "IDENTITY");
+  const hasDoctoralEducation = materials.some(
+    (item) => item.category === "EDUCATION",
+  );
+  const hasLatestEmployment = materials.some(
+    (item) => item.category === "EMPLOYMENT",
+  );
+
+  if (!hasIdentity || !hasDoctoralEducation || !hasLatestEmployment) {
+    throw new ApplicationServiceError(
+      "Final submission requires at least one file in Identity Documents, Education Documents (doctoral), and Employment Documents.",
+      409,
+      "MATERIALS_MINIMUM_REQUIREMENTS_NOT_MET",
+    );
+  }
 
   const updated = await updateApplication(applicationId, {
     applicationStatus: "SUBMITTED",

@@ -13,7 +13,7 @@ type UploadIntent = {
 };
 
 export type MaterialsResponse = Record<
-  string,
+  Lowercase<MaterialCategory>,
   Array<{ id: string; fileName: string; fileType?: string }>
 >;
 

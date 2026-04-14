@@ -11,7 +11,7 @@ import {
   getSessionMaxAgeSeconds,
   verifySessionToken,
 } from "@/lib/auth/session";
-import { jsonError } from "@/lib/http";
+import { isClientHttps, jsonError } from "@/lib/http";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       value: sessionToken,
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.NODE_ENV === "production" && isClientHttps(request),
       path: "/",
       maxAge: getSessionMaxAgeSeconds(),
     });

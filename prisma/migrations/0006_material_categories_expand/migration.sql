@@ -1,0 +1,6 @@
+DO $$
+BEGIN
+    ALTER TYPE "MaterialCategory" ADD VALUE IF NOT EXISTS 'PAPER';
+    ALTER TYPE "MaterialCategory" ADD VALUE IF NOT EXISTS 'BOOK';
+    ALTER TYPE "MaterialCategory" ADD VALUE IF NOT EXISTS 'CONFERENCE';
+END $$;

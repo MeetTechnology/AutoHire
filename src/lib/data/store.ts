@@ -11,6 +11,7 @@ import { enrichMissingFieldsWithRegistry } from "@/lib/resume-analysis/missing-f
 import { getRuntimeMode } from "@/lib/env";
 import { getSampleInvitationSeeds } from "@/lib/data/sample-data";
 import type { Prisma } from "@prisma/client";
+import type { MaterialCategory as PrismaMaterialCategory } from "@prisma/client";
 
 type InvitationRecord = {
   id: string;
@@ -968,7 +969,12 @@ export async function createMaterial(input: {
   }
 
   const prisma = await getPrisma();
-  return prisma.applicationMaterial.create({ data: input });
+  return prisma.applicationMaterial.create({
+    data: {
+      ...input,
+      category: input.category as PrismaMaterialCategory,
+    },
+  });
 }
 
 export async function softDeleteMaterial(
@@ -1024,6 +1030,13 @@ export async function createEvent(
   });
 }
 
+function countMaterialsByCategory(
+  materials: Array<{ category: string }>,
+  category: string,
+) {
+  return materials.filter((item) => item.category === category).length;
+}
+
 function toSnapshotFromMemory(
   application: ApplicationRecord,
 ): ApplicationSnapshot {
@@ -1071,14 +1084,15 @@ function toSnapshotFromMemory(
         }
       : null,
     uploadedMaterialsSummary: {
-      identity: materials.filter((item) => item.category === "IDENTITY").length,
-      employment: materials.filter((item) => item.category === "EMPLOYMENT")
-        .length,
-      education: materials.filter((item) => item.category === "EDUCATION")
-        .length,
-      honor: materials.filter((item) => item.category === "HONOR").length,
-      patent: materials.filter((item) => item.category === "PATENT").length,
-      project: materials.filter((item) => item.category === "PROJECT").length,
+      identity: countMaterialsByCategory(materials, "IDENTITY"),
+      employment: countMaterialsByCategory(materials, "EMPLOYMENT"),
+      education: countMaterialsByCategory(materials, "EDUCATION"),
+      honor: countMaterialsByCategory(materials, "HONOR"),
+      patent: countMaterialsByCategory(materials, "PATENT"),
+      project: countMaterialsByCategory(materials, "PROJECT"),
+      paper: countMaterialsByCategory(materials, "PAPER"),
+      book: countMaterialsByCategory(materials, "BOOK"),
+      conference: countMaterialsByCategory(materials, "CONFERENCE"),
     },
     submittedAt: application.submittedAt?.toISOString() ?? null,
   };
@@ -1148,14 +1162,15 @@ export async function buildApplicationSnapshot(
         }
       : null,
     uploadedMaterialsSummary: {
-      identity: materials.filter((item) => item.category === "IDENTITY").length,
-      employment: materials.filter((item) => item.category === "EMPLOYMENT")
-        .length,
-      education: materials.filter((item) => item.category === "EDUCATION")
-        .length,
-      honor: materials.filter((item) => item.category === "HONOR").length,
-      patent: materials.filter((item) => item.category === "PATENT").length,
-      project: materials.filter((item) => item.category === "PROJECT").length,
+      identity: countMaterialsByCategory(materials, "IDENTITY"),
+      employment: countMaterialsByCategory(materials, "EMPLOYMENT"),
+      education: countMaterialsByCategory(materials, "EDUCATION"),
+      honor: countMaterialsByCategory(materials, "HONOR"),
+      patent: countMaterialsByCategory(materials, "PATENT"),
+      project: countMaterialsByCategory(materials, "PROJECT"),
+      paper: countMaterialsByCategory(materials, "PAPER"),
+      book: countMaterialsByCategory(materials, "BOOK"),
+      conference: countMaterialsByCategory(materials, "CONFERENCE"),
     },
     submittedAt: application.submittedAt?.toISOString() ?? null,
   };

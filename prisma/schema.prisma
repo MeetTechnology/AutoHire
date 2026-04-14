@@ -55,6 +55,9 @@ enum MaterialCategory {
   HONOR
   PATENT
   PROJECT
+  PAPER
+  BOOK
+  CONFERENCE
 }
 
 model ExpertInvitation {

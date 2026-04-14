@@ -14,27 +14,36 @@ async function uploadVirtualFile(
     });
 }
 
-function getStartApplicationButton(
+async function initializeBrowserSession(
   page: Parameters<typeof test>[0]["page"],
+  token: string,
 ) {
-  return page.getByRole("button", {
-    name: /Start Application|Continue Application/,
-  });
+  await page.goto(`/apply?t=${token}`);
 }
 
 async function ensureSecondaryAnalysisEditable(
   page: Parameters<typeof test>[0]["page"],
 ) {
-  const editableResponse = page.waitForResponse(
-    (response) =>
-      response.request().method() === "GET" &&
-      response.url().includes("/secondary-analysis/editable"),
-  );
+  await initializeBrowserSession(page, "sample-progress-token");
+  await page.goto("/apply/result");
+  await page
+    .getByRole("combobox", { name: /Highest Degree/i })
+    .selectOption({ label: "Doctorate" });
+  await page
+    .getByRole("textbox", { name: /Current Employer/i })
+    .fill("Example University");
+  await page
+    .getByRole("button", { name: "Submit Additional Information" })
+    .click();
+  await expect(
+    page.getByText("The initial eligibility review has passed", {
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 10000 });
 
-  await page.goto("/apply?t=sample-secondary-token");
-  await editableResponse.catch(() => undefined);
-
-  const runButton = page.getByRole("button", { name: "Run Detailed Analysis" });
+  const runButton = page.getByRole("button", {
+    name: "Start Detailed Analysis",
+  });
   const saveButton = page.getByRole("button", {
     name: "Save Detailed Analysis Fields",
   });
@@ -70,29 +79,34 @@ test("invalid token shows an error", async ({ page }) => {
 test("eligible resume flow can reach materials and submit", async ({
   page,
 }) => {
-  await page.goto("/apply?t=sample-init-token");
-
-  await expect(getStartApplicationButton(page)).toBeVisible();
-  await getStartApplicationButton(page).click();
-
+  await initializeBrowserSession(page, "sample-init-token");
   await expect(
-    page.getByRole("heading", { name: /Upload the resume that best represents/ }),
+    page.getByRole("button", { name: "Next: Upload CV" }),
   ).toBeVisible();
-  await uploadVirtualFile(page, "candidate-eligible.pdf");
-  await page.getByRole("button", { name: "Upload and Start Analysis" }).click();
-
-  await expect(
-    page.getByText("The initial eligibility review has passed", { exact: true }),
-  ).toBeVisible({ timeout: 10000 });
-  await expect(
-    page.getByRole("button", { name: "Run Detailed Analysis" }),
-  ).toBeVisible({ timeout: 10000 });
-  await page.getByRole("button", { name: "Run Detailed Analysis" }).click();
-  await page.getByRole("button", { name: "Continue to Materials" }).click();
+  await page.getByRole("button", { name: "Next: Upload CV" }).click();
 
   await expect(
     page.getByRole("heading", {
-      name: /Complete the application package with the supporting evidence/,
+      name: /Upload your CV and confirm the core identity details/i,
+    }),
+  ).toBeVisible();
+  await uploadVirtualFile(page, "candidate-eligible.pdf");
+  await page.getByRole("button", { name: "Submit CV" }).click();
+
+  await expect(
+    page.getByText("The initial eligibility review has passed", {
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 10000 });
+  await expect(
+    page.getByRole("button", { name: "Start Detailed Analysis" }),
+  ).toBeVisible({ timeout: 10000 });
+  await page.getByRole("button", { name: "Start Detailed Analysis" }).click();
+  await page.getByRole("button", { name: "Next: Submission Complete" }).click();
+
+  await expect(
+    page.getByRole("heading", {
+      name: /Complete the final package and confirm submission/,
     }),
   ).toBeVisible();
   await uploadVirtualFile(page, "passport.pdf");
@@ -109,36 +123,42 @@ test("eligible resume flow can reach materials and submit", async ({
 test("insufficient info flow supports supplemental fields", async ({
   page,
 }) => {
-  await page.goto("/apply?t=sample-progress-token");
+  await initializeBrowserSession(page, "sample-progress-token");
+  await page.goto("/apply/result");
 
   await expect(
     page.getByText("Some required information is still missing"),
   ).toBeVisible();
   await page
-    .getByRole("combobox", { name: /^Highest Degree Required field/ })
+    .getByRole("combobox", { name: /Highest Degree/i })
     .selectOption({ label: "Doctorate" });
   await page
-    .getByRole("textbox", { name: /^Current Employer Required field/ })
+    .getByRole("textbox", { name: /Current Employer/i })
     .fill("Example University");
-  await page.getByRole("button", { name: "Submit and Reanalyze" }).click();
+  await page
+    .getByRole("button", { name: "Submit Additional Information" })
+    .click();
 
   await expect(
-    page.getByText("The initial eligibility review has passed", { exact: true }),
+    page.getByText("The initial eligibility review has passed", {
+      exact: true,
+    }),
   ).toBeVisible({ timeout: 10000 });
   await expect(
-    page.getByRole("button", { name: "Run Detailed Analysis" }),
+    page.getByRole("button", { name: "Start Detailed Analysis" }),
   ).toBeVisible({ timeout: 10000 });
   await expect(
-    page.getByRole("button", { name: "Continue to Materials" }),
+    page.getByRole("button", { name: "Next: Submission Complete" }),
   ).toHaveCount(0);
 });
 
 test("submitted token restores submitted materials page", async ({ page }) => {
-  await page.goto("/apply?t=sample-submitted-token");
+  await initializeBrowserSession(page, "sample-submitted-token");
+  await page.goto("/apply/materials");
 
   await expect(
     page.getByRole("heading", {
-      name: /Complete the application package with the supporting evidence/,
+      name: /Your application package has been received/,
     }),
   ).toBeVisible();
   await expect(
@@ -171,9 +191,9 @@ test("secondary analysis fields can be edited, saved, and restored", async ({
 
   await page.reload();
 
-  await expect(page.getByRole("combobox", { name: "Highest Degree" })).toHaveValue(
-    nextDegree,
-  );
+  await expect(
+    page.getByRole("combobox", { name: "Highest Degree" }),
+  ).toHaveValue(nextDegree);
   await expect(
     page.getByRole("textbox", { name: "Research Direction" }),
   ).toHaveValue(nextResearchDirection);

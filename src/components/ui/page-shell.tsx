@@ -1,4 +1,8 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+"use client";
+
+import { Fragment, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { Mail, type LucideIcon } from "lucide-react";
+import { MotionConfig, motion, useReducedMotion } from "motion/react";
 
 import { cn } from "@/lib/utils";
 
@@ -9,7 +13,6 @@ type FlowStep = {
 
 type PageFrameProps = {
   children: ReactNode;
-  /** When set, constrains content width and centers the column (legacy narrow layout). */
   maxWidth?: "4xl" | "5xl" | "6xl";
   className?: string;
 };
@@ -23,6 +26,9 @@ type PageShellProps = {
   headerSlot?: ReactNode;
   steps?: readonly FlowStep[];
   currentStep?: number;
+  stepIndexing?: "zero" | "one";
+  stepLinks?: readonly string[];
+  maxAccessibleStep?: number;
 };
 
 type StatusBannerProps = {
@@ -52,6 +58,15 @@ type DetailCardProps = {
   className?: string;
 };
 
+type MobileSupportCardProps = {
+  title?: string;
+  description?: string;
+  href?: string;
+  actionLabel?: string;
+  icon?: LucideIcon;
+  className?: string;
+};
+
 const MAX_WIDTH_CLASS: Record<
   NonNullable<PageFrameProps["maxWidth"]>,
   string
@@ -67,23 +82,20 @@ const STATUS_STYLES: Record<
 > = {
   neutral: {
     shell:
-      "border-stone-200 bg-[linear-gradient(145deg,rgba(255,253,248,0.96),rgba(245,239,227,0.86))] text-stone-800",
-    accent: "bg-stone-500",
+      "border-[color:var(--border)] bg-[color:var(--background-elevated)] text-[color:var(--foreground)]",
+    accent: "bg-[color:var(--primary)]",
   },
   loading: {
-    shell:
-      "border-amber-200 bg-[linear-gradient(145deg,rgba(255,251,235,0.98),rgba(253,244,214,0.88))] text-amber-950",
-    accent: "bg-amber-500",
+    shell: "border-sky-200 bg-sky-50 text-[color:var(--primary)]",
+    accent: "bg-sky-600",
   },
   success: {
-    shell:
-      "border-emerald-200 bg-[linear-gradient(145deg,rgba(240,253,244,0.98),rgba(221,247,234,0.88))] text-emerald-950",
-    accent: "bg-emerald-500",
+    shell: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    accent: "bg-[color:var(--accent)]",
   },
   danger: {
-    shell:
-      "border-rose-200 bg-[linear-gradient(145deg,rgba(255,241,242,0.98),rgba(255,228,230,0.88))] text-rose-950",
-    accent: "bg-rose-500",
+    shell: "border-rose-200 bg-rose-50 text-rose-950",
+    accent: "bg-rose-700",
   },
 };
 
@@ -92,32 +104,31 @@ const BUTTON_STYLES: Record<
   string
 > = {
   primary:
-    "bg-[linear-gradient(135deg,#0f766e,#14532d)] text-white shadow-[0_18px_40px_rgba(15,118,110,0.24)] hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(15,118,110,0.28)]",
+    "border border-[color:var(--primary)] bg-[color:var(--primary)] text-white shadow-[0_10px_24px_rgba(10,25,47,0.18)] hover:bg-[color:var(--primary-strong)]",
   secondary:
-    "border border-stone-300 bg-white/88 text-stone-900 shadow-[0_10px_24px_rgba(15,23,42,0.08)] hover:-translate-y-0.5 hover:border-stone-400 hover:bg-white",
+    "border border-[color:var(--border-strong)] bg-white text-[color:var(--primary)] hover:border-[color:var(--primary)] hover:bg-slate-50",
   success:
-    "bg-[linear-gradient(135deg,#047857,#065f46)] text-white shadow-[0_18px_40px_rgba(4,120,87,0.22)] hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(4,120,87,0.26)]",
-  danger:
-    "bg-[linear-gradient(135deg,#be123c,#881337)] text-white shadow-[0_18px_40px_rgba(190,24,93,0.22)] hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(190,24,93,0.26)]",
+    "border border-[color:var(--accent)] bg-[color:var(--accent)] text-white shadow-[0_10px_24px_rgba(22,101,52,0.18)] hover:bg-[#14532d]",
+  danger: "border border-rose-700 bg-rose-700 text-white hover:bg-rose-800",
   ghost:
-    "border border-transparent bg-stone-100/80 text-stone-700 hover:-translate-y-0.5 hover:bg-stone-200/90",
+    "border border-[color:var(--border)] bg-[color:var(--muted)] text-[color:var(--foreground-soft)] hover:bg-slate-200",
 };
 
-export function PageFrame({
-  children,
-  maxWidth,
-  className,
-}: PageFrameProps) {
+export function PageFrame({ children, maxWidth, className }: PageFrameProps) {
   return (
-    <main
-      className={cn(
-        "flex min-h-screen w-full max-w-none flex-col px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10",
-        maxWidth ? cn("mx-auto", MAX_WIDTH_CLASS[maxWidth]) : null,
-        className,
-      )}
-    >
-      {children}
-    </main>
+    <MotionConfig transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}>
+      <main
+        className={cn(
+          "min-h-screen w-full px-3 py-3 text-[color:var(--foreground)] sm:px-4 sm:py-4 lg:px-5 lg:py-5",
+          maxWidth
+            ? cn("mx-auto", MAX_WIDTH_CLASS[maxWidth])
+            : "mx-auto max-w-[1180px]",
+          className,
+        )}
+      >
+        {children}
+      </main>
+    </MotionConfig>
   );
 }
 
@@ -130,79 +141,207 @@ export function PageShell({
   headerSlot,
   steps,
   currentStep,
+  stepIndexing = "one",
+  stepLinks,
+  maxAccessibleStep,
 }: PageShellProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
-    <section
-      className={cn(
-        "w-full max-w-none pb-6 md:pb-8",
-        className,
-      )}
+    <motion.section
+      className={cn("mx-auto w-full", className)}
+      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 10 }}
+      animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
     >
-      <div className="relative space-y-8">
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-3xl space-y-5">
-            {eyebrow ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-stone-300/90 bg-white/82 px-3 py-1 text-[0.68rem] font-semibold tracking-[0.26em] text-stone-700 uppercase">
-                <span className="h-1.5 w-1.5 rounded-full bg-teal-700" />
-                {eyebrow}
-              </span>
-            ) : null}
-            <div className="space-y-3">
-              <h1 className="max-w-3xl font-[family-name:var(--font-serif)] text-4xl leading-tight text-stone-950 sm:text-5xl">
-                {title}
-              </h1>
-              <p className="max-w-2xl text-base leading-8 text-stone-700 sm:text-lg">
-                {description}
-              </p>
-            </div>
-            {steps?.length ? (
-              <FlowSteps steps={steps} currentStep={currentStep ?? 1} />
-            ) : null}
+      <div className="space-y-4">
+        {steps?.length ? (
+          <div className="sticky top-0 z-40 -mx-3 border-b border-[color:var(--border)] bg-[color:var(--background-elevated)]/96 px-3 py-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5">
+            <FlowArrowStepper
+              steps={steps}
+              currentStep={currentStep ?? (stepIndexing === "zero" ? 0 : 1)}
+              stepIndexing={stepIndexing}
+              stepLinks={stepLinks}
+              maxAccessibleStep={maxAccessibleStep}
+            />
           </div>
-          {headerSlot ? <div className="lg:max-w-sm">{headerSlot}</div> : null}
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+          <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--background-elevated)] px-4 py-4 shadow-[var(--shadow-card)] sm:px-5 sm:py-5">
+            <div className="max-w-4xl space-y-3">
+              {eyebrow ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-strong)] bg-white px-3 py-1 text-[0.68rem] font-semibold tracking-[0.18em] text-[color:var(--primary)] uppercase">
+                  <span className="h-2 w-2 rounded-full bg-[color:var(--accent)]" />
+                  {eyebrow}
+                </span>
+              ) : null}
+              <div className="space-y-2">
+                <h1 className="max-w-4xl text-[1.8rem] leading-tight font-semibold tracking-[-0.03em] text-[color:var(--primary)] sm:text-[2.15rem]">
+                  {title}
+                </h1>
+                <p className="max-w-3xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.96rem]">
+                  {description}
+                </p>
+              </div>
+            </div>
+          </div>
+          {headerSlot ? <div className="w-full">{headerSlot}</div> : null}
         </div>
+
         {children}
       </div>
-    </section>
+    </motion.section>
   );
 }
 
-function FlowSteps({
+function StepDoneIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={cn("h-4 w-4", className)}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M3.5 8.25L6.4 11.15L12.5 5.05"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FlowArrowStepper({
   steps,
   currentStep,
+  stepIndexing = "one",
+  stepLinks,
+  maxAccessibleStep,
 }: {
   steps: readonly FlowStep[];
   currentStep: number;
+  stepIndexing?: "zero" | "one";
+  stepLinks?: readonly string[];
+  maxAccessibleStep?: number;
 }) {
-  return (
-    <div className="grid gap-3 md:grid-cols-5">
-      {steps.map((step, index) => {
-        const stepNumber = index + 1;
-        const isActive = stepNumber === currentStep;
-        const isCompleted = stepNumber < currentStep;
+  const shouldReduceMotion = useReducedMotion();
 
-        return (
-          <div
-            key={step.label}
-            className={cn(
-              "rounded-2xl border px-4 py-3 transition",
-              isActive
-                ? "border-stone-900 bg-stone-950 text-white shadow-[0_18px_40px_rgba(28,25,23,0.18)]"
-                : isCompleted
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                  : "border-stone-200 bg-white/80 text-stone-600",
-            )}
-          >
-            <p className="text-[0.65rem] font-semibold tracking-[0.22em] uppercase opacity-80">
-              Step {stepNumber}
-            </p>
-            <p className="mt-2 text-sm font-medium">{step.label}</p>
-            {step.hint ? (
-              <p className="mt-1 text-xs leading-5 opacity-80">{step.hint}</p>
-            ) : null}
-          </div>
-        );
-      })}
+  return (
+    <div
+      className="w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      role="list"
+      aria-label="Application progress"
+    >
+      <div className="flex min-w-[50rem] items-start">
+        {steps.map((step, index) => {
+          const displayStepNumber =
+            stepIndexing === "zero" ? index + 1 : index + 1;
+          const rawStep = stepIndexing === "zero" ? index : index + 1;
+          const isActive = rawStep === currentStep;
+          const isCompleted = rawStep < currentStep;
+          const isLast = index === steps.length - 1;
+          const isClickable =
+            Boolean(stepLinks?.[index]) &&
+            (maxAccessibleStep === undefined || rawStep <= maxAccessibleStep);
+
+          const content = (
+            <div className="flex flex-col items-center text-center">
+              <span
+                className={cn(
+                  "inline-flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition-colors duration-200",
+                  isCompleted &&
+                    "border-[color:var(--accent)] bg-[color:var(--accent)] text-white",
+                  isActive &&
+                    "border-[3px] border-[color:var(--primary)] bg-[rgba(34,197,94,0.12)] text-[color:var(--primary)]",
+                  !isCompleted &&
+                    !isActive &&
+                    "border-[color:var(--border-strong)] bg-white text-slate-500",
+                )}
+              >
+                {isCompleted ? (
+                  <StepDoneIcon className="h-4 w-4" />
+                ) : (
+                  displayStepNumber
+                )}
+              </span>
+              <p
+                className={cn(
+                  "mt-2 max-w-[8.2rem] text-[0.8rem] leading-5 font-semibold",
+                  isCompleted && "text-[color:var(--accent)]",
+                  isActive && "text-[color:var(--primary)]",
+                  !isCompleted && !isActive && "text-slate-500",
+                )}
+              >
+                {step.label}
+              </p>
+              {step.hint ? (
+                <p className="mt-1 max-w-[9rem] text-[0.68rem] leading-4 text-slate-500">
+                  {step.hint}
+                </p>
+              ) : null}
+            </div>
+          );
+
+          const wrapperClassName = cn(
+            "relative z-10 flex flex-col items-center",
+            isClickable ? "cursor-pointer" : "cursor-default",
+          );
+
+          return (
+            <Fragment key={`${index}-${step.label}`}>
+              <div
+                role="listitem"
+                className="flex min-w-0 flex-1 justify-center"
+              >
+                {isClickable ? (
+                  <a
+                    href={stepLinks![index]!}
+                    aria-current={isActive ? "step" : undefined}
+                    className={wrapperClassName}
+                  >
+                    <motion.div
+                      initial={
+                        shouldReduceMotion ? undefined : { opacity: 0, y: 6 }
+                      }
+                      animate={
+                        shouldReduceMotion ? undefined : { opacity: 1, y: 0 }
+                      }
+                    >
+                      {content}
+                    </motion.div>
+                  </a>
+                ) : (
+                  <motion.div
+                    aria-current={isActive ? "step" : undefined}
+                    className={wrapperClassName}
+                    initial={
+                      shouldReduceMotion ? undefined : { opacity: 0, y: 6 }
+                    }
+                    animate={
+                      shouldReduceMotion ? undefined : { opacity: 1, y: 0 }
+                    }
+                  >
+                    {content}
+                  </motion.div>
+                )}
+              </div>
+              {!isLast ? (
+                <div
+                  className={cn(
+                    "mx-2 mt-4 h-[2px] flex-1 rounded-full",
+                    isCompleted
+                      ? "bg-[color:var(--accent)]"
+                      : "bg-[color:var(--border)]",
+                  )}
+                  aria-hidden
+                />
+              ) : null}
+            </Fragment>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -215,31 +354,31 @@ export function StatusBanner({
   className,
 }: StatusBannerProps) {
   const styles = STATUS_STYLES[tone];
+  const shouldReduceMotion = useReducedMotion();
 
   return (
-    <div
+    <motion.div
       className={cn(
-        "rounded-[1.6rem] border p-5 shadow-[0_16px_40px_rgba(28,25,23,0.05)]",
+        "rounded-2xl border px-4 py-3.5 shadow-[var(--shadow-card)]",
         styles.shell,
         className,
       )}
+      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+      animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
     >
-      <div className="flex items-start gap-4">
+      <div className="flex items-start gap-3">
         <span
-          className={cn(
-            "mt-1 h-2.5 w-2.5 rounded-full shadow-[0_0_0_6px_rgba(255,255,255,0.65)]",
-            styles.accent,
-          )}
+          className={cn("mt-1.5 h-2.5 w-2.5 rounded-full", styles.accent)}
         />
-        <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-sm font-semibold tracking-[0.04em]">{title}</p>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="text-sm font-semibold">{title}</p>
           {description ? (
-            <p className="text-sm leading-7 opacity-90">{description}</p>
+            <p className="text-sm leading-6 opacity-90">{description}</p>
           ) : null}
           {children}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -250,21 +389,28 @@ export function SectionCard({
   children,
   className,
 }: SectionCardProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
-    <section
+    <motion.section
       className={cn(
-        "rounded-[1.6rem] border border-stone-200 bg-white/82 p-5 shadow-[0_16px_40px_rgba(28,25,23,0.05)] md:p-6",
+        "rounded-2xl border border-[color:var(--border)] bg-[color:var(--card)] px-4 py-4 shadow-[var(--shadow-card)] sm:px-5 sm:py-5",
         className,
       )}
+      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 10 }}
+      whileInView={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.15 }}
     >
       {title || description || action ? (
-        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="max-w-2xl">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-3xl space-y-1">
             {title ? (
-              <h2 className="text-lg font-semibold text-stone-950">{title}</h2>
+              <h2 className="text-base font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
+                {title}
+              </h2>
             ) : null}
             {description ? (
-              <p className="mt-2 text-sm leading-7 text-stone-600">
+              <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
                 {description}
               </p>
             ) : null}
@@ -273,7 +419,7 @@ export function SectionCard({
         </div>
       ) : null}
       {children}
-    </section>
+    </motion.section>
   );
 }
 
@@ -283,21 +429,55 @@ export function DetailCard({
   description,
   className,
 }: DetailCardProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
-    <div
+    <motion.div
       className={cn(
-        "rounded-[1.4rem] border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,244,236,0.92))] p-4 shadow-[0_12px_28px_rgba(28,25,23,0.04)]",
+        "rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/70 p-3.5",
         className,
       )}
+      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 6 }}
+      whileInView={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.2 }}
     >
       {eyebrow ? (
-        <p className="text-[0.68rem] font-semibold tracking-[0.2em] text-stone-500 uppercase">
+        <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
           {eyebrow}
         </p>
       ) : null}
-      <p className="mt-2 text-sm font-semibold text-stone-950">{title}</p>
-      <p className="mt-2 text-sm leading-7 text-stone-600">{description}</p>
-    </div>
+      <p className="mt-1.5 text-sm font-semibold text-[color:var(--primary)]">
+        {title}
+      </p>
+      <p className="mt-1.5 text-sm leading-6 text-[color:var(--foreground-soft)]">
+        {description}
+      </p>
+    </motion.div>
+  );
+}
+
+export function MobileSupportCard({
+  title = "Recommended to complete on desktop",
+  description = "Long uploads and structured review tasks are easier to complete on a larger screen. You can email this link to yourself and continue later.",
+  href,
+  actionLabel = "Send link to email",
+  icon: Icon = Mail,
+  className,
+}: MobileSupportCardProps) {
+  return (
+    <SectionCard
+      title={title}
+      description={description}
+      className={cn("border-dashed md:hidden", className)}
+      action={
+        href ? (
+          <a href={href} className={getButtonClassName("secondary")}>
+            <Icon className="h-4 w-4" aria-hidden />
+            <span>{actionLabel}</span>
+          </a>
+        ) : null
+      }
+    />
   );
 }
 
@@ -320,14 +500,14 @@ export function getButtonClassName(
   variant: NonNullable<ActionButtonProps["variant"]> = "primary",
 ) {
   return cn(
-    "inline-flex min-h-11 items-center justify-center rounded-full px-5 py-3 text-sm font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-55",
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed disabled:opacity-55",
     BUTTON_STYLES[variant],
   );
 }
 
 export function getInputClassName(className?: string) {
   return cn(
-    "w-full rounded-[1.25rem] border border-stone-300 bg-white/95 px-4 py-3 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition placeholder:text-stone-400 focus:border-teal-700 focus:outline-none focus:ring-4 focus:ring-teal-700/10",
+    "w-full rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground)] transition placeholder:text-slate-400 focus:border-[color:var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]",
     className,
   );
 }

@@ -45,7 +45,10 @@ export type MaterialCategory =
   | "EDUCATION"
   | "HONOR"
   | "PATENT"
-  | "PROJECT";
+  | "PROJECT"
+  | "PAPER"
+  | "BOOK"
+  | "CONFERENCE";
 
 export type MaterialSummary = Record<Lowercase<MaterialCategory>, number>;
 

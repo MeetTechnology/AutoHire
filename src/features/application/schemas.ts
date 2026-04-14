@@ -5,7 +5,17 @@ export const uploadIntentSchema = z.object({
   fileType: z.string().min(1),
   fileSize: z.number().int().positive(),
   category: z
-    .enum(["IDENTITY", "EMPLOYMENT", "EDUCATION", "HONOR", "PATENT", "PROJECT"])
+    .enum([
+      "IDENTITY",
+      "EMPLOYMENT",
+      "EDUCATION",
+      "HONOR",
+      "PATENT",
+      "PROJECT",
+      "PAPER",
+      "BOOK",
+      "CONFERENCE",
+    ])
     .optional(),
 });
 
@@ -24,6 +34,9 @@ export const materialConfirmSchema = resumeConfirmSchema.extend({
     "HONOR",
     "PATENT",
     "PROJECT",
+    "PAPER",
+    "BOOK",
+    "CONFERENCE",
   ]),
 });
 

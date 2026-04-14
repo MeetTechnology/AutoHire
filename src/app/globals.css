@@ -1,23 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f0e4;
-  --background-elevated: #fffdf7;
-  --foreground: #1d1a16;
-  --foreground-soft: #5f5649;
-  --card: #fffdf8;
-  --card-foreground: #1d1a16;
-  --muted: #efe6d7;
-  --muted-foreground: #71675b;
-  --primary: #0f766e;
-  --primary-strong: #14532d;
-  --primary-foreground: #f5fffd;
-  --secondary: #d7bf98;
-  --secondary-foreground: #33281a;
-  --border: #d8cbb7;
-  --border-strong: #bda98b;
-  --ring: #0f766e;
-  --shadow-soft: 0 24px 80px rgba(36, 29, 20, 0.08);
+  --background: #f4f7fb;
+  --background-elevated: rgba(255, 255, 255, 0.94);
+  --foreground: #0f172a;
+  --foreground-soft: #475569;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --muted: #e8edf4;
+  --muted-foreground: #64748b;
+  --primary: #0a192f;
+  --primary-strong: #081321;
+  --primary-foreground: #f8fafc;
+  --accent: #166534;
+  --accent-soft: #22c55e;
+  --secondary: #dbe7f4;
+  --secondary-foreground: #0f172a;
+  --border: #d7dee8;
+  --border-strong: #b8c4d3;
+  --ring: rgba(34, 197, 94, 0.35);
+  --shadow-soft: 0 20px 48px rgba(10, 25, 47, 0.08);
+  --shadow-card: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
 
 * {
@@ -36,6 +39,45 @@ body {
   font-family: var(--font-sans), sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(
+      circle at 18% 20%,
+      rgba(10, 25, 47, 0.06) 0,
+      rgba(10, 25, 47, 0.06) 1px,
+      transparent 1px
+    ),
+    radial-gradient(
+      circle at 80% 24%,
+      rgba(22, 101, 52, 0.05) 0,
+      rgba(22, 101, 52, 0.05) 1px,
+      transparent 1px
+    ),
+    radial-gradient(
+      circle at 75% 78%,
+      rgba(10, 25, 47, 0.045) 0,
+      rgba(10, 25, 47, 0.045) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.86),
+      rgba(244, 247, 251, 0.94)
+    );
+  background-size:
+    240px 240px,
+    280px 280px,
+    220px 220px,
+    100% 100%;
+  pointer-events: none;
+  opacity: 0.92;
 }
 
 a {
@@ -51,10 +93,16 @@ select {
 }
 
 ::selection {
-  background: rgba(15, 118, 110, 0.18);
+  background: rgba(34, 197, 94, 0.18);
   color: var(--foreground);
 }
 
 :focus-visible {
-  outline-color: rgba(15, 118, 110, 0.35);
+  outline-color: var(--ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

@@ -1,10 +1,13 @@
 export const MATERIAL_CATEGORIES = [
   { key: "IDENTITY", label: "Identity Documents" },
-  { key: "EMPLOYMENT", label: "Employment Documents" },
   { key: "EDUCATION", label: "Education Documents" },
-  { key: "HONOR", label: "Honors and Awards" },
-  { key: "PATENT", label: "Patent Documents" },
+  { key: "EMPLOYMENT", label: "Employment Documents" },
   { key: "PROJECT", label: "Project Documents" },
+  { key: "PAPER", label: "Paper Publications" },
+  { key: "BOOK", label: "Authored Books" },
+  { key: "CONFERENCE", label: "Conference Materials" },
+  { key: "PATENT", label: "Patent Documents" },
+  { key: "HONOR", label: "Honors and Awards" },
 ] as const;
 
 export const APPLICATION_STATUSES = [
@@ -26,19 +29,28 @@ export const APPLICATION_STATUSES = [
 
 export const APPLICATION_FLOW_STEPS = [
   {
-    label: "Resume",
-    hint: "Upload your CV for the initial review",
+    label: "Upload CV",
+    hint: "Provide identity basics and your latest CV file.",
   },
   {
-    label: "Review",
-    hint: "Complete the initial and detailed analysis steps",
+    label: "AI Review",
+    hint: "Track the automated screening and structured review.",
   },
   {
-    label: "Materials",
-    hint: "Upload supporting documents by category",
+    label: "Additional Information",
+    hint: "Complete only the fields the system still needs.",
   },
   {
-    label: "Submit",
-    hint: "Confirm the final package",
+    label: "Submission Complete",
+    hint: "Finalize the package and review the tracking summary.",
   },
+] as const;
+
+/** Full journey including Step 0 (program brief on `/apply`) before formal steps. */
+export const APPLICATION_FLOW_STEPS_WITH_INTRO = [
+  {
+    label: "Project Introduction",
+    hint: "Review the GESF program scope, eligibility, and process.",
+  },
+  ...APPLICATION_FLOW_STEPS,
 ] as const;

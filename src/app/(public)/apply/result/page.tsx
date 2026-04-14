@@ -9,7 +9,7 @@ import {
   type ChangeEvent,
 } from "react";
 import { ChevronDown, ChevronsDown } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { flushSync } from "react-dom";
 import { useForm } from "react-hook-form";
 
@@ -23,6 +23,7 @@ import { MarkdownProse } from "@/components/ui/markdown-prose";
 import {
   ActionButton,
   DetailCard,
+  MobileSupportCard,
   PageFrame,
   PageShell,
   SectionCard,
@@ -39,7 +40,18 @@ import {
   submitSupplementalFields,
   triggerSecondaryAnalysis,
 } from "@/features/application/client";
-import { APPLICATION_FLOW_STEPS } from "@/features/application/constants";
+import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
+import {
+  clearDraft,
+  readDraft,
+  writeDraft,
+} from "@/features/application/draft-storage";
+import {
+  canAccessFlowStep,
+  getReachableFlowStep,
+  isFlowStepReadOnly,
+  resolveRouteFromStatus,
+} from "@/features/application/route";
 import type {
   ApplicationSnapshot,
   EditableSecondaryAnalysisSnapshot,
@@ -48,8 +60,36 @@ import type {
 import { cn } from "@/lib/utils";
 
 type SupplementalFormValues = Record<string, string>;
+const ANALYSIS_MESSAGES = [
+  "Analyzing educational background...",
+  "Matching project profile...",
+  "Checking research direction...",
+  "Normalizing structured profile fields...",
+  "Syncing the latest review state...",
+] as const;
+const RESULT_VIEW_TO_STEP = {
+  review: 2,
+  additional: 3,
+} as const;
+const FLOW_STEP_LINKS = [
+  "/apply",
+  "/apply/resume",
+  "/apply/result?view=review",
+  "/apply/result?view=additional",
+  "/apply/materials",
+] as const;
 
-function normalizeDateInputYearToFourDigits(event: ChangeEvent<HTMLInputElement>) {
+function getMailtoHref() {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return `mailto:?subject=${encodeURIComponent("Continue my GESF application")}&body=${encodeURIComponent(window.location.href)}`;
+}
+
+function normalizeDateInputYearToFourDigits(
+  event: ChangeEvent<HTMLInputElement>,
+) {
   const input = event.currentTarget;
   const v = input.value;
 
@@ -138,22 +178,20 @@ function getSecondaryFieldState(field: EditableSecondaryField) {
   if (field.isMissing) {
     return {
       label: "Missing",
-      className:
-        "border-amber-200 bg-amber-50 text-amber-900",
+      className: "border-slate-400 bg-slate-200 text-[#0A192F]",
     };
   }
 
   if (field.isEdited) {
     return {
       label: "Expert edited",
-      className:
-        "border-emerald-200 bg-emerald-50 text-emerald-900",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-900",
     };
   }
 
   return {
     label: "Model value",
-    className: "border-stone-200 bg-stone-100 text-stone-700",
+    className: "border-slate-300 bg-slate-100 text-slate-700",
   };
 }
 
@@ -164,7 +202,9 @@ function buildDraftSecondaryField(
     hasOverride: boolean;
   },
 ) {
-  const effectiveValue = input.hasOverride ? input.editedValue : field.sourceValue;
+  const effectiveValue = input.hasOverride
+    ? input.editedValue
+    : field.sourceValue;
 
   return {
     ...field,
@@ -172,7 +212,9 @@ function buildDraftSecondaryField(
     hasOverride: input.hasOverride,
     effectiveValue,
     isMissing: effectiveValue.trim().length === 0,
-    isEdited: input.hasOverride && input.editedValue.trim() !== field.sourceValue.trim(),
+    isEdited:
+      input.hasOverride &&
+      input.editedValue.trim() !== field.sourceValue.trim(),
   } satisfies EditableSecondaryField;
 }
 
@@ -182,19 +224,45 @@ function renderSupplementalField(
   watch: ReturnType<typeof useForm<SupplementalFormValues>>["watch"],
   getValues: ReturnType<typeof useForm<SupplementalFormValues>>["getValues"],
 ) {
-  const inputClassName = getInputClassName();
+  const currentValue = watch(field.fieldKey) ?? field.defaultValue ?? "";
+  const isPrefilled = Boolean(field.defaultValue && currentValue);
+  const needsAttention = field.required && !String(currentValue).trim();
+  const inputClassName = getInputClassName(
+    cn(
+      isPrefilled && "bg-[color:var(--muted)]/75",
+      needsAttention &&
+        "border-[color:var(--accent)] ring-1 ring-[color:var(--ring)]",
+    ),
+  );
 
   return (
     <label
       key={field.fieldKey}
-      className="block rounded-[1.4rem] border border-stone-200 bg-stone-50/70 p-4 text-sm text-stone-700"
+      className={cn(
+        "block rounded-xl border p-3.5 text-sm text-slate-700",
+        needsAttention
+          ? "border-[color:var(--accent)] bg-white"
+          : "border-[color:var(--border)] bg-[color:var(--muted)]/60",
+      )}
     >
-      <span className="block text-sm font-semibold text-stone-950">
+      <span className="block text-sm font-semibold text-[color:var(--primary)]">
         {field.label}
       </span>
-      <span className="mt-1 block text-xs tracking-[0.18em] text-stone-500 uppercase">
-        {field.required ? "Required field" : "Optional field"}
-      </span>
+      <div className="mt-1 flex flex-wrap gap-2">
+        <span className="text-xs tracking-[0.12em] text-slate-500 uppercase">
+          {field.required ? "Required field" : "Optional field"}
+        </span>
+        {isPrefilled ? (
+          <span className="inline-flex rounded-full border border-[color:var(--border)] bg-white px-2 py-0.5 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-500 uppercase">
+            AI prefilled
+          </span>
+        ) : null}
+        {needsAttention ? (
+          <span className="inline-flex rounded-full border border-[color:var(--accent)] bg-emerald-50 px-2 py-0.5 text-[0.68rem] font-semibold tracking-[0.12em] text-[color:var(--accent)] uppercase">
+            Needs input
+          </span>
+        ) : null}
+      </div>
       <div className="mt-3">
         {field.type === "select" ? (
           <>
@@ -213,8 +281,8 @@ function renderSupplementalField(
             </select>
             {field.selectOtherDetails &&
             watch(field.fieldKey) === field.selectOtherDetails.triggerOption ? (
-              <div className="mt-3 rounded-xl border border-stone-200 bg-white/80 p-3">
-                <span className="mb-2 block text-xs font-medium text-stone-700">
+              <div className="mt-3 rounded-md border border-slate-300 bg-white p-3">
+                <span className="mb-2 block text-xs font-medium text-slate-700">
                   {field.selectOtherDetails.detailLabel}
                 </span>
                 <input
@@ -251,7 +319,7 @@ function renderSupplementalField(
             {field.options?.map((option) => (
               <label
                 key={option}
-                className="inline-flex min-h-11 items-center gap-2 rounded-full border border-stone-300 bg-white px-4 py-2 text-sm text-stone-800 transition hover:border-stone-400"
+                className="inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm text-slate-800 transition hover:border-slate-500"
               >
                 <input
                   {...register(field.fieldKey, {
@@ -294,11 +362,18 @@ function renderSupplementalField(
           />
         )}
       </div>
-      {field.helpText ? (
-        <span className="mt-3 block text-xs leading-6 text-stone-500">
-          {field.helpText}
-        </span>
-      ) : null}
+      <div className="mt-2.5 space-y-1">
+        {field.helpText ? (
+          <span className="block text-xs leading-6 text-slate-500">
+            {field.helpText}
+          </span>
+        ) : null}
+        {needsAttention ? (
+          <span className="block text-xs leading-6 text-slate-500">
+            Please provide this information to complete accelerated evaluation.
+          </span>
+        ) : null}
+      </div>
     </label>
   );
 }
@@ -353,16 +428,22 @@ function renderEditableSecondaryField(input: {
           <label
             key={option}
             className={cn(
-              "inline-flex min-h-11 items-center gap-2 rounded-full border border-stone-300 bg-white px-4 py-2 text-sm text-stone-800 transition",
-              disabled ? "opacity-60" : "hover:border-stone-400",
+              "inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm text-slate-800 transition",
+              disabled ? "opacity-60" : "hover:border-slate-500",
             )}
           >
             <input
               type="radio"
               value={option}
               disabled={disabled}
-              checked={(field.hasOverride ? field.editedValue : field.effectiveValue) === option}
-              onChange={(event) => onChange(field.no, event.currentTarget.value)}
+              checked={
+                (field.hasOverride
+                  ? field.editedValue
+                  : field.effectiveValue) === option
+              }
+              onChange={(event) =>
+                onChange(field.no, event.currentTarget.value)
+              }
             />
             <span>{option}</span>
           </label>
@@ -387,24 +468,29 @@ function renderEditableSecondaryField(input: {
     <div
       key={field.no}
       id={blockAnchorId}
-      className="block scroll-mt-24 rounded-[1.4rem] border border-stone-200 bg-stone-50/70 p-4 text-sm text-stone-700"
+      className={cn(
+        "block scroll-mt-24 rounded-xl border p-3.5 text-sm text-slate-700",
+        field.isMissing
+          ? "border-[color:var(--accent)] bg-white"
+          : "border-[color:var(--border)] bg-[color:var(--muted)]/55",
+      )}
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="space-y-2">
           <label
             htmlFor={field.inputType === "radio" ? undefined : controlId}
-            className="block text-sm font-semibold text-stone-950"
+            className="block text-sm font-semibold text-[#0A192F]"
           >
             {field.label}
           </label>
           <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center rounded-full border border-stone-200 bg-white px-3 py-1 text-[0.68rem] font-semibold tracking-[0.16em] text-stone-600 uppercase">
+            <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold tracking-[0.1em] text-slate-700 uppercase">
               No. {field.no}
               {field.column ? ` / ${field.column}` : ""}
             </span>
             <span
               className={cn(
-                "inline-flex items-center rounded-full border px-3 py-1 text-[0.68rem] font-semibold tracking-[0.16em] uppercase",
+                "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.12em] uppercase",
                 state.className,
               )}
             >
@@ -421,18 +507,90 @@ function renderEditableSecondaryField(input: {
           Reset to Model Value
         </ActionButton>
       </div>
-      <div className="mt-4">{control}</div>
-      <div className="mt-3 space-y-2 text-xs leading-6 text-stone-500">
+      <div className="mt-4">
+        <div
+          className={cn(
+            field.sourceValue
+              ? "rounded-xl bg-[color:var(--muted)]/75 p-2"
+              : "",
+          )}
+        >
+          {control}
+        </div>
+      </div>
+      <div className="mt-3 space-y-2 text-xs leading-6 text-slate-500">
         <p>{helperText}</p>
         <p>
           Model value:{" "}
-          <span className="font-medium text-stone-700">
+          <span className="font-medium text-slate-700">
             {field.sourceValue || "No extracted value"}
           </span>
         </p>
       </div>
     </div>
   );
+}
+
+function AnalysisProgressPanel({
+  title,
+  description,
+  message,
+}: {
+  title: string;
+  description: string;
+  message: string;
+}) {
+  return (
+    <SectionCard className="overflow-hidden">
+      <div className="mx-auto max-w-2xl text-center">
+        <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-[color:var(--border)] bg-[color:var(--muted)]/60">
+          <div className="h-14 w-14 animate-spin rounded-full border-[3px] border-[color:var(--primary)] border-t-[color:var(--accent-soft)] motion-reduce:animate-none" />
+        </div>
+        <h2 className="mt-5 text-xl font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
+          {title}
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
+          {description}
+        </p>
+        <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 px-4 py-4">
+          <div className="h-2 overflow-hidden rounded-full bg-white">
+            <div className="h-full w-3/5 rounded-full bg-[color:var(--primary)]" />
+          </div>
+          <p className="mt-3 text-sm font-medium text-[color:var(--primary)]">
+            {message}
+          </p>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
+function mergeSecondaryDraft(
+  fields: EditableSecondaryField[],
+  draftValues:
+    | Record<
+        string,
+        {
+          editedValue: string;
+          hasOverride: boolean;
+        }
+      >
+    | null
+    | undefined,
+) {
+  if (!draftValues) {
+    return fields;
+  }
+
+  return fields.map((field) => {
+    const draft = draftValues[field.fieldKey];
+
+    if (!draft) {
+      return field;
+    }
+
+    return buildDraftSecondaryField(field, draft);
+  });
 }
 
 function getInitialBanner(
@@ -465,7 +623,7 @@ function getInitialBanner(
         description={snapshot.latestResult?.displaySummary ?? undefined}
       >
         {snapshot.latestResult?.reasonText ? (
-          <p className="text-sm leading-7 text-rose-900/85">
+          <p className="text-sm leading-6 text-slate-700">
             {snapshot.latestResult.reasonText}
           </p>
         ) : null}
@@ -562,7 +720,7 @@ function InitialAnalysisNotesSection({
           aria-label={
             expanded ? "Collapse analysis notes" : "Expand analysis notes"
           }
-          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-stone-300 bg-white/95 text-stone-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition hover:border-stone-400 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40"
+          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 transition hover:border-slate-500 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-[#22C55E]/35 focus-visible:outline-none"
         >
           <ChevronDown
             aria-hidden
@@ -575,7 +733,7 @@ function InitialAnalysisNotesSection({
       }
     >
       {expanded ? (
-        <div className="rounded-[1.4rem] border border-stone-200 bg-stone-50/80 p-5">
+        <div className="rounded-md border border-slate-300 bg-slate-100 p-4">
           <MarkdownProse markdown={rawReasoning} />
         </div>
       ) : null}
@@ -585,15 +743,16 @@ function InitialAnalysisNotesSection({
 
 export default function ResultPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [statusText, setStatusText] = useState(
     "Preparing your analysis result...",
   );
   const [error, setError] = useState<string | null>(null);
   const [secondaryError, setSecondaryError] = useState<string | null>(null);
-  const [secondarySaveMessage, setSecondarySaveMessage] = useState<string | null>(
-    null,
-  );
+  const [secondarySaveMessage, setSecondarySaveMessage] = useState<
+    string | null
+  >(null);
   const [isLoading, setIsLoading] = useState(true);
   const [editableSecondarySnapshot, setEditableSecondarySnapshot] =
     useState<EditableSecondaryAnalysisSnapshot | null>(null);
@@ -609,6 +768,11 @@ export default function ResultPage() {
   const [isEnteringMaterials, startMaterialsTransition] = useTransition();
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [isDetailedAnalysisOpen, setIsDetailedAnalysisOpen] = useState(true);
+  const [analysisMessageIndex, setAnalysisMessageIndex] = useState(0);
+  const [supplementalDraftSavedAt, setSupplementalDraftSavedAt] = useState<
+    string | null
+  >(null);
+  const [mailtoHref, setMailtoHref] = useState<string | undefined>(undefined);
   const { register, handleSubmit, reset, watch, getValues } =
     useForm<SupplementalFormValues>();
 
@@ -622,6 +786,12 @@ export default function ResultPage() {
       setIsDetailedAnalysisOpen(true);
     }
   }, [rawReasoning, snapshot?.applicationStatus]);
+
+  useEffect(() => {
+    setMailtoHref(getMailtoHref());
+  }, []);
+
+  const requestedResultView = searchParams.get("view");
 
   async function syncAnalysisProgress(applicationId: string) {
     const status = await fetchAnalysisStatus(applicationId);
@@ -657,19 +827,10 @@ export default function ResultPage() {
           return;
         }
 
-        if (
-          nextSnapshot.applicationStatus === "INIT" ||
-          nextSnapshot.applicationStatus === "INTRO_VIEWED"
-        ) {
-          router.replace("/apply/resume");
-          return;
-        }
-
-        if (
-          nextSnapshot.applicationStatus === "MATERIALS_IN_PROGRESS" ||
-          nextSnapshot.applicationStatus === "SUBMITTED"
-        ) {
-          router.replace("/apply/materials");
+        if (!canAccessFlowStep(nextSnapshot.applicationStatus, 2)) {
+          router.replace(
+            resolveRouteFromStatus(nextSnapshot.applicationStatus),
+          );
           return;
         }
 
@@ -699,8 +860,9 @@ export default function ResultPage() {
   useEffect(() => {
     if (
       !snapshot ||
-      (snapshot.applicationStatus !== "CV_ANALYZING" &&
-        snapshot.applicationStatus !== "REANALYZING")
+      !["CV_ANALYZING", "REANALYZING", "SECONDARY_ANALYZING"].includes(
+        snapshot.applicationStatus,
+      )
     ) {
       return;
     }
@@ -758,6 +920,27 @@ export default function ResultPage() {
   }, [snapshot]);
 
   useEffect(() => {
+    if (
+      !snapshot ||
+      !["CV_ANALYZING", "REANALYZING", "SECONDARY_ANALYZING"].includes(
+        snapshot.applicationStatus,
+      )
+    ) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setAnalysisMessageIndex(
+        (current) => (current + 1) % ANALYSIS_MESSAGES.length,
+      );
+    }, 1800);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [snapshot]);
+
+  useEffect(() => {
     if (!snapshot?.applicationId) {
       return;
     }
@@ -785,6 +968,8 @@ export default function ResultPage() {
         );
 
         if (result.missingFields.length > 0) {
+          const draftKey = `autohire:supplemental:${snapshot.applicationId}`;
+          const storedDraft = readDraft<SupplementalFormValues>(draftKey);
           const defaults = Object.fromEntries(
             result.missingFields.flatMap((field) => {
               const rows: [string, string][] = [
@@ -798,7 +983,11 @@ export default function ResultPage() {
               return rows;
             }),
           );
-          reset(defaults);
+          reset({
+            ...defaults,
+            ...(storedDraft?.values ?? {}),
+          });
+          setSupplementalDraftSavedAt(storedDraft?.savedAt ?? null);
         }
       })
       .catch(() => undefined);
@@ -815,7 +1004,26 @@ export default function ResultPage() {
       .then(({ nextDetailedSnapshot, refreshedSession }) => {
         if (active) {
           setEditableSecondarySnapshot(nextDetailedSnapshot);
-          setSecondaryDraftFields(nextDetailedSnapshot.fields);
+          const draftKey = nextDetailedSnapshot.runId
+            ? `autohire:secondary:${snapshot.applicationId}:${nextDetailedSnapshot.runId}`
+            : null;
+          const storedDraft = draftKey
+            ? readDraft<
+                Record<
+                  string,
+                  {
+                    editedValue: string;
+                    hasOverride: boolean;
+                  }
+                >
+              >(draftKey)
+            : null;
+          setSecondaryDraftFields(
+            mergeSecondaryDraft(
+              nextDetailedSnapshot.fields,
+              storedDraft?.values,
+            ),
+          );
           setSnapshot(refreshedSession);
         }
       })
@@ -840,29 +1048,43 @@ export default function ResultPage() {
     let active = true;
     const timer = window.setInterval(async () => {
       try {
-        const {
-          nextDetailedSnapshot,
-          refreshedSession,
-        } = await fetchDetailedAnalysisState(
-          snapshot.applicationId,
-          editableSecondarySnapshot.runId,
-        );
+        const { nextDetailedSnapshot, refreshedSession } =
+          await fetchDetailedAnalysisState(
+            snapshot.applicationId,
+            editableSecondarySnapshot.runId,
+          );
 
         if (!active) {
           return;
         }
 
         setEditableSecondarySnapshot(nextDetailedSnapshot);
-        setSecondaryDraftFields(nextDetailedSnapshot.fields);
+        const draftKey = nextDetailedSnapshot.runId
+          ? `autohire:secondary:${snapshot.applicationId}:${nextDetailedSnapshot.runId}`
+          : null;
+        const storedDraft = draftKey
+          ? readDraft<
+              Record<
+                string,
+                {
+                  editedValue: string;
+                  hasOverride: boolean;
+                }
+              >
+            >(draftKey)
+          : null;
+        setSecondaryDraftFields(
+          mergeSecondaryDraft(nextDetailedSnapshot.fields, storedDraft?.values),
+        );
         setSnapshot(refreshedSession);
         setSecondaryError(null);
       } catch (nextError) {
         if (active) {
-            setSecondaryError(
-              nextError instanceof Error
-                ? nextError.message
-                : "Failed to refresh the detailed analysis.",
-            );
+          setSecondaryError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Failed to refresh the detailed analysis.",
+          );
         }
       }
     }, 2000);
@@ -879,9 +1101,7 @@ export default function ResultPage() {
       const scrollTop = window.scrollY || doc.scrollTop;
       const maxScroll = Math.max(0, doc.scrollHeight - window.innerHeight);
       const nearBottom = maxScroll - scrollTop < 160;
-      setShowJumpToBottom(
-        scrollTop > 240 && !nearBottom && maxScroll > 320,
-      );
+      setShowJumpToBottom(scrollTop > 240 && !nearBottom && maxScroll > 320);
     }
 
     updateJumpToBottomVisibility();
@@ -894,10 +1114,57 @@ export default function ResultPage() {
       window.removeEventListener("scroll", updateJumpToBottomVisibility);
       window.removeEventListener("resize", updateJumpToBottomVisibility);
     };
-  }, []);
+  }, [snapshot?.applicationStatus]);
+
+  useEffect(() => {
+    if (
+      !snapshot?.applicationId ||
+      snapshot.applicationStatus !== "INFO_REQUIRED"
+    ) {
+      return;
+    }
+
+    const draftKey = `autohire:supplemental:${snapshot.applicationId}`;
+    const subscription = watch((values) => {
+      const savedAt = writeDraft(draftKey, values as SupplementalFormValues);
+      setSupplementalDraftSavedAt(savedAt);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [snapshot?.applicationId, snapshot?.applicationStatus, watch]);
+
+  useEffect(() => {
+    if (!snapshot?.applicationId || !editableSecondarySnapshot?.runId) {
+      return;
+    }
+
+    const values = Object.fromEntries(
+      secondaryDraftFields.map((field) => [
+        field.fieldKey,
+        {
+          editedValue: field.editedValue,
+          hasOverride: field.hasOverride,
+        },
+      ]),
+    );
+    const draftKey = `autohire:secondary:${snapshot.applicationId}:${editableSecondarySnapshot.runId}`;
+    const timer = window.setTimeout(() => {
+      writeDraft(draftKey, values);
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    editableSecondarySnapshot?.runId,
+    secondaryDraftFields,
+    snapshot?.applicationId,
+  ]);
 
   function onSubmit(values: SupplementalFormValues) {
-    if (!snapshot) {
+    if (!snapshot || isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
       return;
     }
 
@@ -916,6 +1183,7 @@ export default function ResultPage() {
         setStatusText(
           "The system is reanalyzing your resume with the supplemental information...",
         );
+        clearDraft(`autohire:supplemental:${snapshot.applicationId}`);
         await syncAnalysisProgress(snapshot.applicationId);
       } catch (nextError) {
         setError(
@@ -928,7 +1196,7 @@ export default function ResultPage() {
   }
 
   function onTriggerSecondaryAnalysis() {
-    if (!snapshot) {
+    if (!snapshot || isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
       return;
     }
 
@@ -939,13 +1207,11 @@ export default function ResultPage() {
         const triggered = await triggerSecondaryAnalysis(
           snapshot.applicationId,
         );
-        const {
-          nextDetailedSnapshot,
-          refreshedSession,
-        } = await fetchDetailedAnalysisState(
-          snapshot.applicationId,
-          triggered.runId,
-        );
+        const { nextDetailedSnapshot, refreshedSession } =
+          await fetchDetailedAnalysisState(
+            snapshot.applicationId,
+            triggered.runId,
+          );
 
         setEditableSecondarySnapshot(nextDetailedSnapshot);
         setSecondaryDraftFields(nextDetailedSnapshot.fields);
@@ -961,6 +1227,9 @@ export default function ResultPage() {
   }
 
   function updateSecondaryDraftField(no: number, value: string) {
+    if (snapshot && isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
+      return;
+    }
     setSecondarySaveMessage(null);
     setSecondaryDraftFields((current) =>
       current.map((field) =>
@@ -975,6 +1244,9 @@ export default function ResultPage() {
   }
 
   function resetSecondaryDraftField(no: number) {
+    if (snapshot && isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
+      return;
+    }
     setSecondarySaveMessage(null);
     setSecondaryDraftFields((current) =>
       current.map((field) =>
@@ -991,7 +1263,11 @@ export default function ResultPage() {
   function onSaveSecondaryFields() {
     const runId = editableSecondarySnapshot?.runId;
 
-    if (!snapshot || !runId) {
+    if (
+      !snapshot ||
+      !runId ||
+      isFlowStepReadOnly(snapshot.applicationStatus, 2)
+    ) {
       return;
     }
 
@@ -1028,6 +1304,7 @@ export default function ResultPage() {
             "The detailed analysis fields have been saved.",
           );
         });
+        clearDraft(`autohire:secondary:${snapshot.applicationId}:${runId}`);
 
         if (firstStillMissing) {
           document
@@ -1047,13 +1324,18 @@ export default function ResultPage() {
   }
 
   function onContinueToMaterials() {
-    if (!snapshot) {
+    if (!snapshot || isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
       return;
     }
 
     startMaterialsTransition(async () => {
       try {
         setSecondaryError(null);
+        if (editableSecondarySnapshot?.runId) {
+          clearDraft(
+            `autohire:secondary:${snapshot.applicationId}:${editableSecondarySnapshot.runId}`,
+          );
+        }
         await enterMaterialsStage(snapshot.applicationId);
         router.push("/apply/materials");
       } catch (nextError) {
@@ -1077,7 +1359,9 @@ export default function ResultPage() {
   );
   const isSecondaryRunning = Boolean(
     editableSecondarySnapshot &&
-    ["pending", "processing", "retrying"].includes(editableSecondarySnapshot.status),
+    ["pending", "processing", "retrying"].includes(
+      editableSecondarySnapshot.status,
+    ),
   );
   const secondaryHasUnsavedChanges =
     editableSecondarySnapshot?.fields.length === secondaryDraftFields.length &&
@@ -1138,6 +1422,8 @@ export default function ResultPage() {
   const secondaryMissingCount = secondaryDraftFields.filter(
     (field) => field.isMissing,
   ).length;
+  const missingFields = snapshot?.latestResult?.missingFields ?? [];
+  const hasMissingFields = missingFields.length > 0;
   const showDetailedAnalysisSection = Boolean(
     snapshot &&
     [
@@ -1149,16 +1435,64 @@ export default function ResultPage() {
   );
   const secondaryInputsDisabled = Boolean(
     !editableSecondarySnapshot ||
-      ["pending", "processing", "retrying"].includes(
-        editableSecondarySnapshot.status,
-      ),
+    ["pending", "processing", "retrying"].includes(
+      editableSecondarySnapshot.status,
+    ),
   );
-  const canContinueToMaterials = snapshot?.applicationStatus === "SECONDARY_REVIEW";
+  const canContinueToMaterials =
+    snapshot?.applicationStatus === "SECONDARY_REVIEW";
+  const isReadOnlyReview = snapshot
+    ? isFlowStepReadOnly(snapshot.applicationStatus, 2)
+    : false;
   const detailedStatusDescription =
-    editableSecondarySnapshot?.status && editableSecondarySnapshot.status !== "idle"
+    editableSecondarySnapshot?.status &&
+    editableSecondarySnapshot.status !== "idle"
       ? getSecondaryStatusMessage(editableSecondarySnapshot.status)
       : null;
+  const shouldShowDetailedResult = Boolean(
+    editableSecondarySnapshot &&
+    (editableSecondarySnapshot.status !== "idle" ||
+      editableSecondarySnapshot.fields.length > 0 ||
+      editableSecondarySnapshot.runId),
+  );
+  const shouldShowJumpToBottom =
+    showJumpToBottom &&
+    (hasMissingFields || orderedSecondaryDraftFields.length > 6);
+  const isAnalyzingStage = Boolean(
+    snapshot &&
+    ["CV_ANALYZING", "REANALYZING", "SECONDARY_ANALYZING"].includes(
+      snapshot.applicationStatus,
+    ),
+  );
+  const statusDrivenResultStep =
+    snapshot &&
+    [
+      "INFO_REQUIRED",
+      "SECONDARY_ANALYZING",
+      "SECONDARY_REVIEW",
+      "SECONDARY_FAILED",
+    ].includes(snapshot.applicationStatus)
+      ? 3
+      : 2;
+  const currentResultStep =
+    requestedResultView &&
+    requestedResultView in RESULT_VIEW_TO_STEP &&
+    snapshot &&
+    RESULT_VIEW_TO_STEP[
+      requestedResultView as keyof typeof RESULT_VIEW_TO_STEP
+    ] <= getReachableFlowStep(snapshot.applicationStatus)
+      ? RESULT_VIEW_TO_STEP[
+          requestedResultView as keyof typeof RESULT_VIEW_TO_STEP
+        ]
+      : statusDrivenResultStep;
 
+  useEffect(() => {
+    if (!requestedResultView) {
+      return;
+    }
+
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [requestedResultView]);
   const headerSummary = useMemo(() => {
     if (!snapshot) {
       return "The result page explains the current review state, surfaces recognized information, and provides the next appropriate action.";
@@ -1188,16 +1522,24 @@ export default function ResultPage() {
   return (
     <PageFrame>
       <PageShell
-        eyebrow="Eligibility Review"
-        title="Review the current assessment and continue with the appropriate next step."
+        eyebrow={`Step ${currentResultStep + 1}`}
+        title={
+          currentResultStep === 2
+            ? "Track the AI review and wait for the screening outcome."
+            : "Provide the remaining information needed to complete the review."
+        }
         description={headerSummary}
-        steps={APPLICATION_FLOW_STEPS}
-        currentStep={2}
+        steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
+        currentStep={currentResultStep}
+        stepIndexing="zero"
+        stepLinks={FLOW_STEP_LINKS}
+        maxAccessibleStep={
+          snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 2
+        }
         headerSlot={
           <SectionCard
             title="Review outcomes"
-            description="The system can keep processing, request missing structured fields, confirm initial eligibility, and then require detailed analysis before materials."
-            className="bg-white/90"
+            description="The current page hosts both the screening state and the structured follow-up stage."
           >
             <div className="space-y-3">
               <DetailCard
@@ -1219,7 +1561,18 @@ export default function ResultPage() {
           </SectionCard>
         }
       >
-        <div className="space-y-6">
+        <div className="space-y-4">
+          {currentResultStep === 3 ? (
+            <MobileSupportCard href={mailtoHref} />
+          ) : null}
+
+          {isReadOnlyReview ? (
+            <StatusBanner
+              tone="neutral"
+              title="Reference-only review mode"
+              description="You are viewing a previous stage. Field edits and status-changing actions are disabled."
+            />
+          ) : null}
           {isLoading ? (
             <StatusBanner
               tone="loading"
@@ -1238,7 +1591,29 @@ export default function ResultPage() {
 
           {snapshot ? (
             <>
-              {getInitialBanner(snapshot, statusText, detailedStatusDescription)}
+              {isAnalyzingStage ? (
+                <AnalysisProgressPanel
+                  title={
+                    snapshot.applicationStatus === "SECONDARY_ANALYZING"
+                      ? "Detailed analysis is running"
+                      : "AI review is running"
+                  }
+                  description={
+                    snapshot.applicationStatus === "SECONDARY_ANALYZING"
+                      ? "The system is preparing the editable expert-facing review before the final submission stage opens."
+                      : "The current CV is being screened and normalized into the structured review model."
+                  }
+                  message={
+                    ANALYSIS_MESSAGES[analysisMessageIndex] ?? statusText
+                  }
+                />
+              ) : (
+                getInitialBanner(
+                  snapshot,
+                  statusText,
+                  detailedStatusDescription,
+                )
+              )}
 
               {snapshot.latestResult?.reasonText &&
               snapshot.applicationStatus !== "INELIGIBLE" ? (
@@ -1266,26 +1641,75 @@ export default function ResultPage() {
                 </SectionCard>
               ) : null}
 
-              {snapshot.applicationStatus === "INFO_REQUIRED" ? (
+              {hasMissingFields ? (
                 <SectionCard
-                  title="Complete the missing information"
-                  description="Please add the structured information below, then submit it for another review pass."
+                  title="Additional information requested"
+                  description={
+                    snapshot.applicationStatus === "INFO_REQUIRED"
+                      ? "AI-prefilled entries are shaded softly. Only blank fields require your manual input before you resubmit the review."
+                      : "These fields were previously marked as missing and remain visible here for reference."
+                  }
                 >
                   <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+                    {snapshot.applicationStatus === "INFO_REQUIRED" ? (
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <DetailCard
+                          eyebrow="Action"
+                          title="Complete only missing items"
+                          description="There is no need to repeat information that the system already recognized with confidence."
+                        />
+                        <DetailCard
+                          eyebrow="Draft"
+                          title={
+                            supplementalDraftSavedAt
+                              ? "Local draft saved"
+                              : "Draft saves automatically"
+                          }
+                          description={
+                            supplementalDraftSavedAt
+                              ? `Saved ${new Date(
+                                  supplementalDraftSavedAt,
+                                ).toLocaleString("en-US", {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })}.`
+                              : "Updates are cached locally in this browser while you type."
+                          }
+                        />
+                        <DetailCard
+                          eyebrow="Submission"
+                          title="Another review pass starts immediately"
+                          description="After you submit these fields, the AI review refreshes automatically on this page."
+                        />
+                      </div>
+                    ) : null}
                     <div className="grid gap-4">
-                      {snapshot.latestResult?.missingFields.map((field) =>
-                        renderSupplementalField(field, register, watch, getValues),
+                      {missingFields.map((field) =>
+                        renderSupplementalField(
+                          field,
+                          register,
+                          watch,
+                          getValues,
+                        ),
                       )}
                     </div>
-                    <ActionButton
-                      type="submit"
-                      disabled={isSubmittingSupplemental}
-                      className="w-full sm:w-auto"
-                    >
-                      {isSubmittingSupplemental
-                        ? "Submitting and Reanalyzing..."
-                        : "Submit and Reanalyze"}
-                    </ActionButton>
+                    {snapshot.applicationStatus === "INFO_REQUIRED" ? (
+                      <ActionButton
+                        type="submit"
+                        disabled={isSubmittingSupplemental || isReadOnlyReview}
+                        className="w-full sm:w-auto"
+                      >
+                        {isSubmittingSupplemental
+                          ? "Submitting and Reanalyzing..."
+                          : "Submit Additional Information"}
+                      </ActionButton>
+                    ) : (
+                      <StatusBanner
+                        tone="neutral"
+                        title="Read-only field context"
+                        description="The missing-field set is displayed for reference. Editing is available only when the workflow returns to the information-required state."
+                      />
+                    )}
                   </form>
                 </SectionCard>
               ) : null}
@@ -1303,23 +1727,28 @@ export default function ResultPage() {
               {showDetailedAnalysisSection ? (
                 <SectionCard
                   title="Detailed analysis"
-                  description="This step prepares the detailed expert-facing review. Supporting materials remain locked until the detailed analysis has completed."
+                  description="This section stays subordinate to the immediate action above. It unlocks the final submission page only after the detailed review is ready."
                 >
                   <div className="flex flex-wrap gap-3">
                     {canTriggerSecondaryAnalysis ? (
                       <ActionButton
                         variant="secondary"
                         onClick={onTriggerSecondaryAnalysis}
-                        disabled={isStartingSecondary || isSecondaryRunning}
+                        disabled={
+                          isStartingSecondary ||
+                          isSecondaryRunning ||
+                          isReadOnlyReview
+                        }
                       >
                         {isStartingSecondary || isSecondaryRunning
                           ? "Running Detailed Analysis..."
-                          : "Run Detailed Analysis"}
+                          : "Start Detailed Analysis"}
                       </ActionButton>
                     ) : null}
                     {secondaryRunAlreadyStarted ? (
-                      <span className="inline-flex min-h-11 items-center rounded-full border border-stone-300 bg-stone-50 px-4 py-2 text-sm text-stone-600">
-                        Detailed analysis has already been started for this application.
+                      <span className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-600">
+                        Detailed analysis has already been started for this
+                        application.
                       </span>
                     ) : null}
                   </div>
@@ -1334,8 +1763,7 @@ export default function ResultPage() {
                 />
               ) : null}
 
-              {editableSecondarySnapshot &&
-              editableSecondarySnapshot.status !== "idle" ? (
+              {shouldShowDetailedResult ? (
                 <SectionCard
                   title="Detailed analysis result"
                   description={getSecondaryStatusMessage(
@@ -1344,7 +1772,7 @@ export default function ResultPage() {
                   action={
                     <div className="flex flex-wrap items-center gap-3">
                       {editableSecondarySnapshot.runId ? (
-                        <span className="inline-flex items-center rounded-full border border-stone-300 bg-stone-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-stone-600 uppercase">
+                        <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold tracking-[0.12em] text-slate-600 uppercase">
                           Run #{editableSecondarySnapshot.runId}
                         </span>
                       ) : null}
@@ -1352,11 +1780,11 @@ export default function ResultPage() {
                         <ActionButton
                           variant="success"
                           onClick={onContinueToMaterials}
-                          disabled={isEnteringMaterials}
+                          disabled={isEnteringMaterials || isReadOnlyReview}
                         >
                           {isEnteringMaterials
-                            ? "Opening Materials..."
-                            : "Continue to Materials"}
+                            ? "Opening Final Step..."
+                            : "Next: Submission Complete"}
                         </ActionButton>
                       ) : null}
                     </div>
@@ -1372,7 +1800,7 @@ export default function ResultPage() {
                     ) : null}
 
                     {editableSecondarySnapshot.run ? (
-                      <div className="rounded-[1.4rem] border border-stone-200 bg-stone-50/80 p-4 text-sm text-stone-700">
+                      <div className="rounded-md border border-slate-300 bg-slate-100 p-3.5 text-sm text-slate-700">
                         <p>
                           Status:{" "}
                           {editableSecondarySnapshot.run.status ??
@@ -1385,14 +1813,17 @@ export default function ResultPage() {
                             ? ` / ${editableSecondarySnapshot.run.totalPrompts}`
                             : ""}
                         </p>
-                        {editableSecondarySnapshot.run.failedPromptIds.length > 0 ? (
+                        {editableSecondarySnapshot.run.failedPromptIds.length >
+                        0 ? (
                           <p className="mt-1">
                             Failed prompt IDs:{" "}
-                            {editableSecondarySnapshot.run.failedPromptIds.join(", ")}
+                            {editableSecondarySnapshot.run.failedPromptIds.join(
+                              ", ",
+                            )}
                           </p>
                         ) : null}
                         {editableSecondarySnapshot.run.errorMessage ? (
-                          <p className="mt-1 text-rose-700">
+                          <p className="mt-1 text-slate-700">
                             {editableSecondarySnapshot.run.errorMessage}
                           </p>
                         ) : null}
@@ -1400,7 +1831,7 @@ export default function ResultPage() {
                     ) : null}
 
                     {editableSecondarySnapshot.errorMessage ? (
-                      <p className="text-sm text-rose-700">
+                      <p className="text-sm text-slate-700">
                         {editableSecondarySnapshot.errorMessage}
                       </p>
                     ) : null}
@@ -1443,7 +1874,8 @@ export default function ResultPage() {
                           {orderedSecondaryDraftFields.map((field) =>
                             renderEditableSecondaryField({
                               field,
-                              disabled: secondaryInputsDisabled,
+                              disabled:
+                                secondaryInputsDisabled || isReadOnlyReview,
                               onChange: updateSecondaryDraftField,
                               onReset: resetSecondaryDraftField,
                             }),
@@ -1453,6 +1885,7 @@ export default function ResultPage() {
                           <ActionButton
                             type="submit"
                             disabled={
+                              isReadOnlyReview ||
                               secondaryInputsDisabled ||
                               !secondaryHasUnsavedChanges ||
                               isSavingSecondary
@@ -1462,22 +1895,37 @@ export default function ResultPage() {
                               ? "Saving Detailed Analysis Fields..."
                               : "Save Detailed Analysis Fields"}
                           </ActionButton>
-                          <span className="inline-flex min-h-11 items-center rounded-full border border-stone-200 bg-stone-50 px-4 py-2 text-sm text-stone-600">
-                            Reset to Model Value clears the manual override for that field.
+                          <span className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-600">
+                            Reset to Model Value clears the manual override for
+                            that field.
                           </span>
                         </div>
                       </form>
                     ) : editableSecondarySnapshot.status === "completed" ||
-                      editableSecondarySnapshot.status === "completed_partial" ? (
-                      <p className="text-sm leading-7 text-stone-600">
-                        The detailed analysis completed, but no editable expert-facing fields were prepared.
+                      editableSecondarySnapshot.status ===
+                        "completed_partial" ? (
+                      <p className="text-sm leading-6 text-slate-600">
+                        The detailed analysis completed, but no editable
+                        expert-facing fields were prepared.
                       </p>
                     ) : (
-                      <div className="rounded-[1.4rem] border border-dashed border-stone-300 bg-stone-50/70 p-4 text-sm leading-7 text-stone-600">
-                        The detailed analysis is still preparing the editable field set. This page will update automatically.
+                      <div className="rounded-md border border-dashed border-slate-400 bg-slate-100 p-3.5 text-sm leading-6 text-slate-600">
+                        The detailed analysis is still preparing the editable
+                        field set. This page will update automatically.
                       </div>
                     )}
                   </div>
+                </SectionCard>
+              ) : !isLoading && !error ? (
+                <SectionCard
+                  title="Detailed analysis result"
+                  description="No detailed analysis fields are currently available for this application state."
+                >
+                  <StatusBanner
+                    tone="neutral"
+                    title="No field data to display yet"
+                    description="If detailed analysis has not started, run it first. If this page should already include field data, refresh the session or reopen the workflow from the previous stage."
+                  />
                 </SectionCard>
               ) : null}
             </>
@@ -1485,10 +1933,10 @@ export default function ResultPage() {
         </div>
       </PageShell>
 
-      {showJumpToBottom ? (
+      {shouldShowJumpToBottom ? (
         <button
           type="button"
-          className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-stone-300 bg-white/95 px-5 py-3 text-sm font-semibold text-stone-800 shadow-[0_12px_40px_rgba(15,23,42,0.12)] backdrop-blur-sm transition hover:border-teal-700/35 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40"
+          className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-md border border-slate-300 bg-white/95 px-4 py-2.5 text-sm font-semibold text-[#0A192F] shadow-[0_10px_24px_rgba(10,25,47,0.14)] backdrop-blur-sm transition hover:border-[#166534] hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-[#22C55E]/35 focus-visible:outline-none"
           onClick={() => {
             window.scrollTo({
               top: document.documentElement.scrollHeight,
@@ -1496,7 +1944,7 @@ export default function ResultPage() {
             });
           }}
         >
-          <ChevronsDown className="h-4 w-4 text-teal-800" aria-hidden />
+          <ChevronsDown className="h-4 w-4 text-[#166534]" aria-hidden />
           Jump to bottom
         </button>
       ) : null}

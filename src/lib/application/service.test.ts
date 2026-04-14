@@ -146,4 +146,41 @@ describe("secondary analysis editable service flow", () => {
       code: "SUBMISSION_STAGE_NOT_READY",
     } satisfies Partial<ApplicationServiceError>);
   });
+
+  it("returns all nine material buckets after entering the materials stage", async () => {
+    const started = await startSecondaryAnalysis("app_secondary");
+    await getEditableSecondaryAnalysisSnapshot({
+      applicationId: "app_secondary",
+      runId: started.runId,
+    });
+    await enterMaterialsStage("app_secondary");
+
+    const materials = await getMaterialsByCategory("app_secondary");
+
+    expect(Object.keys(materials).sort()).toEqual([
+      "book",
+      "conference",
+      "education",
+      "employment",
+      "honor",
+      "identity",
+      "paper",
+      "patent",
+      "project",
+    ]);
+  });
+
+  it("requires identity, doctoral education, and employment evidence before submission", async () => {
+    const started = await startSecondaryAnalysis("app_secondary");
+    await getEditableSecondaryAnalysisSnapshot({
+      applicationId: "app_secondary",
+      runId: started.runId,
+    });
+    await enterMaterialsStage("app_secondary");
+
+    await expect(submitApplication("app_secondary")).rejects.toMatchObject({
+      status: 409,
+      code: "MATERIALS_MINIMUM_REQUIREMENTS_NOT_MET",
+    } satisfies Partial<ApplicationServiceError>);
+  });
 });

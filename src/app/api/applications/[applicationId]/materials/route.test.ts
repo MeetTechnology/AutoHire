@@ -74,6 +74,44 @@ describe("materials stage routes", () => {
     expect(payload.nextRoute).toBe("/apply/materials");
   });
 
+  it("returns nine material categories after entering materials stage", async () => {
+    const started = await startSecondaryAnalysis("app_secondary");
+    await getEditableSecondaryAnalysisSnapshot({
+      applicationId: "app_secondary",
+      runId: started.runId,
+    });
+
+    await enterMaterialsRoute(
+      buildAuthorizedRequest("http://localhost/api/applications/app_secondary/materials/enter", {
+        method: "POST",
+      }),
+      {
+        params: Promise.resolve({ applicationId: "app_secondary" }),
+      },
+    );
+
+    const response = await getMaterialsRoute(
+      buildAuthorizedRequest("http://localhost/api/applications/app_secondary/materials"),
+      {
+        params: Promise.resolve({ applicationId: "app_secondary" }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(Object.keys(payload).sort()).toEqual([
+      "book",
+      "conference",
+      "education",
+      "employment",
+      "honor",
+      "identity",
+      "paper",
+      "patent",
+      "project",
+    ]);
+  });
+
   it("blocks final submission before the materials stage starts", async () => {
     const response = await submitRoute(
       buildAuthorizedRequest("http://localhost/api/applications/app_secondary/submit", {
