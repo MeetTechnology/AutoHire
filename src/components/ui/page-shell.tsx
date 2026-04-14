@@ -145,7 +145,7 @@ export function PageFrame({ children, maxWidth, className }: PageFrameProps) {
     <MotionConfig transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}>
       <main
         className={cn(
-          "min-h-screen w-full px-3 py-3 text-[color:var(--foreground)] sm:px-4 sm:py-4 lg:px-5 lg:py-5",
+          "min-h-screen w-full px-3 pb-3 text-[color:var(--foreground)] sm:px-4 sm:pb-4 lg:px-5 lg:pb-5",
           maxWidth
             ? cn("mx-auto", MAX_WIDTH_CLASS[maxWidth])
             : "mx-auto max-w-[1180px]",
@@ -182,14 +182,20 @@ export function PageShell({
     >
       <div className="space-y-4">
         {steps?.length ? (
-          <div className="sticky top-0 z-40 -mx-3 border-b border-[color:var(--border)] bg-[color:var(--background-elevated)]/96 px-3 py-3 backdrop-blur sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5">
-            <FlowArrowStepper
-              steps={steps}
-              currentStep={currentStep ?? (stepIndexing === "zero" ? 0 : 1)}
-              stepIndexing={stepIndexing}
-              stepLinks={stepLinks}
-              maxAccessibleStep={maxAccessibleStep}
-            />
+          <div className="sticky top-0 z-40 -mt-3 sm:-mt-4 lg:-mt-5">
+            <div className="relative left-1/2 w-screen -translate-x-1/2 border-b border-[color:var(--border)] bg-[color:var(--background-elevated)]/98 shadow-[0_6px_18px_rgba(10,25,47,0.04)] backdrop-blur">
+              <div className="px-4 py-2 sm:px-6 sm:py-2.5 lg:px-8">
+                <FlowArrowStepper
+                  steps={steps}
+                  currentStep={
+                    currentStep ?? (stepIndexing === "zero" ? 0 : 1)
+                  }
+                  stepIndexing={stepIndexing}
+                  stepLinks={stepLinks}
+                  maxAccessibleStep={maxAccessibleStep}
+                />
+              </div>
+            </div>
           </div>
         ) : null}
 
@@ -279,7 +285,7 @@ function FlowArrowStepper({
       role="list"
       aria-label="Application progress"
     >
-      <div className="flex min-w-[50rem] items-start">
+      <div className="flex min-w-[40rem] items-center">
         {steps.map((step, index) => {
           const displayStepNumber =
             stepIndexing === "zero" ? index + 1 : index + 1;
@@ -299,7 +305,7 @@ function FlowArrowStepper({
                   isCompleted &&
                     "border-[color:var(--accent)] bg-[color:var(--accent)] text-white",
                   isActive &&
-                    "border-[3px] border-[color:var(--primary)] bg-[rgba(34,197,94,0.12)] text-[color:var(--primary)]",
+                    "border-[color:var(--primary)] bg-[color:var(--background-elevated)] text-[color:var(--primary)] shadow-[inset_0_0_0_2px_rgba(10,25,47,0.08)]",
                   !isCompleted &&
                     !isActive &&
                     "border-[color:var(--border-strong)] bg-white text-slate-500",
@@ -313,7 +319,7 @@ function FlowArrowStepper({
               </span>
               <p
                 className={cn(
-                  "mt-2 max-w-[8.2rem] text-[0.8rem] leading-5 font-semibold",
+                  "mt-2 max-w-[8.6rem] text-[0.8rem] leading-5 font-semibold",
                   isCompleted && "text-[color:var(--accent)]",
                   isActive && "text-[color:var(--primary)]",
                   !isCompleted && !isActive && "text-slate-500",
@@ -321,11 +327,6 @@ function FlowArrowStepper({
               >
                 {step.label}
               </p>
-              {step.hint ? (
-                <p className="mt-1 max-w-[9rem] text-[0.68rem] leading-4 text-slate-500">
-                  {step.hint}
-                </p>
-              ) : null}
             </div>
           );
 
@@ -375,7 +376,7 @@ function FlowArrowStepper({
               {!isLast ? (
                 <div
                   className={cn(
-                    "mx-2 mt-4 h-[2px] flex-1 rounded-full",
+                    "mx-2 mt-[18px] h-[2px] flex-1 rounded-full",
                     isCompleted
                       ? "bg-[color:var(--accent)]"
                       : "bg-[color:var(--border)]",
