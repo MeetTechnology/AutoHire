@@ -530,8 +530,12 @@ export function DisclosureSection({
         className,
       )}
       initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
-      whileInView={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
+      animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={
+        shouldReduceMotion
+          ? undefined
+          : { duration: 0.18, ease: [0.22, 1, 0.36, 1] }
+      }
     >
       <button
         type="button"
