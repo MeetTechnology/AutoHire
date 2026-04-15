@@ -49,6 +49,13 @@ import {
   writeDraft,
 } from "@/features/application/draft-storage";
 import {
+  getDisplayedProgressRatio,
+  getPrimaryStageMessage,
+  getSecondaryStageMessage,
+  sanitizeProgressDisplayText,
+  shouldShowApiProgressSecondary,
+} from "@/features/application/analysis-progress-model";
+import {
   buildApplyFlowStepLinks,
   canAccessFlowStep,
   getReachableFlowStep,
@@ -64,13 +71,19 @@ import type {
 import { cn } from "@/lib/utils";
 
 type SupplementalFormValues = Record<string, string>;
-const ANALYSIS_MESSAGES = [
-  "Analyzing educational background...",
-  "Matching project profile...",
-  "Checking research direction...",
-  "Normalizing structured profile fields...",
-  "Syncing the latest review state...",
+
+const ANALYZING_STATUSES = [
+  "CV_ANALYZING",
+  "REANALYZING",
+  "SECONDARY_ANALYZING",
 ] as const;
+
+function isAnalyzingApplicationStatus(
+  value: string,
+): value is (typeof ANALYZING_STATUSES)[number] {
+  return (ANALYZING_STATUSES as readonly string[]).includes(value);
+}
+
 const RESULT_VIEW_TO_STEP = {
   review: 2,
   additional: 3,
@@ -531,12 +544,21 @@ function renderEditableSecondaryField(input: {
 function AnalysisProgressPanel({
   title,
   description,
-  message,
+  primaryMessage,
+  secondaryMessage,
+  progressRatio,
+  ariaValueText,
 }: {
   title: string;
   description: string;
-  message: string;
+  primaryMessage: string;
+  secondaryMessage?: string | null;
+  progressRatio: number;
+  ariaValueText: string;
 }) {
+  const clamped = Math.min(1, Math.max(0, progressRatio));
+  const widthPercent = `${Math.round(clamped * 1000) / 10}%`;
+
   return (
     <SectionCard className="overflow-hidden">
       <div className="mx-auto max-w-2xl text-center">
@@ -550,12 +572,28 @@ function AnalysisProgressPanel({
           {description}
         </p>
         <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 px-4 py-4">
-          <div className="h-2 overflow-hidden rounded-full bg-white">
-            <div className="h-full w-3/5 rounded-full bg-[color:var(--primary)]" />
+          {/* Unmount this panel when analysis ends—no brief 100% flash before result content. */}
+          <div
+            className="h-2 overflow-hidden rounded-full bg-white"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(clamped * 100)}
+            aria-valuetext={ariaValueText}
+          >
+            <div
+              className="h-full rounded-full bg-[color:var(--primary)] transition-[width] duration-150 ease-out"
+              style={{ width: widthPercent }}
+            />
           </div>
           <p className="mt-3 text-sm font-medium text-[color:var(--primary)]">
-            {message}
+            {primaryMessage}
           </p>
+          {secondaryMessage ? (
+            <p className="mt-2 text-xs leading-5 text-[color:var(--foreground-soft)]">
+              {secondaryMessage}
+            </p>
+          ) : null}
         </div>
       </div>
     </SectionCard>
@@ -739,7 +777,14 @@ function ResultPage() {
   const [isSavingSecondary, startSecondarySaveTransition] = useTransition();
   const [isEnteringMaterials, startMaterialsTransition] = useTransition();
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  const [analysisMessageIndex, setAnalysisMessageIndex] = useState(0);
+  const [analysisSegment, setAnalysisSegment] = useState<{
+    segmentKey: string;
+    startedAt: number;
+  } | null>(null);
+  const [analysisUiTick, setAnalysisUiTick] = useState(0);
+  const [analysisJobStatus, setAnalysisJobStatus] = useState<
+    string | undefined
+  >(undefined);
   const [supplementalDraftSavedAt, setSupplementalDraftSavedAt] = useState<
     string | null
   >(null);
@@ -784,6 +829,7 @@ function ResultPage() {
   async function syncAnalysisProgress(applicationId: string) {
     const status = await fetchAnalysisStatus(applicationId);
     setStatusText(status.progressMessage);
+    setAnalysisJobStatus(status.jobStatus);
 
     const refreshedSession = await fetchSession();
     setSnapshot(refreshedSession);
@@ -846,6 +892,37 @@ function ResultPage() {
   }, [router]);
 
   useEffect(() => {
+    const status = snapshot?.applicationStatus;
+    if (!status || !isAnalyzingApplicationStatus(status)) {
+      setAnalysisSegment(null);
+      return;
+    }
+
+    setAnalysisSegment((prev) => {
+      if (prev?.segmentKey === status) {
+        return prev;
+      }
+
+      return { segmentKey: status, startedAt: Date.now() };
+    });
+  }, [snapshot?.applicationStatus]);
+
+  useEffect(() => {
+    const status = snapshot?.applicationStatus;
+    if (!status || !isAnalyzingApplicationStatus(status)) {
+      return;
+    }
+
+    const id = window.setInterval(() => {
+      setAnalysisUiTick((n) => n + 1);
+    }, 120);
+
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [snapshot?.applicationStatus]);
+
+  useEffect(() => {
     if (
       !snapshot ||
       !["CV_ANALYZING", "REANALYZING", "SECONDARY_ANALYZING"].includes(
@@ -865,6 +942,7 @@ function ResultPage() {
         }
 
         setStatusText(status.progressMessage);
+        setAnalysisJobStatus(status.jobStatus);
 
         if (status.jobStatus === "FAILED") {
           const refreshedSession = await fetchSession();
@@ -903,27 +981,6 @@ function ResultPage() {
 
     return () => {
       active = false;
-      window.clearInterval(timer);
-    };
-  }, [snapshot]);
-
-  useEffect(() => {
-    if (
-      !snapshot ||
-      !["CV_ANALYZING", "REANALYZING", "SECONDARY_ANALYZING"].includes(
-        snapshot.applicationStatus,
-      )
-    ) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setAnalysisMessageIndex(
-        (current) => (current + 1) % ANALYSIS_MESSAGES.length,
-      );
-    }, 1800);
-
-    return () => {
       window.clearInterval(timer);
     };
   }, [snapshot]);
@@ -1468,6 +1525,45 @@ function ResultPage() {
     ),
   );
 
+  const analysisProgressView = useMemo(() => {
+    if (!snapshot || !analysisSegment) {
+      return null;
+    }
+
+    if (!isAnalyzingApplicationStatus(snapshot.applicationStatus)) {
+      return null;
+    }
+
+    if (analysisSegment.segmentKey !== snapshot.applicationStatus) {
+      return null;
+    }
+
+    void analysisUiTick;
+    const elapsed = Date.now() - analysisSegment.startedAt;
+    const progressRatio = getDisplayedProgressRatio(elapsed);
+    const primaryMessage =
+      snapshot.applicationStatus === "SECONDARY_ANALYZING"
+        ? getSecondaryStageMessage(elapsed)
+        : getPrimaryStageMessage(elapsed);
+
+    const sanitizedApi = sanitizeProgressDisplayText(statusText);
+    const showApiSecondary = shouldShowApiProgressSecondary(
+      analysisJobStatus,
+      sanitizedApi,
+    );
+    const secondaryMessage =
+      showApiSecondary && sanitizedApi.length > 0 ? sanitizedApi : null;
+
+    const ariaValueText = `Review in progress; about ${Math.round(progressRatio * 100)} percent along the expected wait.`;
+
+    return {
+      progressRatio,
+      primaryMessage,
+      secondaryMessage,
+      ariaValueText,
+    };
+  }, [snapshot, analysisSegment, statusText, analysisJobStatus, analysisUiTick]);
+
   useEffect(() => {
     if (!requestedResultView) {
       return;
@@ -1577,8 +1673,19 @@ function ResultPage() {
                       ? "The system is preparing the editable expert-facing review before the final submission stage opens."
                       : "The current CV is being screened and normalized into the structured review model."
                   }
-                  message={
-                    ANALYSIS_MESSAGES[analysisMessageIndex] ?? statusText
+                  progressRatio={analysisProgressView?.progressRatio ?? 0}
+                  primaryMessage={
+                    analysisProgressView?.primaryMessage ??
+                    (snapshot.applicationStatus === "SECONDARY_ANALYZING"
+                      ? getSecondaryStageMessage(0)
+                      : getPrimaryStageMessage(0))
+                  }
+                  secondaryMessage={
+                    analysisProgressView?.secondaryMessage ?? null
+                  }
+                  ariaValueText={
+                    analysisProgressView?.ariaValueText ??
+                    "Review in progress."
                   }
                 />
               ) : (
