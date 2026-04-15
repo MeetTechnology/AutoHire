@@ -55,6 +55,7 @@ import {
   isFlowStepReadOnly,
   resolveRouteFromStatus,
 } from "@/features/application/route";
+import type { ApplicationFlowStep } from "@/features/application/route";
 import type {
   ApplicationSnapshot,
   EditableSecondaryAnalysisSnapshot,
@@ -757,6 +758,29 @@ function ResultPage() {
 
   const requestedResultView = searchParams.get("view");
 
+  const statusDrivenResultStep: ApplicationFlowStep = !snapshot
+    ? 2
+    : [
+          "INFO_REQUIRED",
+          "SECONDARY_ANALYZING",
+          "SECONDARY_REVIEW",
+          "SECONDARY_FAILED",
+        ].includes(snapshot.applicationStatus)
+      ? 3
+      : 2;
+
+  const currentResultStep: ApplicationFlowStep =
+    requestedResultView &&
+    requestedResultView in RESULT_VIEW_TO_STEP &&
+    snapshot &&
+    RESULT_VIEW_TO_STEP[
+      requestedResultView as keyof typeof RESULT_VIEW_TO_STEP
+    ] <= getReachableFlowStep(snapshot.applicationStatus)
+      ? RESULT_VIEW_TO_STEP[
+          requestedResultView as keyof typeof RESULT_VIEW_TO_STEP
+        ]
+      : statusDrivenResultStep;
+
   async function syncAnalysisProgress(applicationId: string) {
     const status = await fetchAnalysisStatus(applicationId);
     setStatusText(status.progressMessage);
@@ -1128,7 +1152,10 @@ function ResultPage() {
   ]);
 
   function onSubmit(values: SupplementalFormValues) {
-    if (!snapshot || isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
+    if (
+      !snapshot ||
+      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
+    ) {
       return;
     }
 
@@ -1160,7 +1187,10 @@ function ResultPage() {
   }
 
   function onTriggerSecondaryAnalysis() {
-    if (!snapshot || isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
+    if (
+      !snapshot ||
+      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
+    ) {
       return;
     }
 
@@ -1191,7 +1221,10 @@ function ResultPage() {
   }
 
   function updateSecondaryDraftField(no: number, value: string) {
-    if (snapshot && isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
+    if (
+      snapshot &&
+      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
+    ) {
       return;
     }
     setSecondarySaveMessage(null);
@@ -1208,7 +1241,10 @@ function ResultPage() {
   }
 
   function resetSecondaryDraftField(no: number) {
-    if (snapshot && isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
+    if (
+      snapshot &&
+      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
+    ) {
       return;
     }
     setSecondarySaveMessage(null);
@@ -1230,7 +1266,7 @@ function ResultPage() {
     if (
       !snapshot ||
       !runId ||
-      isFlowStepReadOnly(snapshot.applicationStatus, 2)
+      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
     ) {
       return;
     }
@@ -1288,7 +1324,10 @@ function ResultPage() {
   }
 
   function onContinueToMaterials() {
-    if (!snapshot || isFlowStepReadOnly(snapshot.applicationStatus, 2)) {
+    if (
+      !snapshot ||
+      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
+    ) {
       return;
     }
 
@@ -1406,7 +1445,7 @@ function ResultPage() {
   const canContinueToMaterials =
     snapshot?.applicationStatus === "SECONDARY_REVIEW";
   const isReadOnlyReview = snapshot
-    ? isFlowStepReadOnly(snapshot.applicationStatus, 2)
+    ? isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
     : false;
   const detailedStatusDescription =
     editableSecondarySnapshot?.status &&
@@ -1428,27 +1467,6 @@ function ResultPage() {
       snapshot.applicationStatus,
     ),
   );
-  const statusDrivenResultStep =
-    snapshot &&
-    [
-      "INFO_REQUIRED",
-      "SECONDARY_ANALYZING",
-      "SECONDARY_REVIEW",
-      "SECONDARY_FAILED",
-    ].includes(snapshot.applicationStatus)
-      ? 3
-      : 2;
-  const currentResultStep =
-    requestedResultView &&
-    requestedResultView in RESULT_VIEW_TO_STEP &&
-    snapshot &&
-    RESULT_VIEW_TO_STEP[
-      requestedResultView as keyof typeof RESULT_VIEW_TO_STEP
-    ] <= getReachableFlowStep(snapshot.applicationStatus)
-      ? RESULT_VIEW_TO_STEP[
-          requestedResultView as keyof typeof RESULT_VIEW_TO_STEP
-        ]
-      : statusDrivenResultStep;
 
   useEffect(() => {
     if (!requestedResultView) {
