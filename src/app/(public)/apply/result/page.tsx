@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -711,7 +712,7 @@ function InitialAnalysisNotesSection({
   );
 }
 
-export default function ResultPage() {
+function ResultPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
@@ -1703,7 +1704,7 @@ export default function ResultPage() {
                 />
               ) : null}
 
-              {shouldShowDetailedResult ? (
+              {shouldShowDetailedResult && editableSecondarySnapshot ? (
                 <DisclosureSection
                   title="Detailed analysis result"
                   summary={getSecondaryStatusMessage(
@@ -1900,5 +1901,19 @@ export default function ResultPage() {
         </button>
       ) : null}
     </PageFrame>
+  );
+}
+
+export default function ResultPageWithSuspense() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-slate-600">
+          Loading application status…
+        </div>
+      }
+    >
+      <ResultPage />
+    </Suspense>
   );
 }
