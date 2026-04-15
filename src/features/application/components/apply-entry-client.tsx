@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -13,6 +13,7 @@ import {
 import { fetchSession, postIntroConfirm } from "@/features/application/client";
 import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
 import {
+  buildApplyFlowStepLinks,
   getReachableFlowStep,
   isFlowStepReadOnly,
   resolveRouteFromStatus,
@@ -49,13 +50,6 @@ const PROCESS = [
   "Submission Complete",
 ] as const;
 const APPLICATION_PERIOD = "Application Period: Q2 2026";
-const FLOW_STEP_LINKS = [
-  "/apply",
-  "/apply/resume",
-  "/apply/result?view=review",
-  "/apply/result?view=additional",
-  "/apply/materials",
-] as const;
 const INTRO_SECTION_ITEMS = [
   {
     id: "overview",
@@ -94,6 +88,10 @@ const ABOUT_US =
 export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
+  const flowStepLinks = useMemo(
+    () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
+    [snapshot?.applicationStatus],
+  );
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
@@ -113,6 +111,10 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
           return;
         }
 
+        // Only skip the intro when opening an invite link with `t` / `token`
+        // while the application is already past INIT. Stepper navigation to
+        // `/apply` uses the session cookie without a URL token and must stay
+        // on the project introduction (read-only when progress > INIT).
         if (token && shouldRedirectFromApply(nextSnapshot)) {
           router.replace(
             resolveRouteFromStatus(nextSnapshot.applicationStatus),
@@ -269,7 +271,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
         currentStep={0}
         stepIndexing="zero"
-        stepLinks={FLOW_STEP_LINKS}
+        stepLinks={flowStepLinks}
         maxAccessibleStep={
           snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 0
         }

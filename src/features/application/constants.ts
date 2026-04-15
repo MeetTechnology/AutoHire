@@ -38,7 +38,7 @@ export const APPLICATION_FLOW_STEPS = [
   },
   {
     label: "Additional Information",
-    hint: "Complete only the fields the system still needs.",
+    hint: "Upload supporting materials by category (or complete missing fields on the review page when required).",
   },
   {
     label: "Submission Complete",

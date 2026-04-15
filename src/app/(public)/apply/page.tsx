@@ -1,7 +1,8 @@
 import { ApplyEntryClient } from "@/features/application/components/apply-entry-client";
+import { resolveInviteTokenFromNextSearchParams } from "@/features/application/invite-url-token";
 
 type ApplyEntryPageProps = {
-  searchParams: Promise<{ t?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export default async function ApplyEntryPage({
@@ -9,5 +10,9 @@ export default async function ApplyEntryPage({
 }: ApplyEntryPageProps) {
   const resolvedSearchParams = await searchParams;
 
-  return <ApplyEntryClient token={resolvedSearchParams.t ?? null} />;
+  return (
+    <ApplyEntryClient
+      token={resolveInviteTokenFromNextSearchParams(resolvedSearchParams)}
+    />
+  );
 }

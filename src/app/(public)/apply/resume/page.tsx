@@ -29,6 +29,7 @@ import {
   writeDraft,
 } from "@/features/application/draft-storage";
 import {
+  buildApplyFlowStepLinks,
   canAccessFlowStep,
   getReachableFlowStep,
   isFlowStepReadOnly,
@@ -37,14 +38,6 @@ import {
 import type { ApplicationSnapshot } from "@/features/application/types";
 
 const RESUME_DRAFT_KEY = "autohire:resume-draft";
-const FLOW_STEP_LINKS = [
-  "/apply",
-  "/apply/resume",
-  "/apply/result?view=review",
-  "/apply/result?view=additional",
-  "/apply/materials",
-] as const;
-
 type ResumeDraft = {
   passportFullName: string;
   email: string;
@@ -193,6 +186,10 @@ export default function ResumePage() {
   const isReadOnly = snapshot
     ? isFlowStepReadOnly(snapshot.applicationStatus, 1)
     : false;
+  const flowStepLinks = useMemo(
+    () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
+    [snapshot?.applicationStatus],
+  );
 
   return (
     <PageFrame>
@@ -204,7 +201,7 @@ export default function ResumePage() {
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
         currentStep={1}
         stepIndexing="zero"
-        stepLinks={FLOW_STEP_LINKS}
+        stepLinks={flowStepLinks}
         maxAccessibleStep={
           snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 1
         }

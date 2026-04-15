@@ -48,6 +48,7 @@ import {
   writeDraft,
 } from "@/features/application/draft-storage";
 import {
+  buildApplyFlowStepLinks,
   canAccessFlowStep,
   getReachableFlowStep,
   isFlowStepReadOnly,
@@ -72,13 +73,6 @@ const RESULT_VIEW_TO_STEP = {
   review: 2,
   additional: 3,
 } as const;
-const FLOW_STEP_LINKS = [
-  "/apply",
-  "/apply/resume",
-  "/apply/result?view=review",
-  "/apply/result?view=additional",
-  "/apply/materials",
-] as const;
 
 function getMailtoHref() {
   if (typeof window === "undefined") {
@@ -1487,6 +1481,10 @@ export default function ResultPage() {
         return "The result page explains the current review state, surfaces recognized information, and provides the next appropriate action.";
     }
   }, [snapshot]);
+  const flowStepLinks = useMemo(
+    () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
+    [snapshot?.applicationStatus],
+  );
   const supplementalDraftLabel = supplementalDraftSavedAt
     ? new Date(supplementalDraftSavedAt).toLocaleString("en-US", {
         dateStyle: "medium",
@@ -1513,7 +1511,7 @@ export default function ResultPage() {
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
         currentStep={currentResultStep}
         stepIndexing="zero"
-        stepLinks={FLOW_STEP_LINKS}
+        stepLinks={flowStepLinks}
         maxAccessibleStep={
           snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 2
         }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildApplyFlowStepLinks,
   getReachableFlowStep,
   resolveRouteFromStatus,
 } from "@/features/application/route";
@@ -31,5 +32,24 @@ describe("resolveRouteFromStatus", () => {
     expect(getReachableFlowStep("SECONDARY_REVIEW")).toBe(3);
     expect(getReachableFlowStep("MATERIALS_IN_PROGRESS")).toBe(4);
     expect(getReachableFlowStep("SUBMITTED")).toBe(4);
+  });
+});
+
+describe("buildApplyFlowStepLinks", () => {
+  it("sends Additional Information to materials except during INFO_REQUIRED", () => {
+    expect(buildApplyFlowStepLinks("INFO_REQUIRED")[3]).toBe(
+      "/apply/result?view=additional",
+    );
+    expect(buildApplyFlowStepLinks("SECONDARY_REVIEW")[3]).toBe(
+      "/apply/materials",
+    );
+    expect(buildApplyFlowStepLinks("MATERIALS_IN_PROGRESS")[3]).toBe(
+      "/apply/materials",
+    );
+    expect(buildApplyFlowStepLinks(null)[3]).toBe("/apply/materials");
+  });
+
+  it("keeps Submission Complete on the materials route", () => {
+    expect(buildApplyFlowStepLinks("ELIGIBLE")[4]).toBe("/apply/materials");
   });
 });

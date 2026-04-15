@@ -85,3 +85,26 @@ export function isFlowStepReadOnly(
 ) {
   return getReachableFlowStep(status) > step;
 }
+
+/**
+ * Stepper destinations for the five-step journey (with intro).
+ * Step 3 ("Additional Information") opens materials upload except while
+ * supplemental fields are required (`INFO_REQUIRED`), when it stays on the
+ * result page. Step 4 is always the materials route (submission / read-only).
+ */
+export function buildApplyFlowStepLinks(
+  applicationStatus?: ApplicationStatus | null,
+): readonly string[] {
+  const additionalInformationHref =
+    applicationStatus === "INFO_REQUIRED"
+      ? "/apply/result?view=additional"
+      : "/apply/materials";
+
+  return [
+    "/apply",
+    "/apply/resume",
+    "/apply/result?view=review",
+    additionalInformationHref,
+    "/apply/materials",
+  ];
+}

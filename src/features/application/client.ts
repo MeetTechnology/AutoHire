@@ -1,3 +1,4 @@
+import { readInviteTokenFromSearchParams } from "@/features/application/invite-url-token";
 import type {
   ApplicationSnapshot,
   EditableSecondaryAnalysisSnapshot,
@@ -28,9 +29,20 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function fetchSession(token?: string | null) {
-  const url = token
-    ? `/api/expert-session?token=${encodeURIComponent(token)}`
+export async function fetchSession(explicitToken?: string | null) {
+  const fromUrl =
+    typeof window !== "undefined"
+      ? readInviteTokenFromSearchParams(
+          new URLSearchParams(window.location.search),
+        )
+      : null;
+
+  const merged =
+    (fromUrl && fromUrl.length > 0 ? fromUrl : null) ??
+    (explicitToken?.trim() ? explicitToken.trim() : null);
+
+  const url = merged
+    ? `/api/expert-session?token=${encodeURIComponent(merged)}`
     : "/api/expert-session";
   const response = await fetch(url, {
     credentials: "include",

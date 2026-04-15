@@ -28,6 +28,7 @@ import {
 } from "@/features/application/client";
 import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
 import {
+  buildApplyFlowStepLinks,
   getReachableFlowStep,
   resolveRouteFromStatus,
 } from "@/features/application/route";
@@ -44,14 +45,6 @@ const REQUIRED_CATEGORIES: Array<{
   { key: "education", label: "Doctoral education evidence" },
   { key: "employment", label: "Latest employment evidence" },
 ];
-const FLOW_STEP_LINKS = [
-  "/apply",
-  "/apply/resume",
-  "/apply/result?view=review",
-  "/apply/result?view=additional",
-  "/apply/materials",
-] as const;
-
 function getMailtoHref() {
   if (typeof window === "undefined") {
     return undefined;
@@ -187,6 +180,7 @@ export default function MaterialsPage() {
         const response = await submitApplicationRequest(snapshot.applicationId);
         setSnapshot(await fetchSession());
         setNotice(response.message);
+        window.scrollTo({ top: 0, behavior: "smooth" });
       } catch (nextError) {
         setError(
           nextError instanceof Error ? nextError.message : "Submission failed.",
@@ -200,6 +194,11 @@ export default function MaterialsPage() {
   );
   const minimumRequirementsMet = missingRequiredCategories.length === 0;
   const isSubmitted = snapshot?.applicationStatus === "SUBMITTED";
+  const materialsFlowStepIndex = isSubmitted ? 4 : 3;
+  const flowStepLinks = useMemo(
+    () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
+    [snapshot?.applicationStatus],
+  );
   const uploadedCount = useMemo(
     () =>
       materials
@@ -214,22 +213,22 @@ export default function MaterialsPage() {
   return (
     <PageFrame>
       <PageShell
-        eyebrow="Step 5"
+        eyebrow={`Step ${materialsFlowStepIndex + 1}`}
         title={
           isSubmitted
-            ? "Your application package has been received."
-            : "Complete the final package and confirm submission."
+            ? "Submission complete"
+            : "Supporting materials"
         }
         description={
           isSubmitted
-            ? "The final page now acts as a compact tracking dashboard with your application number, expected review timing, and uploaded evidence summary."
-            : "Upload the remaining supporting materials, satisfy the minimum categories, and then convert the application into a completed review package."
+            ? "Your application package has been received. The page below keeps your application number, expected review timing, and an evidence summary for reference."
+            : "Upload supporting materials by category, satisfy the minimum requirements, and confirm submission. After you submit, this page moves to the Submission complete step on the same screen."
         }
         headerVariant="centered"
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
-        currentStep={4}
+        currentStep={materialsFlowStepIndex}
         stepIndexing="zero"
-        stepLinks={FLOW_STEP_LINKS}
+        stepLinks={flowStepLinks}
         maxAccessibleStep={
           snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 4
         }
@@ -252,17 +251,6 @@ export default function MaterialsPage() {
 
           {!isSubmitted ? <MobileSupportCard href={mailtoHref} /> : null}
 
-          {notice || isSubmitted ? (
-            <StatusBanner
-              tone="success"
-              title="Your materials have been received"
-              description={
-                notice ??
-                "We have received your materials and will respond within 1 to 3 business days."
-              }
-            />
-          ) : null}
-
           {error ? (
             <StatusBanner
               tone="danger"
@@ -281,8 +269,11 @@ export default function MaterialsPage() {
 
           {isSubmitted ? (
             <SectionCard
-              title="Application complete"
-              description="The flow has reached its final state. Uploaded evidence remains visible below for tracking and reference."
+              title="Submission complete"
+              description={
+                notice ??
+                "We have received your materials and will respond within 1 to 3 business days."
+              }
             >
               <div className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
                 <CheckCircle2
