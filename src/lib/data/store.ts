@@ -35,6 +35,7 @@ type ApplicationRecord = {
   submittedAt: Date | null;
   screeningPassportFullName: string | null;
   screeningContactEmail: string | null;
+  productInnovationDescription: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -185,6 +186,7 @@ function buildSampleStore(): PersistedStore {
         submittedAt: null,
         screeningPassportFullName: null,
         screeningContactEmail: null,
+        productInnovationDescription: null,
         createdAt: now,
         updatedAt: now,
       },
@@ -199,6 +201,7 @@ function buildSampleStore(): PersistedStore {
         submittedAt: null,
         screeningPassportFullName: null,
         screeningContactEmail: null,
+        productInnovationDescription: null,
         createdAt: now,
         updatedAt: now,
       },
@@ -213,6 +216,7 @@ function buildSampleStore(): PersistedStore {
         submittedAt: now,
         screeningPassportFullName: null,
         screeningContactEmail: null,
+        productInnovationDescription: null,
         createdAt: now,
         updatedAt: now,
       },
@@ -227,6 +231,7 @@ function buildSampleStore(): PersistedStore {
         submittedAt: null,
         screeningPassportFullName: null,
         screeningContactEmail: null,
+        productInnovationDescription: null,
         createdAt: now,
         updatedAt: now,
       },
@@ -469,6 +474,7 @@ export async function createApplication(input: {
       submittedAt: null,
       screeningPassportFullName: null,
       screeningContactEmail: null,
+      productInnovationDescription: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -510,6 +516,7 @@ export async function updateApplication(
     submittedAt?: Date | null;
     screeningPassportFullName?: string | null;
     screeningContactEmail?: string | null;
+    productInnovationDescription?: string | null;
   },
 ) {
   if (getRuntimeMode() === "memory") {
@@ -1093,6 +1100,8 @@ function toSnapshotFromMemory(
     latestAnalysisJobId: application.latestAnalysisJobId,
     screeningPassportFullName: application.screeningPassportFullName,
     screeningContactEmail: application.screeningContactEmail,
+    productInnovationDescription:
+      application.productInnovationDescription ?? null,
     resumeAnalysisStatus: latestAnalysisJob?.jobStatus ?? null,
     latestResumeFile: latestResumeFile
       ? {
@@ -1121,6 +1130,7 @@ function toSnapshotFromMemory(
       paper: countMaterialsByCategory(materials, "PAPER"),
       book: countMaterialsByCategory(materials, "BOOK"),
       conference: countMaterialsByCategory(materials, "CONFERENCE"),
+      product: countMaterialsByCategory(materials, "PRODUCT"),
     },
     submittedAt: application.submittedAt?.toISOString() ?? null,
   };
@@ -1172,6 +1182,8 @@ export async function buildApplicationSnapshot(
     screeningPassportFullName:
       applicationRow.screeningPassportFullName ?? null,
     screeningContactEmail: applicationRow.screeningContactEmail ?? null,
+    productInnovationDescription:
+      applicationRow.productInnovationDescription ?? null,
     resumeAnalysisStatus: latestAnalysisJob?.jobStatus ?? null,
     latestResumeFile: latestResumeFile
       ? {
@@ -1204,6 +1216,7 @@ export async function buildApplicationSnapshot(
       paper: countMaterialsByCategory(materials, "PAPER"),
       book: countMaterialsByCategory(materials, "BOOK"),
       conference: countMaterialsByCategory(materials, "CONFERENCE"),
+      product: countMaterialsByCategory(materials, "PRODUCT"),
     },
     submittedAt: application.submittedAt?.toISOString() ?? null,
   };

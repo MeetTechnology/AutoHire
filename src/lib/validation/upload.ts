@@ -1,7 +1,9 @@
+import type { MaterialCategory } from "@/features/application/types";
 import {
   ALLOWED_DOCUMENT_EXTENSIONS,
   MAX_ARCHIVE_SIZE_BYTES,
   MAX_FILE_SIZE_BYTES,
+  MAX_PRODUCT_MATERIAL_BYTES,
 } from "@/features/upload/constants";
 
 function hasAllowedExtension(fileName: string) {
@@ -18,7 +20,31 @@ function isArchive(fileName: string) {
   );
 }
 
-export function validateUpload(fileName: string, fileSize: number) {
+export function validateUpload(
+  fileName: string,
+  fileSize: number,
+  options?: { category?: MaterialCategory },
+) {
+  if (options?.category === "PRODUCT") {
+    if (fileSize > MAX_PRODUCT_MATERIAL_BYTES) {
+      return { valid: false, reason: "FILE_TOO_LARGE" as const };
+    }
+
+    return { valid: true as const };
+  }
+
+  if (options?.category) {
+    if (isArchive(fileName) && fileSize > MAX_ARCHIVE_SIZE_BYTES) {
+      return { valid: false, reason: "ARCHIVE_TOO_LARGE" as const };
+    }
+
+    if (!isArchive(fileName) && fileSize > MAX_FILE_SIZE_BYTES) {
+      return { valid: false, reason: "FILE_TOO_LARGE" as const };
+    }
+
+    return { valid: true as const };
+  }
+
   if (!hasAllowedExtension(fileName)) {
     return { valid: false, reason: "UNSUPPORTED_FILE_TYPE" as const };
   }

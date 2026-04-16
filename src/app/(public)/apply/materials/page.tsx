@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -23,6 +23,7 @@ import {
   fetchMaterials,
   fetchSession,
   type MaterialsResponse,
+  saveProductInnovationDescription,
   submitApplicationRequest,
   uploadBinary,
 } from "@/features/application/client";
@@ -62,6 +63,13 @@ export default function MaterialsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [mailtoHref, setMailtoHref] = useState<string | undefined>(undefined);
+  const [productDescriptionDraft, setProductDescriptionDraft] = useState("");
+  const [productDescriptionError, setProductDescriptionError] = useState<
+    string | null
+  >(null);
+  const [productDescriptionSavedHint, setProductDescriptionSavedHint] =
+    useState<string | null>(null);
+  const productDescriptionServerKey = useRef<string>("");
 
   useEffect(() => {
     let active = true;
@@ -112,6 +120,46 @@ export default function MaterialsPage() {
   useEffect(() => {
     setMailtoHref(getMailtoHref());
   }, []);
+
+  useEffect(() => {
+    if (!snapshot) {
+      return;
+    }
+
+    const server = snapshot.productInnovationDescription ?? "";
+    const key = `${snapshot.applicationId}:${server}`;
+    if (productDescriptionServerKey.current === key) {
+      return;
+    }
+
+    productDescriptionServerKey.current = key;
+    setProductDescriptionDraft(server);
+  }, [snapshot?.applicationId, snapshot?.productInnovationDescription]);
+
+  function handleSaveProductDescription() {
+    if (!snapshot) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        setProductDescriptionError(null);
+        setProductDescriptionSavedHint(null);
+        await saveProductInnovationDescription(
+          snapshot.applicationId,
+          productDescriptionDraft,
+        );
+        setProductDescriptionSavedHint("Saved.");
+        setSnapshot(await fetchSession());
+      } catch (nextError) {
+        setProductDescriptionError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to save the product description.",
+        );
+      }
+    });
+  }
 
   function handleUpload(category: MaterialCategory, files: FileList | null) {
     if (!snapshot || !files?.length) {
@@ -355,6 +403,62 @@ export default function MaterialsPage() {
                     }
                   >
                     <div className="space-y-4">
+                      {category.key === "PRODUCT" ? (
+                        <div className="space-y-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
+                          <p>
+                            If you have an innovative product, please briefly
+                            describe the product name, innovation aspects, and
+                            the actual economic benefits generated.
+                          </p>
+                          {!isSubmitted ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={productDescriptionDraft}
+                                onChange={(event) => {
+                                  setProductDescriptionDraft(event.target.value);
+                                  setProductDescriptionSavedHint(null);
+                                }}
+                                disabled={isPending}
+                                rows={5}
+                                className="w-full rounded-xl border border-[color:var(--border-strong)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground)] outline-none ring-[color:var(--accent)] focus-visible:ring-2"
+                              />
+                              {productDescriptionError ? (
+                                <p className="text-xs font-medium text-red-600">
+                                  {productDescriptionError}
+                                </p>
+                              ) : null}
+                              {productDescriptionSavedHint ? (
+                                <p className="text-xs font-medium text-emerald-700">
+                                  {productDescriptionSavedHint}
+                                </p>
+                              ) : null}
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={handleSaveProductDescription}
+                                  disabled={isPending}
+                                  className="rounded-full border border-[color:var(--border-strong)] bg-white px-4 py-2 text-xs font-semibold tracking-[0.12em] text-[color:var(--primary)] uppercase transition hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  Save description
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground)]">
+                              {snapshot?.productInnovationDescription?.trim()
+                                ? snapshot.productInnovationDescription
+                                : "No product description was provided."}
+                            </p>
+                          )}
+                          <p className="pt-1 font-medium text-[color:var(--foreground)]">
+                            Please upload your Product Introduction Documents
+                          </p>
+                          <p className="text-xs tracking-[0.06em] text-slate-600">
+                            The size of a single image or file cannot exceed
+                            300M
+                          </p>
+                        </div>
+                      ) : null}
                       <div className="text-sm leading-6 text-[color:var(--foreground-soft)]">
                         <MaterialCategoryGuidance category={category.key} />
                       </div>

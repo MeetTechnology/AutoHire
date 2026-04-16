@@ -48,7 +48,8 @@ export type MaterialCategory =
   | "PROJECT"
   | "PAPER"
   | "BOOK"
-  | "CONFERENCE";
+  | "CONFERENCE"
+  | "PRODUCT";
 
 export type MaterialSummary = Record<Lowercase<MaterialCategory>, number>;
 
@@ -107,5 +108,6 @@ export type ApplicationSnapshot = {
     extractedFields: Record<string, unknown>;
   } | null;
   uploadedMaterialsSummary: MaterialSummary;
+  productInnovationDescription: string | null;
   submittedAt: string | null;
 };

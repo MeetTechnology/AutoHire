@@ -1243,6 +1243,23 @@ export async function removeMaterialRecord(
   return material;
 }
 
+export async function saveProductInnovationDescription(input: {
+  applicationId: string;
+  description: string;
+}) {
+  await requireApplicationStage({
+    applicationId: input.applicationId,
+    allowedStatuses: ["MATERIALS_IN_PROGRESS"],
+    message:
+      "Product description can only be edited while the materials stage is active.",
+    code: "MATERIALS_STAGE_NOT_EDITABLE",
+  });
+
+  await updateApplication(input.applicationId, {
+    productInnovationDescription: input.description,
+  });
+}
+
 export async function getMaterialsByCategory(applicationId: string) {
   await requireApplicationStage({
     applicationId,
@@ -1272,6 +1289,7 @@ export async function getMaterialsByCategory(applicationId: string) {
     paper: safeMaterials.filter((item) => item.category === "PAPER"),
     book: safeMaterials.filter((item) => item.category === "BOOK"),
     conference: safeMaterials.filter((item) => item.category === "CONFERENCE"),
+    product: safeMaterials.filter((item) => item.category === "PRODUCT"),
   };
 }
 

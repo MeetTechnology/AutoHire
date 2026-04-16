@@ -42,7 +42,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
   }
 
-  const validation = validateUpload(parsed.data.fileName, parsed.data.fileSize);
+  const validation = validateUpload(
+    parsed.data.fileName,
+    parsed.data.fileSize,
+    { category: parsed.data.category },
+  );
 
   if (!validation.valid) {
     return jsonError("The file does not meet the upload requirements.", 400, {

@@ -58,6 +58,7 @@ enum MaterialCategory {
   PAPER
   BOOK
   CONFERENCE
+  PRODUCT
 }
 
 model ExpertInvitation {
@@ -86,6 +87,7 @@ model Application {
   submittedAt                 DateTime?
   screeningPassportFullName   String?
   screeningContactEmail       String?
+  productInnovationDescription String?         @db.Text
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
 

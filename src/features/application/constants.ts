@@ -8,6 +8,7 @@ export const MATERIAL_CATEGORIES = [
   { key: "CONFERENCE", label: "Conference Materials" },
   { key: "PATENT", label: "Patent Documents" },
   { key: "HONOR", label: "Honors and Awards" },
+  { key: "PRODUCT", label: "Product" },
 ] as const;
 
 export const APPLICATION_STATUSES = [

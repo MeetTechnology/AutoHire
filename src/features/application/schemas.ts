@@ -33,6 +33,7 @@ export const uploadIntentSchema = z.object({
       "PAPER",
       "BOOK",
       "CONFERENCE",
+      "PRODUCT",
     ])
     .optional(),
 });
@@ -59,7 +60,12 @@ export const materialConfirmSchema = uploadConfirmFileFields.extend({
     "PAPER",
     "BOOK",
     "CONFERENCE",
+    "PRODUCT",
   ]),
+});
+
+export const productInnovationDescriptionSchema = z.object({
+  description: z.string().max(12000),
 });
 
 export const supplementalFieldsSchema = z.object({

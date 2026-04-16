@@ -147,7 +147,7 @@ describe("secondary analysis editable service flow", () => {
     } satisfies Partial<ApplicationServiceError>);
   });
 
-  it("returns all nine material buckets after entering the materials stage", async () => {
+  it("returns all ten material buckets after entering the materials stage", async () => {
     const started = await startSecondaryAnalysis("app_secondary");
     await getEditableSecondaryAnalysisSnapshot({
       applicationId: "app_secondary",
@@ -166,6 +166,7 @@ describe("secondary analysis editable service flow", () => {
       "identity",
       "paper",
       "patent",
+      "product",
       "project",
     ]);
   });

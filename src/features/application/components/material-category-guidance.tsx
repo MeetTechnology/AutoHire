@@ -87,6 +87,14 @@ const GUIDANCE: Record<MaterialCategory, readonly GuidanceBlock[]> = {
       ],
     },
   ],
+  PRODUCT: [
+    {
+      items: [
+        "Summarize the product name, innovation aspects, and measurable economic benefits in the text field above.",
+        "Attach brochures, one-pagers, deck PDFs, or images that support your product introduction.",
+      ],
+    },
+  ],
 };
 
 export function MaterialCategoryGuidance({

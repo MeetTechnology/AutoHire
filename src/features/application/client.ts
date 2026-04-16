@@ -375,6 +375,25 @@ export async function deleteMaterial(applicationId: string, fileId: string) {
   return parseResponse<MaterialsResponse>(response);
 }
 
+export async function saveProductInnovationDescription(
+  applicationId: string,
+  description: string,
+) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/materials/product-description`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ description }),
+    },
+  );
+
+  return parseResponse<{ productInnovationDescription: string }>(response);
+}
+
 export async function submitApplicationRequest(applicationId: string) {
   const response = await fetch(`/api/applications/${applicationId}/submit`, {
     method: "POST",

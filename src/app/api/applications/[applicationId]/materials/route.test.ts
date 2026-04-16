@@ -8,6 +8,7 @@ import {
 } from "@/lib/application/service";
 import { GET as getMaterialsRoute } from "@/app/api/applications/[applicationId]/materials/route";
 import { POST as enterMaterialsRoute } from "@/app/api/applications/[applicationId]/materials/enter/route";
+import { POST as saveProductDescriptionRoute } from "@/app/api/applications/[applicationId]/materials/product-description/route";
 import { POST as submitRoute } from "@/app/api/applications/[applicationId]/submit/route";
 
 function resetMemoryStore() {
@@ -76,7 +77,7 @@ describe("materials stage routes", () => {
     expect(payload.nextRoute).toBe("/apply/materials");
   });
 
-  it("returns nine material categories after entering materials stage", async () => {
+  it("returns ten material categories after entering materials stage", async () => {
     const started = await startSecondaryAnalysis("app_secondary");
     await getEditableSecondaryAnalysisSnapshot({
       applicationId: "app_secondary",
@@ -110,8 +111,46 @@ describe("materials stage routes", () => {
       "identity",
       "paper",
       "patent",
+      "product",
       "project",
     ]);
+  });
+
+  it("saves product innovation description during materials stage", async () => {
+    const started = await startSecondaryAnalysis("app_secondary");
+    await getEditableSecondaryAnalysisSnapshot({
+      applicationId: "app_secondary",
+      runId: started.runId,
+    });
+
+    await enterMaterialsRoute(
+      buildAuthorizedRequest("http://localhost/api/applications/app_secondary/materials/enter", {
+        method: "POST",
+      }),
+      {
+        params: Promise.resolve({ applicationId: "app_secondary" }),
+      },
+    );
+
+    const response = await saveProductDescriptionRoute(
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_secondary/materials/product-description",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: "Our aquatic drone reduces fuel use by 40%.",
+          }),
+        },
+      ),
+      {
+        params: Promise.resolve({ applicationId: "app_secondary" }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.productInnovationDescription).toContain("aquatic drone");
   });
 
   it("blocks final submission before the materials stage starts", async () => {
