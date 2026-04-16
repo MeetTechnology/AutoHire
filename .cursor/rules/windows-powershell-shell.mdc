@@ -1,0 +1,33 @@
+---
+description: Use PowerShell syntax for terminal commands on Windows
+alwaysApply: true
+---
+
+# Windows PowerShell shell
+
+This repo is developed on **Windows** with **PowerShell** as the default shell. Do not assume bash/cmd syntax.
+
+## Change directory
+
+- Use `Set-Location <path>` or `cd <path>` (PowerShell accepts drive paths like `d:\zhangprj1\AutoHire`).
+- Do **not** use `cd /d` — that is **cmd.exe** only and fails in PowerShell.
+
+## Chain commands
+
+- Prefer: `Set-Location d:\zhangprj1\AutoHire; <command>` (semicolon runs the next statement after the first completes).
+- PowerShell 7+ also supports `&&` / `||`; on Windows PowerShell 5.1, prefer `;` unless you know the shell version.
+
+## Environment variables
+
+- Set: `$env:FOO = "bar"` (not `export FOO=bar`).
+- Read: `$env:FOO`.
+
+## Examples
+
+```powershell
+Set-Location d:\zhangprj1\AutoHire; bun run test
+```
+
+```powershell
+Set-Location d:\zhangprj1\AutoHire; npx ctx7@latest library nextjs "App Router routing"
+```

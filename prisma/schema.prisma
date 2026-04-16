@@ -76,16 +76,18 @@ model ExpertInvitation {
 }
 
 model Application {
-  id                  String             @id @default(cuid())
-  expertId            String
-  invitationId        String             @unique
-  applicationStatus   ApplicationStatus  @default(INIT)
-  currentStep         String?
-  eligibilityResult   EligibilityResult  @default(UNKNOWN)
-  latestAnalysisJobId String?
-  submittedAt         DateTime?
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  id                          String             @id @default(cuid())
+  expertId                    String
+  invitationId                String             @unique
+  applicationStatus           ApplicationStatus  @default(INIT)
+  currentStep                 String?
+  eligibilityResult           EligibilityResult  @default(UNKNOWN)
+  latestAnalysisJobId         String?
+  submittedAt                 DateTime?
+  screeningPassportFullName   String?
+  screeningContactEmail       String?
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
 
   invitation           ExpertInvitation           @relation(fields: [invitationId], references: [id])
   resumeFiles          ResumeFile[]

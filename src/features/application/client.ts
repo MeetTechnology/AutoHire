@@ -94,6 +94,7 @@ export async function confirmResumeUpload(
   applicationId: string,
   file: File,
   objectKey: string,
+  screening: { passportFullName: string; email: string },
 ) {
   const response = await fetch(
     `/api/applications/${applicationId}/resume/confirm`,
@@ -108,6 +109,8 @@ export async function confirmResumeUpload(
         fileType: file.type || "application/octet-stream",
         fileSize: file.size,
         objectKey,
+        screeningPassportFullName: screening.passportFullName,
+        screeningContactEmail: screening.email,
       }),
     },
   );

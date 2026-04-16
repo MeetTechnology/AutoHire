@@ -1,9 +1,7 @@
 import { expect, test } from "@playwright/test";
+import type { Page, Response } from "@playwright/test";
 
-async function uploadVirtualFile(
-  page: Parameters<typeof test>[0]["page"],
-  name: string,
-) {
+async function uploadVirtualFile(page: Page, name: string) {
   await page
     .locator('input[type="file"]')
     .first()
@@ -14,16 +12,11 @@ async function uploadVirtualFile(
     });
 }
 
-async function initializeBrowserSession(
-  page: Parameters<typeof test>[0]["page"],
-  token: string,
-) {
+async function initializeBrowserSession(page: Page, token: string) {
   await page.goto(`/apply?t=${token}`);
 }
 
-async function ensureSecondaryAnalysisEditable(
-  page: Parameters<typeof test>[0]["page"],
-) {
+async function ensureSecondaryAnalysisEditable(page: Page) {
   await initializeBrowserSession(page, "sample-progress-token");
   await page.goto("/apply/result");
   await page
@@ -54,7 +47,7 @@ async function ensureSecondaryAnalysisEditable(
   if (await runButton.isVisible().catch(() => false)) {
     await Promise.all([
       page.waitForResponse(
-        (response) =>
+        (response: Response) =>
           response.request().method() === "POST" &&
           response.url().includes("/secondary-analysis"),
       ),
@@ -90,6 +83,10 @@ test("eligible resume flow can reach materials and submit", async ({
       name: /Upload your CV and confirm the core identity details/i,
     }),
   ).toBeVisible();
+  await page
+    .getByPlaceholder("Enter the passport name exactly as shown")
+    .fill("E2E Passport Name");
+  await page.getByPlaceholder("name@example.com").fill("e2e-candidate@example.com");
   await uploadVirtualFile(page, "candidate-eligible.pdf");
   await page.getByRole("button", { name: "Submit CV" }).click();
 

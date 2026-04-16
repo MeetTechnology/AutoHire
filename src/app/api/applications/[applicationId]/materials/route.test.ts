@@ -25,12 +25,14 @@ function buildAuthorizedRequest(url: string, init?: RequestInit) {
     expertId: "expert_secondary",
   });
 
+  const headers = new Headers(init?.headers);
+  headers.set("cookie", `${getSessionCookieName()}=${token}`);
+
   return new NextRequest(url, {
-    ...init,
-    headers: {
-      cookie: `${getSessionCookieName()}=${token}`,
-      ...(init?.headers ?? {}),
-    },
+    method: init?.method,
+    headers,
+    body: init?.body,
+    duplex: init?.body ? ("half" as const) : undefined,
   });
 }
 

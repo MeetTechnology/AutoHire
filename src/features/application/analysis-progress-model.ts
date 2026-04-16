@@ -10,30 +10,24 @@ export const PRE_COMPLETE_CAP = 0.92;
 const RATIO_AT_12S = 0.28;
 const RATIO_AT_32S = 0.78;
 
-/** Primary stage lines (initial / re-analysis). */
+/** Generic wait lines (initial / re-analysis)—no staged eligibility narration. */
 export const PRIMARY_STAGE_MESSAGES = [
-  "Reading your CV and any supporting text you provided…",
-  "Extracting education timelines, degrees, and doctoral milestones…",
-  "Mapping your current full-time role, country, and experience since 2020…",
-  "Identifying research areas and focus topics…",
-  "Applying program eligibility rules to the extracted profile…",
-  "Consolidating the structured review output…",
+  "Screening your resume. This page will update when there is an outcome.",
+  "Resume screening is still in progress. You can keep this page open.",
 ] as const;
 
-/** Detailed (secondary) analysis stage lines. */
+/** Generic wait lines for the detailed review step. */
 export const SECONDARY_STAGE_MESSAGES = [
-  "Building the detailed expert-facing review fields…",
-  "Cross-checking extracted data for the secondary pass…",
-  "Preparing editable fields before the materials stage unlocks…",
-  "Finalizing structured outputs for expert review…",
+  "Preparing your detailed review. This page will update when it is ready.",
+  "The detailed review step is still in progress.",
 ] as const;
 
 export const LONG_WAIT_PRIMARY_SUFFIX =
   " Still processing—thank you for your patience.";
 
-const PRIMARY_BAND_MS = [0, 8000, 16_000, 24_000, 32_000, 45_000] as const;
+const PRIMARY_BAND_MS = [0, 45_000] as const;
 
-const SECONDARY_BAND_MS = [0, 15_000, 30_000, 45_000] as const;
+const SECONDARY_BAND_MS = [0, 30_000] as const;
 
 export function getDisplayedProgressRatio(elapsedMs: number): number {
   const t = Math.max(0, elapsedMs);

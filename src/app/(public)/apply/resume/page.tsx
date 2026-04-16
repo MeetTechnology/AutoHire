@@ -22,6 +22,7 @@ import {
   fetchSession,
   uploadBinary,
 } from "@/features/application/client";
+import { resumeScreeningIdentityOnlySchema } from "@/features/application/schemas";
 import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
 import {
   clearDraft,
@@ -151,6 +152,13 @@ export default function ResumePage() {
       return;
     }
 
+    if (!screeningIdentityValid) {
+      setError(
+        "Enter your passport full name and a valid email address before submitting your CV.",
+      );
+      return;
+    }
+
     startTransition(async () => {
       try {
         setError(null);
@@ -163,6 +171,10 @@ export default function ResumePage() {
           snapshot.applicationId,
           selectedFile,
           intent.objectKey,
+          {
+            passportFullName: draft.passportFullName,
+            email: draft.email,
+          },
         );
         clearDraft(RESUME_DRAFT_KEY);
         router.push("/apply/result");
@@ -183,6 +195,12 @@ export default function ResumePage() {
       ).slice(0, 4),
     [snapshot?.latestResult?.extractedFields],
   );
+  const screeningIdentityValid = useMemo(() => {
+    return resumeScreeningIdentityOnlySchema.safeParse({
+      screeningPassportFullName: draft.passportFullName,
+      screeningContactEmail: draft.email,
+    }).success;
+  }, [draft.passportFullName, draft.email]);
   const isReadOnly = snapshot
     ? isFlowStepReadOnly(snapshot.applicationStatus, 1)
     : false;
@@ -249,12 +267,13 @@ export default function ResumePage() {
                     disabled={isLoading || !snapshot || isReadOnly}
                     placeholder="Enter the passport name exactly as shown"
                     className={getInputClassName()}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
                       setDraft((current) => ({
                         ...current,
-                        passportFullName: event.currentTarget.value,
-                      }))
-                    }
+                        passportFullName: value,
+                      }));
+                    }}
                   />
                 </label>
 
@@ -268,12 +287,13 @@ export default function ResumePage() {
                     disabled={isLoading || !snapshot || isReadOnly}
                     placeholder="name@example.com"
                     className={getInputClassName()}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
                       setDraft((current) => ({
                         ...current,
-                        email: event.currentTarget.value,
-                      }))
-                    }
+                        email: value,
+                      }));
+                    }}
                   />
                 </label>
               </div>
@@ -355,6 +375,7 @@ export default function ResumePage() {
                   onClick={handleUpload}
                   disabled={
                     !selectedFile ||
+                    !screeningIdentityValid ||
                     isPending ||
                     isLoading ||
                     !snapshot ||
@@ -370,7 +391,7 @@ export default function ResumePage() {
 
           <DisclosureSection
             title="Submission rules"
-            summary="PDF and Word are preferred. The AI review starts immediately after submission."
+            summary="PDF and Word are preferred. Resume screening starts immediately after submission."
           >
             <div className="space-y-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
               <p>
@@ -407,7 +428,7 @@ export default function ResumePage() {
                 </div>
               ) : (
                 <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
-                  No parsed preview is available yet. The AI review page will
+                  No parsed preview is available yet. The screening page will
                   generate and display recognized profile details after
                   submission.
                 </p>

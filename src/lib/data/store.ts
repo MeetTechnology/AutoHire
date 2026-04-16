@@ -33,6 +33,8 @@ type ApplicationRecord = {
   eligibilityResult: EligibilityResult;
   latestAnalysisJobId: string | null;
   submittedAt: Date | null;
+  screeningPassportFullName: string | null;
+  screeningContactEmail: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -173,6 +175,20 @@ function buildSampleStore(): PersistedStore {
     invitations: getSampleInvitationSeeds(),
     applications: [
       {
+        id: "app_intro",
+        expertId: "expert_init",
+        invitationId: "invitation_init",
+        applicationStatus: "INTRO_VIEWED",
+        currentStep: "resume",
+        eligibilityResult: "UNKNOWN",
+        latestAnalysisJobId: null,
+        submittedAt: null,
+        screeningPassportFullName: null,
+        screeningContactEmail: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
         id: "app_progress",
         expertId: "expert_progress",
         invitationId: "invitation_progress",
@@ -181,6 +197,8 @@ function buildSampleStore(): PersistedStore {
         eligibilityResult: "INSUFFICIENT_INFO",
         latestAnalysisJobId: "job_progress",
         submittedAt: null,
+        screeningPassportFullName: null,
+        screeningContactEmail: null,
         createdAt: now,
         updatedAt: now,
       },
@@ -193,6 +211,8 @@ function buildSampleStore(): PersistedStore {
         eligibilityResult: "ELIGIBLE",
         latestAnalysisJobId: "job_submitted",
         submittedAt: now,
+        screeningPassportFullName: null,
+        screeningContactEmail: null,
         createdAt: now,
         updatedAt: now,
       },
@@ -205,6 +225,8 @@ function buildSampleStore(): PersistedStore {
         eligibilityResult: "ELIGIBLE",
         latestAnalysisJobId: "job_secondary",
         submittedAt: null,
+        screeningPassportFullName: null,
+        screeningContactEmail: null,
         createdAt: now,
         updatedAt: now,
       },
@@ -445,6 +467,8 @@ export async function createApplication(input: {
       eligibilityResult: "UNKNOWN",
       latestAnalysisJobId: null,
       submittedAt: null,
+      screeningPassportFullName: null,
+      screeningContactEmail: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -484,6 +508,8 @@ export async function updateApplication(
     eligibilityResult?: EligibilityResult;
     latestAnalysisJobId?: string | null;
     submittedAt?: Date | null;
+    screeningPassportFullName?: string | null;
+    screeningContactEmail?: string | null;
   },
 ) {
   if (getRuntimeMode() === "memory") {
@@ -1065,6 +1091,8 @@ function toSnapshotFromMemory(
     currentStep: application.currentStep,
     eligibilityResult: application.eligibilityResult,
     latestAnalysisJobId: application.latestAnalysisJobId,
+    screeningPassportFullName: application.screeningPassportFullName,
+    screeningContactEmail: application.screeningContactEmail,
     resumeAnalysisStatus: latestAnalysisJob?.jobStatus ?? null,
     latestResumeFile: latestResumeFile
       ? {
@@ -1131,6 +1159,8 @@ export async function buildApplicationSnapshot(
       }),
     ]);
 
+  const applicationRow = application as ApplicationRecord;
+
   return {
     applicationId: application.id,
     expertId: application.expertId,
@@ -1139,6 +1169,9 @@ export async function buildApplicationSnapshot(
     currentStep: application.currentStep,
     eligibilityResult: application.eligibilityResult,
     latestAnalysisJobId: application.latestAnalysisJobId,
+    screeningPassportFullName:
+      applicationRow.screeningPassportFullName ?? null,
+    screeningContactEmail: applicationRow.screeningContactEmail ?? null,
     resumeAnalysisStatus: latestAnalysisJob?.jobStatus ?? null,
     latestResumeFile: latestResumeFile
       ? {

@@ -47,28 +47,19 @@ describe("getDisplayedProgressRatio", () => {
 
 describe("getPrimaryStageMessageIndex", () => {
   it("advances at band boundaries", () => {
-    expect(getPrimaryStageMessageIndex(7999)).toBe(0);
-    expect(getPrimaryStageMessageIndex(8000)).toBe(1);
-    expect(getPrimaryStageMessageIndex(15_999)).toBe(1);
-    expect(getPrimaryStageMessageIndex(16_000)).toBe(2);
-    expect(getPrimaryStageMessageIndex(23_999)).toBe(2);
-    expect(getPrimaryStageMessageIndex(24_000)).toBe(3);
-    expect(getPrimaryStageMessageIndex(31_999)).toBe(3);
-    expect(getPrimaryStageMessageIndex(32_000)).toBe(4);
-    expect(getPrimaryStageMessageIndex(44_999)).toBe(4);
-    expect(getPrimaryStageMessageIndex(45_000)).toBe(5);
+    expect(getPrimaryStageMessageIndex(0)).toBe(0);
+    expect(getPrimaryStageMessageIndex(44_999)).toBe(0);
+    expect(getPrimaryStageMessageIndex(45_000)).toBe(1);
+    expect(getPrimaryStageMessageIndex(120_000)).toBe(1);
   });
 });
 
 describe("getSecondaryStageMessageIndex", () => {
-  it("uses four bands", () => {
+  it("uses two bands", () => {
     expect(getSecondaryStageMessageIndex(0)).toBe(0);
-    expect(getSecondaryStageMessageIndex(14_999)).toBe(0);
-    expect(getSecondaryStageMessageIndex(15_000)).toBe(1);
-    expect(getSecondaryStageMessageIndex(29_999)).toBe(1);
-    expect(getSecondaryStageMessageIndex(30_000)).toBe(2);
-    expect(getSecondaryStageMessageIndex(44_999)).toBe(2);
-    expect(getSecondaryStageMessageIndex(45_000)).toBe(3);
+    expect(getSecondaryStageMessageIndex(29_999)).toBe(0);
+    expect(getSecondaryStageMessageIndex(30_000)).toBe(1);
+    expect(getSecondaryStageMessageIndex(120_000)).toBe(1);
   });
 });
 

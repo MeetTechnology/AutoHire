@@ -1,5 +1,23 @@
 import { z } from "zod";
 
+const uploadConfirmFileFields = z.object({
+  fileName: z.string().min(1),
+  fileType: z.string().min(1),
+  fileSize: z.number().int().positive(),
+  objectKey: z.string().min(1),
+});
+
+const trimmedNonEmpty = z.preprocess(
+  (value) => (typeof value === "string" ? value.trim() : value),
+  z.string().min(1),
+);
+
+const normalizedEmail = z.preprocess(
+  (value) =>
+    typeof value === "string" ? value.trim().toLowerCase() : value,
+  z.string().email(),
+);
+
 export const uploadIntentSchema = z.object({
   fileName: z.string().min(1),
   fileType: z.string().min(1),
@@ -19,14 +37,18 @@ export const uploadIntentSchema = z.object({
     .optional(),
 });
 
-export const resumeConfirmSchema = z.object({
-  fileName: z.string().min(1),
-  fileType: z.string().min(1),
-  fileSize: z.number().int().positive(),
-  objectKey: z.string().min(1),
+export const resumeConfirmSchema = uploadConfirmFileFields.extend({
+  screeningPassportFullName: trimmedNonEmpty,
+  screeningContactEmail: normalizedEmail,
 });
 
-export const materialConfirmSchema = resumeConfirmSchema.extend({
+/** Client-side check for the two screening identity fields (no file fields). */
+export const resumeScreeningIdentityOnlySchema = z.object({
+  screeningPassportFullName: trimmedNonEmpty,
+  screeningContactEmail: normalizedEmail,
+});
+
+export const materialConfirmSchema = uploadConfirmFileFields.extend({
   category: z.enum([
     "IDENTITY",
     "EMPLOYMENT",

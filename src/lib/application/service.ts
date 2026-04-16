@@ -155,6 +155,8 @@ export async function createResumeUploadRecord(input: {
   fileType: string;
   fileSize: number;
   objectKey: string;
+  screeningPassportFullName: string;
+  screeningContactEmail: string;
 }) {
   const versionNo = (await getLatestResumeVersion(input.applicationId)) + 1;
   const record = await createResumeFile({
@@ -170,11 +172,16 @@ export async function createResumeUploadRecord(input: {
     fileName: input.fileName,
     objectKey: input.objectKey,
     versionNo,
+    screeningIdentityCaptured: true,
+    passportNameLength: input.screeningPassportFullName.length,
+    emailLength: input.screeningContactEmail.length,
   });
 
   await updateApplication(input.applicationId, {
     applicationStatus: "CV_UPLOADED",
     currentStep: "resume",
+    screeningPassportFullName: input.screeningPassportFullName,
+    screeningContactEmail: input.screeningContactEmail,
   });
 
   return record;

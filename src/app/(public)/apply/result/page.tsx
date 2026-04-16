@@ -16,11 +16,7 @@ import { useForm } from "react-hook-form";
 
 import type { MissingField } from "@/features/analysis/types";
 import type { EditableSecondaryField } from "@/features/analysis/types";
-import {
-  buildVisibleExtractedFieldSummary,
-  getRawReasoning,
-} from "@/features/analysis/display";
-import { MarkdownProse } from "@/components/ui/markdown-prose";
+import { buildVisibleExtractedFieldSummary } from "@/features/analysis/display";
 import {
   ActionButton,
   DisclosureSection,
@@ -42,7 +38,10 @@ import {
   submitSupplementalFields,
   triggerSecondaryAnalysis,
 } from "@/features/application/client";
-import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
+import {
+  APPLICATION_FLOW_STEPS_WITH_INTRO,
+  EXPERT_PROGRAM_CONTACT_EMAIL,
+} from "@/features/application/constants";
 import {
   clearDraft,
   readDraft,
@@ -130,19 +129,19 @@ function translateChoiceLabel(option: string) {
 function getSecondaryStatusMessage(status: SecondaryAnalysisStatus) {
   switch (status) {
     case "pending":
-      return "Detailed analysis has been queued.";
+      return "The detailed review step has been queued.";
     case "processing":
-      return "Detailed analysis is running.";
+      return "The detailed review step is running.";
     case "retrying":
-      return "Detailed analysis is retrying after a temporary issue.";
+      return "The detailed review step is retrying after a temporary issue.";
     case "completed":
-      return "Detailed analysis has completed.";
+      return "The detailed review step has completed.";
     case "completed_partial":
-      return "Detailed analysis completed with partial output.";
+      return "The detailed review step finished with partial output.";
     case "failed":
-      return "Detailed analysis failed.";
+      return "The detailed review step failed.";
     default:
-      return "Detailed analysis has not started yet.";
+      return "The detailed review step has not started yet.";
   }
 }
 
@@ -264,7 +263,7 @@ function renderSupplementalField(
         </span>
         {isPrefilled ? (
           <span className="inline-flex rounded-full border border-[color:var(--border)] bg-white px-2 py-0.5 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-500 uppercase">
-            AI prefilled
+            Suggested from CV
           </span>
         ) : null}
         {needsAttention ? (
@@ -644,7 +643,7 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="loading"
-        title="Your resume is currently under review"
+        title="Your resume is being screened"
         description={statusText}
       />
     );
@@ -670,10 +669,10 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="success"
-        title="The initial eligibility review has passed"
+        title="Initial screening passed"
         description={
           detailedStatusText ??
-          "Run the detailed analysis to prepare the expert-facing review before supporting materials become available."
+          "Run the detailed review step. When it completes, you can continue to supporting materials."
         }
       />
     );
@@ -683,10 +682,10 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="loading"
-        title="Detailed analysis is in progress"
+        title="Detailed review in progress"
         description={
           detailedStatusText ??
-          "The system is preparing the detailed expert-facing analysis before the materials stage opens."
+          "When this step finishes, you can continue to supporting materials."
         }
       />
     );
@@ -696,10 +695,10 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="success"
-        title="Detailed analysis is ready"
+        title="Detailed review is ready"
         description={
           detailedStatusText ??
-          "Review the detailed analysis below, save any changes you need, and then continue to supporting materials."
+          "Review the fields below, save any changes you need, and then continue to supporting materials."
         }
       />
     );
@@ -709,10 +708,10 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="danger"
-        title="Detailed analysis could not be completed"
+        title="The detailed review step could not be completed"
         description={
           detailedStatusText ??
-          "The supporting materials stage stays locked until the detailed analysis succeeds."
+          "Supporting materials stay locked until this step completes successfully."
         }
       />
     );
@@ -725,7 +724,7 @@ function getInitialBanner(
         title="Some required information is still missing"
         description={
           snapshot.latestResult?.displaySummary ??
-          "Please complete the fields below and run the analysis again."
+          "Please complete the fields below and run screening again."
         }
       />
     );
@@ -734,29 +733,12 @@ function getInitialBanner(
   return null;
 }
 
-function InitialAnalysisNotesSection({
-  rawReasoning,
-}: {
-  rawReasoning: string;
-}) {
-  return (
-    <DisclosureSection
-      title="Initial analysis notes"
-      summary="Reference notes retained from the initial eligibility pass."
-    >
-      <div className="rounded-md border border-slate-300 bg-white p-4">
-        <MarkdownProse markdown={rawReasoning} />
-      </div>
-    </DisclosureSection>
-  );
-}
-
 function ResultPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [statusText, setStatusText] = useState(
-    "Preparing your analysis result...",
+    "Preparing your screening outcome...",
   );
   const [error, setError] = useState<string | null>(null);
   const [secondaryError, setSecondaryError] = useState<string | null>(null);
@@ -791,11 +773,6 @@ function ResultPage() {
   const [mailtoHref, setMailtoHref] = useState<string | undefined>(undefined);
   const { register, handleSubmit, reset, watch, getValues } =
     useForm<SupplementalFormValues>();
-
-  const rawReasoning = useMemo(
-    () => getRawReasoning(snapshot?.latestResult?.extractedFields),
-    [snapshot?.latestResult?.extractedFields],
-  );
 
   useEffect(() => {
     setMailtoHref(getMailtoHref());
@@ -874,7 +851,7 @@ function ResultPage() {
           setError(
             nextError instanceof Error
               ? nextError.message
-              : "Unable to load the analysis result.",
+              : "Unable to load the screening outcome.",
           );
         }
       } finally {
@@ -953,7 +930,7 @@ function ResultPage() {
 
           setSnapshot(refreshedSession);
           setError(
-            status.errorMessage ?? "Analysis failed. Please try again later.",
+            status.errorMessage ?? "Screening failed. Please try again later.",
           );
           window.clearInterval(timer);
           return;
@@ -973,7 +950,7 @@ function ResultPage() {
           setError(
             nextError instanceof Error
               ? nextError.message
-              : "Failed to refresh the analysis status.",
+              : "Failed to refresh the screening status.",
           );
         }
       }
@@ -1128,7 +1105,7 @@ function ResultPage() {
           setSecondaryError(
             nextError instanceof Error
               ? nextError.message
-              : "Failed to refresh the detailed analysis.",
+              : "Failed to refresh the detailed review.",
           );
         }
       }
@@ -1271,7 +1248,7 @@ function ResultPage() {
         setSecondaryError(
           nextError instanceof Error
             ? nextError.message
-            : "Failed to start the detailed analysis.",
+            : "Failed to start the detailed review.",
         );
       }
     });
@@ -1358,7 +1335,7 @@ function ResultPage() {
           setSecondaryDraftFields(nextSnapshot.fields);
           setSnapshot(refreshedSession);
           setSecondarySaveMessage(
-            "The detailed analysis fields have been saved.",
+            "The detailed review fields have been saved.",
           );
         });
         clearDraft(`autohire:secondary:${snapshot.applicationId}:${runId}`);
@@ -1374,7 +1351,7 @@ function ResultPage() {
         setSecondaryError(
           nextError instanceof Error
             ? nextError.message
-            : "The detailed analysis fields could not be saved.",
+            : "The detailed review fields could not be saved.",
         );
       }
     });
@@ -1554,7 +1531,7 @@ function ResultPage() {
     const secondaryMessage =
       showApiSecondary && sanitizedApi.length > 0 ? sanitizedApi : null;
 
-    const ariaValueText = `Review in progress; about ${Math.round(progressRatio * 100)} percent along the expected wait.`;
+    const ariaValueText = `Screening in progress; about ${Math.round(progressRatio * 100)} percent along the expected wait.`;
 
     return {
       progressRatio,
@@ -1573,27 +1550,27 @@ function ResultPage() {
   }, [requestedResultView]);
   const headerSummary = useMemo(() => {
     if (!snapshot) {
-      return "The result page explains the current review state, surfaces recognized information, and provides the next appropriate action.";
+      return "This page shows your screening status, any recognized information from your resume, and the next step you should take.";
     }
 
     switch (snapshot.applicationStatus) {
       case "CV_ANALYZING":
       case "REANALYZING":
-        return "Your application is still being evaluated. This page will update automatically while the analysis is in progress.";
+        return "Your resume is still being screened. This page will update automatically; please keep it open.";
       case "INFO_REQUIRED":
-        return "The current review is incomplete because a few structured fields are still missing. Once submitted, the application will be analyzed again.";
+        return "Screening needs a few more fields. Submit the items below and screening will run again.";
       case "ELIGIBLE":
-        return "The initial review is complete. Run the detailed analysis before the supporting materials stage becomes available.";
+        return "Initial screening is complete. Complete the detailed review step, then you can upload supporting materials.";
       case "SECONDARY_ANALYZING":
-        return "The detailed analysis is running. This page will refresh automatically until the expert-facing review is ready.";
+        return "The detailed review step is running. This page will refresh automatically until it is ready.";
       case "SECONDARY_REVIEW":
-        return "The detailed analysis is ready. Review the prepared fields, save any edits you want to keep, and then continue to supporting materials.";
+        return "The detailed review is ready. Save any edits you need, then continue to supporting materials.";
       case "SECONDARY_FAILED":
-        return "The detailed analysis did not complete successfully. Supporting materials stay locked until this review step succeeds.";
+        return "The detailed review step did not finish successfully. Supporting materials stay locked until this step succeeds.";
       case "INELIGIBLE":
-        return "The current submission does not satisfy the application criteria. Review the assessment summary below for context.";
+        return "This submission does not meet the published requirements. See the summary below for the reasons provided.";
       default:
-        return "The result page explains the current review state, surfaces recognized information, and provides the next appropriate action.";
+        return "This page shows your screening status, any recognized information from your resume, and the next step you should take.";
     }
   }, [snapshot]);
   const flowStepLinks = useMemo(
@@ -1618,8 +1595,8 @@ function ResultPage() {
         eyebrow={`Step ${currentResultStep + 1}`}
         title={
           currentResultStep === 2
-            ? "Track the AI review and wait for the screening outcome."
-            : "Provide the remaining information needed to complete the review."
+            ? "Track your resume screening and wait for the outcome."
+            : "Provide the remaining information needed to finish screening."
         }
         description={headerSummary}
         headerVariant="centered"
@@ -1646,15 +1623,15 @@ function ResultPage() {
           {isLoading ? (
             <StatusBanner
               tone="loading"
-              title="Loading the analysis result"
-              description="Restoring the latest review state and any recognized fields."
+              title="Loading your screening outcome"
+              description="Restoring the latest screening state and any recognized fields."
             />
           ) : null}
 
           {error ? (
             <StatusBanner
               tone="danger"
-              title="The analysis result could not be refreshed"
+              title="The screening status could not be refreshed"
               description={error}
             />
           ) : null}
@@ -1665,13 +1642,13 @@ function ResultPage() {
                 <AnalysisProgressPanel
                   title={
                     snapshot.applicationStatus === "SECONDARY_ANALYZING"
-                      ? "Detailed analysis is running"
-                      : "AI review is running"
+                      ? "Detailed review in progress"
+                      : "Resume screening is running"
                   }
                   description={
                     snapshot.applicationStatus === "SECONDARY_ANALYZING"
-                      ? "The system is preparing the editable expert-facing review before the final submission stage opens."
-                      : "The current CV is being screened and normalized into the structured review model."
+                      ? "When this step finishes, you can continue to supporting materials."
+                      : "Your CV is being evaluated against the published requirements. This may take a little time."
                   }
                   progressRatio={analysisProgressView?.progressRatio ?? 0}
                   primaryMessage={
@@ -1685,7 +1662,7 @@ function ResultPage() {
                   }
                   ariaValueText={
                     analysisProgressView?.ariaValueText ??
-                    "Review in progress."
+                    "Screening in progress."
                   }
                 />
               ) : (
@@ -1699,7 +1676,7 @@ function ResultPage() {
               {snapshot.latestResult?.reasonText &&
               snapshot.applicationStatus !== "INELIGIBLE" ? (
                 <SectionCard
-                  title="Review summary"
+                  title="Screening summary"
                   description={snapshot.latestResult.reasonText}
                 />
               ) : null}
@@ -1732,7 +1709,7 @@ function ResultPage() {
                   title="Additional information requested"
                   description={
                     snapshot.applicationStatus === "INFO_REQUIRED"
-                      ? "AI-prefilled entries are shaded softly. Only blank fields require your manual input before you resubmit the review."
+                      ? "Suggested-from-CV entries are shaded softly. Only blank fields need your input before you submit again."
                       : "These fields were previously marked as missing and remain visible here for reference."
                   }
                 >
@@ -1750,7 +1727,7 @@ function ResultPage() {
                           },
                           {
                             label: "After submit",
-                            value: "Review runs again immediately",
+                            value: "Screening runs again immediately",
                           },
                         ]}
                       />
@@ -1786,14 +1763,10 @@ function ResultPage() {
                 </SectionCard>
               ) : null}
 
-              {rawReasoning ? (
-                <InitialAnalysisNotesSection rawReasoning={rawReasoning} />
-              ) : null}
-
               {showDetailedAnalysisSection ? (
                 <SectionCard
-                  title="Detailed analysis"
-                  description="This section stays subordinate to the immediate action above. It unlocks the final submission page only after the detailed review is ready."
+                  title="Detailed review"
+                  description="When this step succeeds, you can upload supporting materials and move toward final submission."
                 >
                   <div className="flex flex-wrap gap-3">
                     {canTriggerSecondaryAnalysis ? (
@@ -1807,13 +1780,13 @@ function ResultPage() {
                         }
                       >
                         {isStartingSecondary || isSecondaryRunning
-                          ? "Running Detailed Analysis..."
-                          : "Start Detailed Analysis"}
+                          ? "Running detailed review…"
+                          : "Start detailed review"}
                       </ActionButton>
                     ) : null}
                     {secondaryRunAlreadyStarted ? (
                       <span className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-600">
-                        Detailed analysis has already been started for this
+                        The detailed review has already been started for this
                         application.
                       </span>
                     ) : null}
@@ -1824,14 +1797,14 @@ function ResultPage() {
               {secondaryError ? (
                 <StatusBanner
                   tone="danger"
-                  title="Detailed analysis could not be refreshed"
+                  title="Detailed review could not be refreshed"
                   description={secondaryError}
                 />
               ) : null}
 
               {shouldShowDetailedResult && editableSecondarySnapshot ? (
                 <DisclosureSection
-                  title="Detailed analysis result"
+                  title="Detailed review result"
                   summary={getSecondaryStatusMessage(
                     editableSecondarySnapshot.status,
                   )}
@@ -1892,7 +1865,7 @@ function ResultPage() {
                     {secondarySaveMessage ? (
                       <StatusBanner
                         tone="success"
-                        title="Detailed analysis fields saved"
+                        title="Detailed review fields saved"
                         description={secondarySaveMessage}
                       />
                     ) : null}
@@ -1927,8 +1900,8 @@ function ResultPage() {
                             }
                           >
                             {isSavingSecondary
-                              ? "Saving Detailed Analysis Fields..."
-                              : "Save Detailed Analysis Fields"}
+                              ? "Saving detailed review fields…"
+                              : "Save detailed review fields"}
                           </ActionButton>
                           <span className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-600">
                             Reset to Model Value clears the manual override for
@@ -1940,12 +1913,12 @@ function ResultPage() {
                       editableSecondarySnapshot.status ===
                         "completed_partial" ? (
                       <p className="text-sm leading-6 text-slate-600">
-                        The detailed analysis completed, but no editable
-                        expert-facing fields were prepared.
+                        The detailed review finished, but no editable fields
+                        were prepared.
                       </p>
                     ) : (
                       <div className="rounded-md border border-dashed border-slate-400 bg-slate-100 p-3.5 text-sm leading-6 text-slate-600">
-                        The detailed analysis is still preparing the editable
+                        The detailed review is still preparing the editable
                         field set. This page will update automatically.
                       </div>
                     )}
@@ -2001,11 +1974,23 @@ function ResultPage() {
                 </DisclosureSection>
               ) : !isLoading && !error ? (
                 <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--background-elevated)] px-4 py-4 text-sm leading-6 text-[color:var(--foreground-soft)] shadow-[var(--shadow-card)] sm:px-5">
-                  No detailed analysis fields are currently available for this
+                  No detailed review fields are currently available for this
                   application state.
                 </div>
               ) : null}
             </>
+          ) : null}
+          {snapshot ? (
+            <p className="text-center text-sm leading-6 text-[color:var(--foreground-soft)]">
+              Experts may contact the program team at{" "}
+              <a
+                className="font-medium text-[color:var(--primary)] underline underline-offset-2 hover:text-[color:var(--primary-strong)]"
+                href={`mailto:${EXPERT_PROGRAM_CONTACT_EMAIL}`}
+              >
+                {EXPERT_PROGRAM_CONTACT_EMAIL}
+              </a>{" "}
+              with questions about this application process.
+            </p>
           ) : null}
         </div>
       </PageShell>

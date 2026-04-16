@@ -96,6 +96,8 @@ export type ApplicationSnapshot = {
   currentStep: string | null;
   eligibilityResult: EligibilityResult;
   latestAnalysisJobId: string | null;
+  screeningPassportFullName: string | null;
+  screeningContactEmail: string | null;
   resumeAnalysisStatus: AnalysisJobStatus | null;
   latestResumeFile: UploadedFileSummary | null;
   latestResult: {

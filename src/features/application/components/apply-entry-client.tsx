@@ -51,7 +51,7 @@ const ELIGIBILITY = [
 const PROCESS = [
   "Project Introduction",
   "Upload CV",
-  "AI Review",
+  "Resume screening",
   "Additional Information",
   "Submission Complete",
 ] as const;
@@ -260,8 +260,8 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
             </div>
             <p className="text-sm leading-7 text-[color:var(--foreground-soft)]">
               The journey is intentionally linear: introduction first, then CV
-              upload, AI review, any required follow-up fields, and finally the
-              submission package.
+              upload, resume screening, any required follow-up fields, and
+              finally the submission package.
             </p>
           </div>
         );

@@ -27,14 +27,17 @@ export const APPLICATION_STATUSES = [
   "CLOSED",
 ] as const;
 
+/** Placeholder inbox for expert feedback; replace with the operations-provided address. */
+export const EXPERT_PROGRAM_CONTACT_EMAIL = "screening-contact@example.com";
+
 export const APPLICATION_FLOW_STEPS = [
   {
     label: "Upload CV",
     hint: "Provide identity basics and your latest CV file.",
   },
   {
-    label: "AI Review",
-    hint: "Track the automated screening and structured review.",
+    label: "Resume screening",
+    hint: "Wait for the screening outcome and complete any required follow-up before supporting materials.",
   },
   {
     label: "Additional Information",
