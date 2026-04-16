@@ -55,6 +55,11 @@ import {
   shouldShowApiProgressSecondary,
 } from "@/features/application/analysis-progress-model";
 import {
+  getDetailedReviewProgressSummary,
+  isDetailedReviewReadyForUi,
+  shouldShowDetailedReviewStartedNotice,
+} from "@/features/application/detailed-review-progress";
+import {
   buildApplyFlowStepLinks,
   canAccessFlowStep,
   getReachableFlowStep,
@@ -631,6 +636,7 @@ function getInitialBanner(
   snapshot: ApplicationSnapshot | null,
   statusText: string,
   detailedStatusText?: string | null,
+  detailedReviewReadyForUi = true,
 ) {
   if (!snapshot) {
     return null;
@@ -692,6 +698,19 @@ function getInitialBanner(
   }
 
   if (snapshot.applicationStatus === "SECONDARY_REVIEW") {
+    if (!detailedReviewReadyForUi) {
+      return (
+        <StatusBanner
+          tone="loading"
+          title="Detailed review in progress"
+          description={
+            detailedStatusText ??
+            "The remaining prompts are still finishing. Progress will update before the review becomes ready."
+          }
+        />
+      );
+    }
+
     return (
       <StatusBanner
         tone="success"
@@ -1400,6 +1419,18 @@ function ResultPage() {
       editableSecondarySnapshot.status,
     ),
   );
+  const detailedReviewProgress = getDetailedReviewProgressSummary(
+    editableSecondarySnapshot?.run ?? null,
+    editableSecondarySnapshot?.status ?? "idle",
+  );
+  const detailedReviewReadyForUi = isDetailedReviewReadyForUi(
+    snapshot?.applicationStatus,
+    detailedReviewProgress,
+  );
+  const shouldShowStartedSecondaryNotice = shouldShowDetailedReviewStartedNotice(
+    editableSecondarySnapshot?.runId,
+    detailedReviewProgress,
+  );
   const secondaryHasUnsavedChanges =
     editableSecondarySnapshot?.fields.length === secondaryDraftFields.length &&
     secondaryDraftFields.some((field) => {
@@ -1486,6 +1517,8 @@ function ResultPage() {
     editableSecondarySnapshot.status !== "idle"
       ? getSecondaryStatusMessage(editableSecondarySnapshot.status)
       : null;
+  const detailedReviewStatusValue =
+    detailedReviewProgress?.statusValue ?? editableSecondarySnapshot?.status ?? null;
   const shouldShowDetailedResult = Boolean(
     editableSecondarySnapshot &&
     (editableSecondarySnapshot.status !== "idle" ||
@@ -1564,7 +1597,9 @@ function ResultPage() {
       case "SECONDARY_ANALYZING":
         return "The detailed review step is running. This page will refresh automatically until it is ready.";
       case "SECONDARY_REVIEW":
-        return "The detailed review is ready. Save any edits you need, then continue to supporting materials.";
+        return detailedReviewReadyForUi
+          ? "The detailed review is ready. Save any edits you need, then continue to supporting materials."
+          : "The detailed review is finishing the remaining prompts. Progress will update automatically until it is ready.";
       case "SECONDARY_FAILED":
         return "The detailed review step did not finish successfully. Supporting materials stay locked until this step succeeds.";
       case "INELIGIBLE":
@@ -1572,7 +1607,7 @@ function ResultPage() {
       default:
         return "This page shows your screening status, any recognized information from your resume, and the next step you should take.";
     }
-  }, [snapshot]);
+  }, [detailedReviewReadyForUi, snapshot]);
   const flowStepLinks = useMemo(
     () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
     [snapshot?.applicationStatus],
@@ -1670,6 +1705,7 @@ function ResultPage() {
                   snapshot,
                   statusText,
                   detailedStatusDescription,
+                  detailedReviewReadyForUi,
                 )
               )}
 
@@ -1764,11 +1800,44 @@ function ResultPage() {
               ) : null}
 
               {showDetailedAnalysisSection ? (
-                <SectionCard
-                  title="Detailed review"
-                  description="When this step succeeds, you can upload supporting materials and move toward final submission."
-                >
-                  <div className="flex flex-wrap gap-3">
+                <>
+                  {detailedReviewStatusValue || detailedReviewProgress ? (
+                    <SectionCard
+                      title="Detailed review progress"
+                      description={
+                        detailedReviewReadyForUi
+                          ? "The detailed review has finished. You can review the fields below and continue when ready."
+                          : "The detailed review is still running. Track the latest status here before the ready state appears."
+                      }
+                    >
+                      <MetaStrip
+                        items={[
+                          ...(detailedReviewStatusValue
+                            ? [
+                                {
+                                  label: "Status",
+                                  value: detailedReviewStatusValue,
+                                },
+                              ]
+                            : []),
+                          ...(detailedReviewProgress
+                            ? [
+                                {
+                                  label: "Progress",
+                                  value: detailedReviewProgress.progressLabel,
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
+                    </SectionCard>
+                  ) : null}
+
+                  <SectionCard
+                    title="Detailed review"
+                    description="When this step succeeds, you can upload supporting materials and move toward final submission."
+                  >
+                    <div className="flex flex-wrap gap-3">
                     {canTriggerSecondaryAnalysis ? (
                       <ActionButton
                         variant="secondary"
@@ -1784,14 +1853,15 @@ function ResultPage() {
                           : "Start detailed review"}
                       </ActionButton>
                     ) : null}
-                    {secondaryRunAlreadyStarted ? (
+                    {shouldShowStartedSecondaryNotice ? (
                       <span className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-600">
                         The detailed review has already been started for this
                         application.
                       </span>
                     ) : null}
-                  </div>
-                </SectionCard>
+                    </div>
+                  </SectionCard>
+                </>
               ) : null}
 
               {secondaryError ? (
@@ -1809,21 +1879,6 @@ function ResultPage() {
                     editableSecondarySnapshot.status,
                   )}
                   defaultOpen={snapshot.applicationStatus === "SECONDARY_REVIEW"}
-                  meta={
-                    canContinueToMaterials ? (
-                      <div className="hidden sm:block">
-                        <ActionButton
-                          variant="success"
-                          onClick={onContinueToMaterials}
-                          disabled={isEnteringMaterials || isReadOnlyReview}
-                        >
-                          {isEnteringMaterials
-                            ? "Opening Final Step..."
-                            : "Next: Submission Complete"}
-                        </ActionButton>
-                      </div>
-                    ) : undefined
-                  }
                 >
                   <div className="space-y-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1853,7 +1908,7 @@ function ResultPage() {
                           variant="success"
                           onClick={onContinueToMaterials}
                           disabled={isEnteringMaterials || isReadOnlyReview}
-                          className="sm:hidden"
+                          className="w-full sm:w-auto"
                         >
                           {isEnteringMaterials
                             ? "Opening Final Step..."
@@ -1923,53 +1978,13 @@ function ResultPage() {
                       </div>
                     )}
 
-                    {(editableSecondarySnapshot.run ||
-                      editableSecondarySnapshot.errorMessage) && (
-                      <DisclosureSection
-                        title="Technical details"
-                        summary="Low-priority run diagnostics and error details."
-                        className="shadow-none"
-                      >
-                        <div className="space-y-3 text-sm text-slate-700">
-                          {editableSecondarySnapshot.run ? (
-                            <div className="rounded-md border border-slate-300 bg-white p-3.5">
-                              <p>
-                                Status:{" "}
-                                {editableSecondarySnapshot.run.status ??
-                                  editableSecondarySnapshot.status}
-                              </p>
-                              <p className="mt-1">
-                                Completed prompts:{" "}
-                                {editableSecondarySnapshot.run.completedPrompts ??
-                                  0}
-                                {editableSecondarySnapshot.run.totalPrompts
-                                  ? ` / ${editableSecondarySnapshot.run.totalPrompts}`
-                                  : ""}
-                              </p>
-                              {editableSecondarySnapshot.run.failedPromptIds
-                                .length > 0 ? (
-                                <p className="mt-1">
-                                  Failed prompt IDs:{" "}
-                                  {editableSecondarySnapshot.run.failedPromptIds.join(
-                                    ", ",
-                                  )}
-                                </p>
-                              ) : null}
-                              {editableSecondarySnapshot.run.errorMessage ? (
-                                <p className="mt-1">
-                                  {editableSecondarySnapshot.run.errorMessage}
-                                </p>
-                              ) : null}
-                            </div>
-                          ) : null}
-                          {editableSecondarySnapshot.errorMessage ? (
-                            <div className="rounded-md border border-slate-300 bg-white p-3.5">
-                              {editableSecondarySnapshot.errorMessage}
-                            </div>
-                          ) : null}
-                        </div>
-                      </DisclosureSection>
-                    )}
+                    {editableSecondarySnapshot.errorMessage ? (
+                      <StatusBanner
+                        tone="danger"
+                        title="Detailed review diagnostics"
+                        description={editableSecondarySnapshot.errorMessage}
+                      />
+                    ) : null}
                   </div>
                 </DisclosureSection>
               ) : !isLoading && !error ? (
