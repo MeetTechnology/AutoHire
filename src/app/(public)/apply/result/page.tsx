@@ -534,12 +534,14 @@ function renderEditableSecondaryField(input: {
       </div>
       <div className="mt-3 space-y-2 text-xs leading-6 text-slate-500">
         <p>{helperText}</p>
-        <p>
-          Model value:{" "}
-          <span className="font-medium text-slate-700">
-            {field.sourceValue || "No extracted value"}
-          </span>
-        </p>
+        {field.isEdited ? (
+          <p>
+            Model value:{" "}
+            <span className="font-medium text-slate-700">
+              {field.sourceValue || "No extracted value"}
+            </span>
+          </p>
+        ) : null}
       </div>
     </div>
   );
