@@ -8,7 +8,6 @@ import { buildVisibleExtractedFieldSummary } from "@/features/analysis/display";
 import {
   ActionButton,
   DisclosureSection,
-  MetaStrip,
   MobileSupportCard,
   PageFrame,
   PageShell,
@@ -370,7 +369,7 @@ export default function ResumePage() {
                 />
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-center">
                 <ActionButton
                   onClick={handleUpload}
                   disabled={
@@ -388,22 +387,6 @@ export default function ResumePage() {
               </div>
             </div>
           </SectionCard>
-
-          <DisclosureSection
-            title="Submission rules"
-            summary="PDF and Word are preferred. Resume screening starts immediately after submission."
-          >
-            <div className="space-y-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
-              <p>
-                PDF and Word are preferred. ZIP archives remain accepted for
-                bundled supporting CV content when needed.
-              </p>
-              <p>
-                Once submitted, you will move to the review page and the system
-                will request additional information only if required.
-              </p>
-            </div>
-          </DisclosureSection>
 
           {(previewFields.length > 0 || selectedFile) && (
             <DisclosureSection
@@ -435,31 +418,6 @@ export default function ResumePage() {
               )}
             </DisclosureSection>
           )}
-
-          {snapshot?.latestResumeFile ? (
-            <DisclosureSection
-              title="Previously uploaded CV"
-              summary="The latest confirmed file remains available in your application history."
-            >
-              <MetaStrip
-                items={[
-                  {
-                    label: "Latest upload",
-                    value: snapshot.latestResumeFile.fileName,
-                  },
-                  {
-                    label: "Uploaded on",
-                    value: new Date(
-                      snapshot.latestResumeFile.uploadedAt,
-                    ).toLocaleString("en-US", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    }),
-                  },
-                ]}
-              />
-            </DisclosureSection>
-          ) : null}
         </div>
       </PageShell>
     </PageFrame>
