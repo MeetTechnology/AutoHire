@@ -769,27 +769,47 @@ function InitialCvReviewExtractCard({
       title="Initial CV review extract"
       description="Fields extracted from your CV for the latest initial CV review pass."
     >
-      <div className="space-y-2">
-        {INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => {
-          const value = getInitialCvReviewFieldValue(
-            latestResult.extractedFields,
-            row.key,
-          );
+      <div className="overflow-x-auto rounded-xl border border-[color:var(--border)] bg-white">
+        <table className="min-w-full border-collapse">
+          <thead>
+            <tr className="border-b border-[color:var(--border)] bg-slate-50">
+              <th
+                scope="col"
+                className="w-1/3 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[color:var(--primary)]"
+              >
+                Field
+              </th>
+              <th
+                scope="col"
+                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[color:var(--primary)]"
+              >
+                Value
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => {
+              const value = getInitialCvReviewFieldValue(
+                latestResult.extractedFields,
+                row.key,
+              );
 
-          return (
-            <div
-              key={row.key}
-              className="flex flex-col gap-1 rounded-xl border border-[color:var(--border)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <span className="text-sm font-medium text-[color:var(--primary)]">
-                {row.label}
-              </span>
-              <span className="text-sm text-[color:var(--foreground-soft)]">
-                {value ? value : "Not provided"}
-              </span>
-            </div>
-          );
-        })}
+              return (
+                <tr key={row.key} className="border-b border-[color:var(--border)] last:border-b-0">
+                  <th
+                    scope="row"
+                    className="align-top px-4 py-3 text-left text-sm font-medium text-[color:var(--primary)]"
+                  >
+                    {row.label}
+                  </th>
+                  <td className="px-4 py-3 text-sm text-[color:var(--foreground-soft)] whitespace-normal break-words">
+                    {value ? value : "Not provided"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </SectionCard>
   );
@@ -1968,7 +1988,7 @@ function ResultPage() {
                     <div className="flex flex-wrap gap-3">
                     {canTriggerSecondaryAnalysis ? (
                       <ActionButton
-                        variant="secondary"
+                        variant="primary"
                         onClick={onTriggerSecondaryAnalysis}
                         disabled={
                           isStartingSecondary ||
@@ -2115,11 +2135,6 @@ function ResultPage() {
                     ) : null}
                   </div>
                 </DisclosureSection>
-              ) : !isLoading && !error ? (
-                <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--background-elevated)] px-4 py-4 text-sm leading-6 text-[color:var(--foreground-soft)] shadow-[var(--shadow-card)] sm:px-5">
-                  No detailed review fields are currently available for this
-                  application state.
-                </div>
               ) : null}
             </>
           ) : null}
@@ -2127,7 +2142,7 @@ function ResultPage() {
             <p className="text-center text-sm leading-6 text-[color:var(--foreground-soft)]">
               Experts may contact the program team at{" "}
               <a
-                className="font-medium text-[color:var(--primary)] underline underline-offset-2 hover:text-[color:var(--primary-strong)]"
+                className="inline-block border-b-2 border-current font-bold leading-none text-[color:var(--primary)] hover:text-[color:var(--primary-strong)]"
                 href={`mailto:${EXPERT_PROGRAM_CONTACT_EMAIL}`}
               >
                 {EXPERT_PROGRAM_CONTACT_EMAIL}
