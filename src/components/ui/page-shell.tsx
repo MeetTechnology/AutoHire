@@ -30,6 +30,8 @@ type PageShellProps = {
   className?: string;
   headerSlot?: ReactNode;
   headerVariant?: "default" | "centered";
+  /** Merged into the main `<h1>`; omit to keep the default semibold title weight. */
+  headerTitleClassName?: string;
   steps?: readonly FlowStep[];
   currentStep?: number;
   stepIndexing?: "zero" | "one";
@@ -166,6 +168,7 @@ export function PageShell({
   className,
   headerSlot,
   headerVariant = "default",
+  headerTitleClassName,
   steps,
   currentStep,
   stepIndexing = "one",
@@ -207,7 +210,12 @@ export function PageShell({
                 {eyebrow}
               </span>
             ) : null}
-            <h1 className="mt-4 max-w-4xl text-[2rem] leading-tight font-semibold tracking-[-0.04em] text-[color:var(--primary)] sm:text-[2.6rem]">
+            <h1
+              className={cn(
+                "mt-4 max-w-4xl text-[2rem] leading-tight tracking-[-0.04em] text-[color:var(--primary)] sm:text-[2.6rem]",
+                headerTitleClassName ?? "font-semibold",
+              )}
+            >
               {title}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.98rem]">
@@ -226,7 +234,12 @@ export function PageShell({
                   </span>
                 ) : null}
                 <div className="space-y-2">
-                  <h1 className="max-w-4xl text-[1.8rem] leading-tight font-semibold tracking-[-0.03em] text-[color:var(--primary)] sm:text-[2.15rem]">
+                  <h1
+                    className={cn(
+                      "max-w-4xl text-[1.8rem] leading-tight tracking-[-0.03em] text-[color:var(--primary)] sm:text-[2.15rem]",
+                      headerTitleClassName ?? "font-semibold",
+                    )}
+                  >
                     {title}
                   </h1>
                   <p className="max-w-3xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.96rem]">

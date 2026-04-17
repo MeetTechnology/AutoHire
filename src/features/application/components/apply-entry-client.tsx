@@ -32,22 +32,6 @@ type ApplyEntryClientProps = {
   token: string | null;
 };
 
-const BENEFITS = [
-  "Annual Salary: ¥500K – ¥2M RMB, negotiable according to profile and institutional fit.",
-  "Talent Reward: ¥1.5M – ¥6M RMB, typically paid over 3–5 years.",
-  "Comprehensive Benefits: housing subsidy support, children's school enrollment support, and tax-related support where applicable.",
-  "Recognition: eligible candidates may obtain the National High-Level Talent title through the formal review pathway.",
-  "Open to all nationalities. Relocation is not required before selection.",
-  "Flexible engagement. Full-time and part-time onboarding arrangements remain negotiable after successful selection and must be completed within two years.",
-] as const;
-
-const ELIGIBILITY = [
-  "A Ph.D. is required.",
-  "Applicants under 40 must normally show at least 36 consecutive months of work or research experience outside mainland China.",
-  "For applicants aged 40+, the 36-month criterion is waived.",
-  "Applicants aged 40+ should normally hold a position equivalent to Associate Professor or above outside mainland China.",
-] as const;
-
 const PROCESS = [
   "Project Introduction",
   "Upload CV",
@@ -55,17 +39,48 @@ const PROCESS = [
   "Additional Information",
   "Submission Complete",
 ] as const;
-const APPLICATION_PERIOD = "Application Period: Q2 2026";
+
+const INTRO_DESCRIPTION =
+  "We accept applications year-round. However, the formal application window for the 2026 cycle closes in mid-June.";
+
+const APPLICATION_DEADLINE_PILL = "Application Deadline: Mid-June 2026";
+
+const COMPETITIVE_PACKAGE_ITEMS = [
+  "Annual Salary: ¥500K – ¥2M RMB (negotiable)",
+  "Talent Reward: ¥1.5M – ¥6M RMB (paid over 3–5 years)",
+  "Comprehensive Benefits: Including housing subsidies, children's school enrollment support, tax benefits",
+  'Title: the prestigious "National High-Level Talent" title.',
+] as const;
+
+const ELIGIBILITY_RULES = [
+  "Ph.D. degree required.",
+  "Minimum of 3 consecutive years of work experience outside mainland China after obtaining the Ph.D.",
+  "For applicants over 40, a position equivalent to Associate Professor or higher is required.",
+] as const;
+
+const TIMELINE_ITEMS = [
+  "Rolling Admissions: We accept applications year-round.",
+  "2026 Deadline: The application window for 2026 remains open until mid-June.",
+  "Notification: For applications submitted before mid-June 2026, results will be announced in December 2026.",
+  "Flexibility: Selected candidates for the 2026 cohort will have a two-year consideration period, with the option to arrive in China as late as early 2029.",
+] as const;
+
+const SUB_PROGRAMS = [
+  "Qiming (QM)",
+  "Torch Plan (HJ)",
+  "Changjiang Scholar",
+] as const;
+
 const INTRO_SECTION_ITEMS = [
   {
     id: "overview",
-    title: "What is GESF",
-    summary: "Understand the program mission and the target candidate profile.",
+    title: "Global Excellent Scientists Fund (GESF)",
+    summary: "Program Mission & Objectives",
   },
   {
     id: "benefits",
     title: "Benefits",
-    summary: "Review compensation, rewards, and practical support.",
+    summary: "Competitive Package",
   },
   {
     id: "eligibility",
@@ -74,8 +89,15 @@ const INTRO_SECTION_ITEMS = [
   },
   {
     id: "process",
-    title: "Process",
-    summary: "See the five-step application journey before you begin.",
+    title: "Online Application Process",
+    summary:
+      "Five steps, progress saves at each stage, and feedback after you submit.",
+  },
+  {
+    id: "timeline",
+    title: "Timeline & Key Dates",
+    summary:
+      "Rolling admissions, deadlines, results notification, and arrival flexibility.",
   },
   {
     id: "about",
@@ -101,7 +123,7 @@ const APPLY_ENTRY_BACKDROP_STYLE: CSSProperties = {
 
 export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const router = useRouter();
-  const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);           
+  const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const flowStepLinks = useMemo(
     () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
     [snapshot?.applicationStatus],
@@ -181,18 +203,6 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
     });
   }
 
-  const invitationTitle =
-    snapshot?.applicationStatus === "INTRO_VIEWED"
-      ? "Application session restored"
-      : "Invitation verified";
-  const invitationDescription =
-    snapshot?.applicationStatus === "INTRO_VIEWED"
-      ? "Your previous progress remains available. Continue when you are ready to move into the CV stage."
-      : "This invitation is active. The system will restore your progress automatically whenever you return through the same invitation flow.";
-  const buttonLabel =
-    snapshot?.applicationStatus === "INTRO_VIEWED"
-      ? "Next: Upload CV"
-      : "Next: Upload CV";
   const isReadOnlyReview = snapshot
     ? isFlowStepReadOnly(snapshot.applicationStatus, 0)
     : false;
@@ -201,44 +211,43 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
     switch (sectionId) {
       case "overview":
         return (
-          <div className="space-y-3 text-sm leading-7 text-[color:var(--foreground-soft)]">
+          <div className="space-y-4 text-sm leading-7 text-[color:var(--foreground-soft)]">
             <p>
-              GESF, the Global Excellent Scientists Fund, is a national-level
-              talent program designed to attract world-class researchers and
-              experts.
+              The Global Excellent Scientists Fund (GESF), also known as the
+              China Talent Program, is a prestigious national-level talent
+              program initiated by relevant Chinese government departments. Its
+              primary mission is to attract overseas scholars—including those
+              from Hong Kong, Macau, and Taiwan, regardless of nationality—to
+              conduct research and innovation in China, thereby contributing to
+              the nation&apos;s scientific and technological advancement.
             </p>
-            <p>
-              The program is hosted by relevant government departments and
-              targets high-level researchers and experts currently working
-              overseas, including Hong Kong, Macau, and Taiwan.
-            </p>
+            <p>The program encompasses the following sub-projects:</p>
+            <ul className="list-disc space-y-2 pl-5">
+              {SUB_PROGRAMS.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
           </div>
         );
       case "benefits":
         return (
-          <ul className="space-y-2 text-sm leading-7 text-[color:var(--foreground-soft)]">
-            {BENEFITS.map((item) => (
-              <li
-                key={item}
-                className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-3"
-              >
+          <ol className="list-decimal space-y-3 pl-5 text-sm leading-7 text-[color:var(--foreground-soft)] marker:font-semibold">
+            {COMPETITIVE_PACKAGE_ITEMS.map((item) => (
+              <li key={item} className="pl-1">
                 {item}
               </li>
             ))}
-          </ul>
+          </ol>
         );
       case "eligibility":
         return (
-          <ul className="space-y-2 text-sm leading-7 text-[color:var(--foreground-soft)]">
-            {ELIGIBILITY.map((item) => (
-              <li
-                key={item}
-                className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-3"
-              >
+          <ol className="list-decimal space-y-3 pl-5 text-sm leading-7 text-[color:var(--foreground-soft)] marker:font-semibold">
+            {ELIGIBILITY_RULES.map((item) => (
+              <li key={item} className="pl-1">
                 {item}
               </li>
             ))}
-          </ul>
+          </ol>
         );
       case "process":
         return (
@@ -258,12 +267,30 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
                 </div>
               ))}
             </div>
-            <p className="text-sm leading-7 text-[color:var(--foreground-soft)]">
-              The journey is intentionally linear: introduction first, then CV
-              upload, resume screening, any required follow-up fields, and
-              finally the submission package.
-            </p>
+            <div className="space-y-3 text-sm leading-7 text-[color:var(--foreground-soft)]">
+              <p>
+                The application process is linear; steps cannot be bypassed.
+              </p>
+              <p>Progress can be saved at each stage.</p>
+              <p>
+                You will receive feedback from our team within one week of final
+                submission.
+              </p>
+            </div>
           </div>
+        );
+      case "timeline":
+        return (
+          <ul className="space-y-2 text-sm leading-7 text-[color:var(--foreground-soft)]">
+            {TIMELINE_ITEMS.map((item) => (
+              <li
+                key={item}
+                className="rounded-xl border border-[color:var(--border)] bg-white px-4 py-3"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
         );
       case "about":
         return (
@@ -288,7 +315,8 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
           <PageShell
             eyebrow="GESF"
             title="Global Excellent Scientists Fund"
-            description="A concise introduction before you move into CV submission and review."
+            description={INTRO_DESCRIPTION}
+            headerTitleClassName="font-normal"
             headerVariant="centered"
             steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
             currentStep={0}
@@ -300,7 +328,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
             headerSlot={
               <div className="flex justify-center">
                 <span className="inline-flex min-h-11 items-center rounded-full bg-[color:var(--primary)] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(10,25,47,0.16)]">
-                  {APPLICATION_PERIOD}
+                  {APPLICATION_DEADLINE_PILL}
                 </span>
               </div>
             }
@@ -382,28 +410,15 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
                 </div>
               </section>
 
-              <section className="rounded-[1.75rem] border border-[color:var(--border)] bg-[color:var(--background-elevated)] px-5 py-5 shadow-[var(--shadow-card)] sm:px-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1.5">
-                    <p className="text-sm font-semibold text-[color:var(--primary)]">
-                      {invitationTitle}
-                    </p>
-                    <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
-                      {invitationDescription}
-                    </p>
-                  </div>
-                  <ActionButton
-                    onClick={handleStart}
-                    disabled={isPending || isReadOnlyReview}
-                    className="w-full sm:w-auto"
-                  >
-                    <span>
-                      {isPending ? "Opening CV Step..." : buttonLabel}
-                    </span>
-                    <ChevronRight className="h-4 w-4" aria-hidden />
-                  </ActionButton>
-                </div>
-              </section>
+              <div className="flex justify-center py-4">
+                <ActionButton
+                  onClick={handleStart}
+                  disabled={isPending || isReadOnlyReview}
+                >
+                  <span>{isPending ? "Opening..." : "Upload CV"}</span>
+                  <ChevronRight className="h-4 w-4" aria-hidden />
+                </ActionButton>
+              </div>
             </div>
           </PageShell>
         </PageFrame>
