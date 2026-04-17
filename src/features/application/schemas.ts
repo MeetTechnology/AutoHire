@@ -43,7 +43,7 @@ export const resumeConfirmSchema = uploadConfirmFileFields.extend({
   screeningContactEmail: normalizedEmail,
 });
 
-/** Client-side check for the two screening identity fields (no file fields). */
+/** Client-side check for the two CV review identity fields (no file fields). */
 export const resumeScreeningIdentityOnlySchema = z.object({
   screeningPassportFullName: trimmedNonEmpty,
   screeningContactEmail: normalizedEmail,

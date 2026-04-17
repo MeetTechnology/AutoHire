@@ -36,7 +36,7 @@ describe("POST /api/applications/[applicationId]/resume", () => {
     resetMemoryStore();
   });
 
-  it("returns 400 when screening identity is missing", async () => {
+  it("returns 400 when CV review identity is missing", async () => {
     const response = await resumePost(
       buildAuthorizedRequest("http://localhost/api/applications/app_intro/resume", {
         method: "POST",
@@ -54,7 +54,7 @@ describe("POST /api/applications/[applicationId]/resume", () => {
     expect(response.status).toBe(400);
   });
 
-  it("persists screening identity on confirm", async () => {
+  it("persists CV review identity on confirm", async () => {
     const response = await resumePost(
       buildAuthorizedRequest("http://localhost/api/applications/app_intro/resume", {
         method: "POST",

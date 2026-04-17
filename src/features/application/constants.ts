@@ -29,7 +29,7 @@ export const APPLICATION_STATUSES = [
 ] as const;
 
 /** Placeholder inbox for expert feedback; replace with the operations-provided address. */
-export const EXPERT_PROGRAM_CONTACT_EMAIL = "screening-contact@example.com";
+export const EXPERT_PROGRAM_CONTACT_EMAIL = "review-contact@example.com";
 
 export const APPLICATION_FLOW_STEPS = [
   {
@@ -37,8 +37,8 @@ export const APPLICATION_FLOW_STEPS = [
     hint: "Provide identity basics and your latest CV file.",
   },
   {
-    label: "Resume screening",
-    hint: "Wait for the screening outcome and complete any required follow-up before supporting materials.",
+    label: "CV Review",
+    hint: "Wait for the CV review outcome and complete any required follow-up before supporting materials.",
   },
   {
     label: "Additional Information",

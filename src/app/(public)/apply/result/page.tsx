@@ -18,6 +18,11 @@ import type { MissingField } from "@/features/analysis/types";
 import type { EditableSecondaryField } from "@/features/analysis/types";
 import { buildVisibleExtractedFieldSummary } from "@/features/analysis/display";
 import {
+  getInitialCvReviewFieldValue,
+  hasInitialCvReviewExtract,
+  INITIAL_CV_REVIEW_FIELD_ROWS,
+} from "@/features/analysis/initial-cv-review-extract";
+import {
   ActionButton,
   DisclosureSection,
   MetaStrip,
@@ -651,7 +656,7 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="loading"
-        title="Your resume is being screened"
+        title="Your CV is being reviewed"
         description={statusText}
       />
     );
@@ -677,7 +682,7 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="success"
-        title="Initial screening passed"
+        title="Initial CV review passed"
         description={
           detailedStatusText ??
           "Run the detailed review step. When it completes, you can continue to supporting materials."
@@ -745,7 +750,7 @@ function getInitialBanner(
         title="Some required information is still missing"
         description={
           snapshot.latestResult?.displaySummary ??
-          "Please complete the fields below and run screening again."
+          "Please complete the fields below and run CV review again."
         }
       />
     );
@@ -754,12 +759,119 @@ function getInitialBanner(
   return null;
 }
 
+function InitialCvReviewExtractCard({
+  latestResult,
+}: {
+  latestResult: NonNullable<ApplicationSnapshot["latestResult"]>;
+}) {
+  return (
+    <SectionCard
+      title="Initial CV review extract"
+      description="Fields extracted from your CV for the latest initial CV review pass."
+    >
+      <div className="space-y-2">
+        {INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => {
+          const value = getInitialCvReviewFieldValue(
+            latestResult.extractedFields,
+            row.key,
+          );
+
+          return (
+            <div
+              key={row.key}
+              className="flex flex-col gap-1 rounded-xl border border-[color:var(--border)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span className="text-sm font-medium text-[color:var(--primary)]">
+                {row.label}
+              </span>
+              <span className="text-sm text-[color:var(--foreground-soft)]">
+                {value ? value : "Not provided"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </SectionCard>
+  );
+}
+
+function InitialCvReviewDeterminationCard({
+  snapshot,
+}: {
+  snapshot: ApplicationSnapshot;
+}) {
+  const latest = snapshot.latestResult;
+  const displaySummary = latest?.displaySummary ?? null;
+  const reasonText = latest?.reasonText ?? null;
+  const { eligibilityResult } = snapshot;
+
+  if (eligibilityResult === "INELIGIBLE") {
+    return (
+      <SectionCard
+        title="CV review outcome"
+        description={displaySummary ?? undefined}
+      >
+        {reasonText ? (
+          <p className="mt-2 text-sm leading-6 text-slate-700">{reasonText}</p>
+        ) : null}
+      </SectionCard>
+    );
+  }
+
+  if (
+    eligibilityResult === "INSUFFICIENT_INFO" ||
+    snapshot.applicationStatus === "INFO_REQUIRED"
+  ) {
+    const primary =
+      reasonText ??
+      displaySummary ??
+      "The model could not finalize eligibility. Please complete the missing fields below.";
+
+    return (
+      <SectionCard title="CV review outcome">
+        <p className="text-sm leading-6 text-slate-700">{primary}</p>
+      </SectionCard>
+    );
+  }
+
+  if (eligibilityResult === "ELIGIBLE") {
+    const primary =
+      reasonText ??
+      displaySummary ??
+      "You meet the basic application requirements for initial CV review.";
+    const secondary =
+      reasonText && displaySummary && displaySummary.trim() !== reasonText.trim()
+        ? displaySummary
+        : null;
+
+    return (
+      <SectionCard title="CV review outcome" description={primary}>
+        {secondary ? (
+          <p className="mt-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
+            {secondary}
+          </p>
+        ) : null}
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard
+      title="CV review outcome"
+      description={
+        displaySummary ??
+        "Initial CV review returned an outcome. Review the extract and any messages above."
+      }
+    />
+  );
+}
+
 function ResultPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [statusText, setStatusText] = useState(
-    "Preparing your screening outcome...",
+    "Preparing your CV review outcome...",
   );
   const [error, setError] = useState<string | null>(null);
   const [secondaryError, setSecondaryError] = useState<string | null>(null);
@@ -872,7 +984,7 @@ function ResultPage() {
           setError(
             nextError instanceof Error
               ? nextError.message
-              : "Unable to load the screening outcome.",
+              : "Unable to load the CV review outcome.",
           );
         }
       } finally {
@@ -951,7 +1063,7 @@ function ResultPage() {
 
           setSnapshot(refreshedSession);
           setError(
-            status.errorMessage ?? "Screening failed. Please try again later.",
+            status.errorMessage ?? "CV review failed. Please try again later.",
           );
           window.clearInterval(timer);
           return;
@@ -971,7 +1083,7 @@ function ResultPage() {
           setError(
             nextError instanceof Error
               ? nextError.message
-              : "Failed to refresh the screening status.",
+              : "Failed to refresh the CV review status.",
           );
         }
       }
@@ -1227,7 +1339,7 @@ function ResultPage() {
             : current,
         );
         setStatusText(
-          "The system is reanalyzing your resume with the supplemental information...",
+          "The system is reanalyzing your CV with the supplemental information...",
         );
         clearDraft(`autohire:supplemental:${snapshot.applicationId}`);
         await syncAnalysisProgress(snapshot.applicationId);
@@ -1409,6 +1521,10 @@ function ResultPage() {
   const visibleExtractedFields = buildVisibleExtractedFieldSummary(
     snapshot?.latestResult?.extractedFields ?? {},
   );
+  const hasInitialCvReviewSeven = useMemo(
+    () => hasInitialCvReviewExtract(snapshot?.latestResult?.extractedFields),
+    [snapshot?.latestResult?.extractedFields],
+  );
   const secondaryRunAlreadyStarted = Boolean(editableSecondarySnapshot?.runId);
   const canTriggerSecondaryAnalysis = Boolean(
     snapshot &&
@@ -1566,7 +1682,7 @@ function ResultPage() {
     const secondaryMessage =
       showApiSecondary && sanitizedApi.length > 0 ? sanitizedApi : null;
 
-    const ariaValueText = `Screening in progress; about ${Math.round(progressRatio * 100)} percent along the expected wait.`;
+    const ariaValueText = `CV review in progress; about ${Math.round(progressRatio * 100)} percent along the expected wait.`;
 
     return {
       progressRatio,
@@ -1585,17 +1701,17 @@ function ResultPage() {
   }, [requestedResultView]);
   const headerSummary = useMemo(() => {
     if (!snapshot) {
-      return "This page shows your screening status, any recognized information from your resume, and the next step you should take.";
+      return "This page shows your CV review status, any recognized information from your CV, and the next step you should take.";
     }
 
     switch (snapshot.applicationStatus) {
       case "CV_ANALYZING":
       case "REANALYZING":
-        return "Your resume is still being screened. This page will update automatically; please keep it open.";
+        return "Your CV is still being reviewed. This page will update automatically; please keep it open.";
       case "INFO_REQUIRED":
-        return "Screening needs a few more fields. Submit the items below and screening will run again.";
+        return "CV review needs a few more fields. Submit the items below and CV review will run again.";
       case "ELIGIBLE":
-        return "Initial screening is complete. Complete the detailed review step, then you can upload supporting materials.";
+        return "Initial CV review is complete. Complete the detailed review step, then you can upload supporting materials.";
       case "SECONDARY_ANALYZING":
         return "The detailed review step is running. This page will refresh automatically until it is ready.";
       case "SECONDARY_REVIEW":
@@ -1607,7 +1723,7 @@ function ResultPage() {
       case "INELIGIBLE":
         return "This submission does not meet the published requirements. See the summary below for the reasons provided.";
       default:
-        return "This page shows your screening status, any recognized information from your resume, and the next step you should take.";
+        return "This page shows your CV review status, any recognized information from your CV, and the next step you should take.";
     }
   }, [detailedReviewReadyForUi, snapshot]);
   const flowStepLinks = useMemo(
@@ -1632,8 +1748,8 @@ function ResultPage() {
         eyebrow={`Step ${currentResultStep + 1}`}
         title={
           currentResultStep === 2
-            ? "Track your resume screening and wait for the outcome."
-            : "Provide the remaining information needed to finish screening."
+            ? "Track your CV Review and wait for the outcome."
+            : "Provide the remaining information needed to finish CV review."
         }
         description={headerSummary}
         headerVariant="centered"
@@ -1660,15 +1776,15 @@ function ResultPage() {
           {isLoading ? (
             <StatusBanner
               tone="loading"
-              title="Loading your screening outcome"
-              description="Restoring the latest screening state and any recognized fields."
+              title="Loading your CV review outcome"
+              description="Restoring the latest CV review state and any recognized fields."
             />
           ) : null}
 
           {error ? (
             <StatusBanner
               tone="danger"
-              title="The screening status could not be refreshed"
+              title="The CV review status could not be refreshed"
               description={error}
             />
           ) : null}
@@ -1680,7 +1796,7 @@ function ResultPage() {
                   title={
                     snapshot.applicationStatus === "SECONDARY_ANALYZING"
                       ? "Detailed review in progress"
-                      : "Resume screening is running"
+                      : "CV Review is running"
                   }
                   description={
                     snapshot.applicationStatus === "SECONDARY_ANALYZING"
@@ -1699,7 +1815,7 @@ function ResultPage() {
                   }
                   ariaValueText={
                     analysisProgressView?.ariaValueText ??
-                    "Screening in progress."
+                    "CV review in progress."
                   }
                 />
               ) : (
@@ -1711,10 +1827,19 @@ function ResultPage() {
                 )
               )}
 
+              {hasInitialCvReviewSeven && snapshot.latestResult ? (
+                <InitialCvReviewExtractCard latestResult={snapshot.latestResult} />
+              ) : null}
+
+              {hasInitialCvReviewSeven ? (
+                <InitialCvReviewDeterminationCard snapshot={snapshot} />
+              ) : null}
+
               {snapshot.latestResult?.reasonText &&
-              snapshot.applicationStatus !== "INELIGIBLE" ? (
+              snapshot.applicationStatus !== "INELIGIBLE" &&
+              !hasInitialCvReviewSeven ? (
                 <SectionCard
-                  title="Screening summary"
+                  title="CV review summary"
                   description={snapshot.latestResult.reasonText}
                 />
               ) : null}
@@ -1722,7 +1847,8 @@ function ResultPage() {
               {visibleExtractedFields.length > 0 ? (
                 <DisclosureSection
                   title="Recognized information summary"
-                  summary="These items were extracted from the current resume and normalized for display."
+                  summary="These items were extracted from the current CV and normalized for display."
+                  defaultOpen={!hasInitialCvReviewSeven}
                 >
                   <div className="space-y-2">
                     {visibleExtractedFields.map((field) => (
@@ -1765,7 +1891,7 @@ function ResultPage() {
                           },
                           {
                             label: "After submit",
-                            value: "Screening runs again immediately",
+                            value: "CV review runs again immediately",
                           },
                         ]}
                       />

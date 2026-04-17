@@ -35,6 +35,260 @@ const INELIGIBLE_SUMMARY_EN =
 const INSUFFICIENT_INFO_SUMMARY_EN =
   "The system cannot make a final eligibility decision yet. Please provide the missing information below.";
 
+const NEW_CONTRACT_SECTION_1 = "### 1. Extracted Information";
+const NEW_CONTRACT_SECTION_3 = "### 3. Determination Result";
+
+const INITIAL_CV_REVIEW_SEVEN_KEYS = [
+  "year_of_birth",
+  "doctoral_degree_status",
+  "doctoral_graduation_time",
+  "current_title_equivalence",
+  "current_job_country",
+  "work_experience_2020_present",
+  "research_area",
+] as const;
+
+const BYPASS_POSTDOC_PREFIX =
+  "Only eligible to apply as an overseas postdoctoral researcher coming to work in China";
+const BYPASS_YOUNG_RESEARCHER_PREFIX =
+  "Only eligible to apply as an overseas young researcher coming to China for postdoctoral work";
+const MISSING_CRITICAL_PREFIX =
+  "Cannot make a final determination due to missing critical information";
+const BORDERLINE_BIRTH_PREFIX =
+  "Cannot make a final determination. The exact birth year is missing";
+
+function isNewThreeStepContractText(text: string) {
+  return (
+    text.includes(NEW_CONTRACT_SECTION_1) &&
+    (text.includes(NEW_CONTRACT_SECTION_3) || text.includes("### 2. Analysis Process"))
+  );
+}
+
+function stripMarkdownBold(value: string) {
+  return value.replace(/\*\*/g, "").trim();
+}
+
+function normalizeSevenFieldRawValue(raw: string) {
+  const stripped = stripMarkdownBold(raw).trim();
+
+  if (!stripped || /^!!!\s*null\s*!!!$/i.test(stripped)) {
+    return "";
+  }
+
+  return stripped;
+}
+
+function parseExtractedInformationSection(text: string): Record<string, string> {
+  const start = text.indexOf(NEW_CONTRACT_SECTION_1);
+
+  if (start < 0) {
+    return {};
+  }
+
+  const from = start + NEW_CONTRACT_SECTION_1.length;
+  const idx2 = text.indexOf("### 2.", from);
+  const idx3 = text.indexOf("### 3.", from);
+  let end = text.length;
+
+  if (idx2 >= 0) {
+    end = Math.min(end, idx2);
+  }
+
+  if (idx3 >= 0) {
+    end = Math.min(end, idx3);
+  }
+
+  const body = text.slice(from, end).trim();
+
+  if (!body) {
+    return {};
+  }
+
+  const patterns: Array<{ key: string; re: RegExp }> = [
+    { key: "year_of_birth", re: /^-\s*Year of Birth:\s*(.+)$/gim },
+    {
+      key: "doctoral_degree_status",
+      re: /^-\s*Doctoral Degree Status:\s*(.+)$/gim,
+    },
+    {
+      key: "doctoral_graduation_time",
+      re: /^-\s*Doctoral Graduation Time:\s*(.+)$/gim,
+    },
+    {
+      key: "current_title_equivalence",
+      re: /^-\s*Current Title Equivalence:\s*(.+)$/gim,
+    },
+    { key: "current_job_country", re: /^-\s*Current Job Country:\s*(.+)$/gim },
+    {
+      key: "work_experience_2020_present",
+      re: /^-\s*Work Experience \(2020-Present\):\s*(.+)$/gim,
+    },
+    { key: "research_area", re: /^-\s*Research Area:\s*(.+)$/gim },
+  ];
+
+  const out: Record<string, string> = {};
+
+  for (const key of INITIAL_CV_REVIEW_SEVEN_KEYS) {
+    out[key] = "";
+  }
+
+  for (const { key, re } of patterns) {
+    re.lastIndex = 0;
+    const match = re.exec(body);
+
+    if (match?.[1]) {
+      out[key] = normalizeSevenFieldRawValue(match[1]);
+    }
+  }
+
+  return out;
+}
+
+function parseMissingFieldNamesAfterMarker(formal: string) {
+  const marker = "Missing fields:";
+  const idx = formal.indexOf(marker);
+
+  if (idx < 0) {
+    return [] as string[];
+  }
+
+  let rest = formal.slice(idx + marker.length).trim();
+  rest = rest.replace(/^\[/, "").replace(/\]\s*$/, "").trim();
+  const parts = rest
+    .split(/[,，;；]|\s+and\s+/i)
+    .map((part) => normalizeSourceItemName(part))
+    .filter(Boolean);
+
+  return parts;
+}
+
+function sevenFieldLabelsForInference(): Record<string, string> {
+  return {
+    year_of_birth: "Year of Birth",
+    doctoral_degree_status: "Doctoral Degree Status",
+    doctoral_graduation_time: "Doctoral Graduation Time",
+    current_title_equivalence: "Current Title Equivalence",
+    current_job_country: "Current Job Country",
+    work_experience_2020_present: "Work Experience (2020-Present)",
+    research_area: "Research Area",
+  } satisfies Record<(typeof INITIAL_CV_REVIEW_SEVEN_KEYS)[number], string>;
+}
+
+function inferMissingItemNamesFromSevenFields(seven: Record<string, string>) {
+  const labels = sevenFieldLabelsForInference();
+  const names: string[] = [];
+
+  for (const [key, label] of Object.entries(labels)) {
+    if (!String(seven[key] ?? "").trim()) {
+      names.push(label);
+    }
+  }
+
+  return names;
+}
+
+function parseNewThreeStepContract(
+  text: string,
+  coercedExtractedFields: Record<string, unknown>,
+): ParsedDecision {
+  const fromSection1 = parseExtractedInformationSection(text);
+  const sevenLayer: Record<string, unknown> = {};
+
+  for (const key of INITIAL_CV_REVIEW_SEVEN_KEYS) {
+    sevenLayer[key] = fromSection1[key] ?? "";
+  }
+
+  const extractedFields: Record<string, unknown> = {
+    ...coercedExtractedFields,
+    ...sevenLayer,
+  };
+
+  const rawReasoning = extractFirstBlock(text, "[[[", "]]]");
+  const formalResult = extractFirstBlock(text, "{{{", "}}}");
+
+  if (!formalResult) {
+    throw new Error("New CV review contract text is missing the determination {{{ }}} block.");
+  }
+
+  const trimmedFormal = formalResult.trim();
+
+  if (trimmedFormal.startsWith(MISSING_CRITICAL_PREFIX)) {
+    let names = parseMissingFieldNamesAfterMarker(trimmedFormal);
+
+    if (names.length === 0) {
+      names = inferMissingItemNamesFromSevenFields(
+        fromSection1 as Record<string, string>,
+      );
+    }
+
+    return {
+      eligibilityResult: "INSUFFICIENT_INFO",
+      displaySummary: trimmedFormal,
+      reasonText: trimmedFormal,
+      missingFields: buildMissingFieldsFromItemNames(names),
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  if (trimmedFormal.startsWith(BORDERLINE_BIRTH_PREFIX)) {
+    return {
+      eligibilityResult: "INSUFFICIENT_INFO",
+      displaySummary: trimmedFormal,
+      reasonText: trimmedFormal,
+      missingFields: buildMissingFieldsFromItemNames(["Year of Birth"]),
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  if (
+    trimmedFormal.startsWith(BYPASS_POSTDOC_PREFIX) ||
+    trimmedFormal.startsWith(BYPASS_YOUNG_RESEARCHER_PREFIX)
+  ) {
+    return {
+      eligibilityResult: "ELIGIBLE",
+      displaySummary: ELIGIBLE_SUMMARY_EN,
+      reasonText: trimmedFormal,
+      missingFields: [],
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  const eligible =
+    trimmedFormal.includes(ELIGIBLE_SENTENCE_EN) ||
+    trimmedFormal.includes(ELIGIBLE_SENTENCE_CN);
+
+  if (eligible) {
+    return {
+      eligibilityResult: "ELIGIBLE",
+      displaySummary: ELIGIBLE_SUMMARY_EN,
+      reasonText: null,
+      missingFields: [],
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  const ineligible =
+    trimmedFormal.includes(INELIGIBLE_MARKER_EN) ||
+    trimmedFormal.includes(INELIGIBLE_SENTENCE_CN);
+
+  if (ineligible) {
+    return {
+      eligibilityResult: "INELIGIBLE",
+      displaySummary: INELIGIBLE_SUMMARY_EN,
+      reasonText: extractIneligibleReason(trimmedFormal),
+      missingFields: [],
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  throw new Error("Unrecognized determination block for the new CV review output contract.");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -62,7 +316,7 @@ function extractMissingItemNames(text: string) {
   for (const match of matches) {
     const itemName = normalizeSourceItemName(match[1] ?? "");
 
-    if (itemName) {
+    if (itemName && itemName.toLowerCase() !== "null") {
       items.push(itemName);
     }
   }
@@ -258,7 +512,7 @@ function normalizeMissingFieldsFromPayload(payload: Record<string, unknown>) {
 
 export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision {
   if (!isRecord(payload)) {
-    throw new Error("Resume analysis payload must be an object.");
+    throw new Error("CV analysis payload must be an object.");
   }
 
   if (
@@ -299,6 +553,10 @@ export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision
   const normalizedText = normalizeTextPayload(baseRecord) ?? normalizeTextPayload(payload);
 
   if (normalizedText) {
+    if (isNewThreeStepContractText(normalizedText)) {
+      return parseNewThreeStepContract(normalizedText, extractedFields);
+    }
+
     return buildDecisionFromText(normalizedText, extractedFields);
   }
 
@@ -325,5 +583,5 @@ export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision
     };
   }
 
-  throw new Error("Resume analysis result is missing both text payload and structured fields.");
+  throw new Error("CV analysis result is missing both text payload and structured fields.");
 }

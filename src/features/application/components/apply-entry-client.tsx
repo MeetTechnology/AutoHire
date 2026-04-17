@@ -35,7 +35,7 @@ type ApplyEntryClientProps = {
 const PROCESS = [
   "Project Introduction",
   "Upload CV",
-  "Resume screening",
+  "CV Review",
   "Additional Information",
   "Submission Complete",
 ] as const;
@@ -197,7 +197,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
         setError(
           nextError instanceof Error
             ? nextError.message
-            : "Unable to open the resume upload page.",
+            : "Unable to open the CV upload page.",
         );
       }
     });

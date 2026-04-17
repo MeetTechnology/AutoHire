@@ -151,7 +151,7 @@ export default function ResumePage() {
       return;
     }
 
-    if (!screeningIdentityValid) {
+    if (!cvReviewIdentityValid) {
       setError(
         "Enter your passport full name and a valid email address before submitting your CV.",
       );
@@ -181,7 +181,7 @@ export default function ResumePage() {
         setError(
           nextError instanceof Error
             ? nextError.message
-            : "Resume upload failed.",
+            : "CV upload failed.",
         );
       }
     });
@@ -194,7 +194,7 @@ export default function ResumePage() {
       ).slice(0, 4),
     [snapshot?.latestResult?.extractedFields],
   );
-  const screeningIdentityValid = useMemo(() => {
+  const cvReviewIdentityValid = useMemo(() => {
     return resumeScreeningIdentityOnlySchema.safeParse({
       screeningPassportFullName: draft.passportFullName,
       screeningContactEmail: draft.email,
@@ -212,7 +212,7 @@ export default function ResumePage() {
     <PageFrame>
       <PageShell
         eyebrow="Step 2"
-        title="Upload your CV and confirm the core identity details used for screening."
+        title="Upload your CV and confirm the core identity details used for CV review."
         description="Provide the passport name, contact email, and latest CV file used for the first review pass."
         headerVariant="centered"
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
@@ -340,7 +340,7 @@ export default function ResumePage() {
                   </p>
                   <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-[color:var(--foreground-soft)]">
                     PDF or Word is preferred. ZIP archives are accepted when the
-                    resume package needs to stay bundled. Maximum 20 MB per
+                    CV package needs to stay bundled. Maximum 20 MB per
                     file, or up to 100 MB for ZIP.
                   </p>
                 </div>
@@ -374,7 +374,7 @@ export default function ResumePage() {
                   onClick={handleUpload}
                   disabled={
                     !selectedFile ||
-                    !screeningIdentityValid ||
+                    !cvReviewIdentityValid ||
                     isPending ||
                     isLoading ||
                     !snapshot ||
@@ -411,7 +411,7 @@ export default function ResumePage() {
                 </div>
               ) : (
                 <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
-                  No parsed preview is available yet. The screening page will
+                  No parsed preview is available yet. The CV review page will
                   generate and display recognized profile details after
                   submission.
                 </p>

@@ -467,7 +467,7 @@ function buildLiveProgressMessage(
   const initialStatus = detail?.initial_result?.status?.trim().toLowerCase();
 
   if (jobStatus === "queued") {
-    return "Your resume has been uploaded and is queued for analysis.";
+    return "Your CV has been uploaded and is queued for analysis.";
   }
 
   if (jobStatus === "processing") {
@@ -475,7 +475,7 @@ function buildLiveProgressMessage(
       return "The upstream analysis has completed. The system is syncing the result.";
     }
 
-    return "The system is analyzing your resume. Please wait.";
+    return "The system is analyzing your CV. Please wait.";
   }
 
   if (jobStatus === "failed") {
@@ -515,7 +515,7 @@ function getLiveStatusFromDetail(detail: LiveJobDetail) {
 
     return {
       jobStatus: "completed" as const,
-      stageText: "Resume analysis completed",
+      stageText: "CV review completed",
       progressMessage: buildLiveProgressMessage("completed", detail),
       errorMessage: null,
     };
@@ -532,7 +532,7 @@ function getLiveStatusFromDetail(detail: LiveJobDetail) {
 
   return {
     jobStatus,
-    stageText: jobStatus === "queued" ? "Queued for analysis" : "Analyzing resume",
+    stageText: jobStatus === "queued" ? "Queued for analysis" : "Analyzing CV",
     progressMessage: buildLiveProgressMessage(jobStatus, detail),
     errorMessage: null,
   };
@@ -578,8 +578,8 @@ async function callLiveService(path: string, init?: RequestInit) {
         : null;
       const message = parsedError.success
         ? parsedError.data.message ??
-          `Resume analysis service error: ${response.status}`
-        : `Resume analysis service error: ${response.status}`;
+          `CV review service error: ${response.status}`
+        : `CV review service error: ${response.status}`;
 
       throw new ResumeAnalysisError({
         message,
@@ -594,7 +594,7 @@ async function callLiveService(path: string, init?: RequestInit) {
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new ResumeAnalysisError({
-        message: "Upstream resume analysis request timed out.",
+        message: "Upstream CV review request timed out.",
         failureCode: "UPSTREAM_TIMEOUT",
         retryable: true,
         httpStatus: 504,
@@ -609,7 +609,7 @@ async function callLiveService(path: string, init?: RequestInit) {
       message:
         error instanceof Error
           ? error.message
-          : "Upstream resume analysis request failed.",
+          : "Upstream CV review request failed.",
       failureCode: "UPSTREAM_NETWORK_ERROR",
       retryable: true,
       httpStatus: 502,
@@ -628,7 +628,7 @@ export async function createResumeAnalysisJob(input: {
   if (isLiveMode()) {
     if (!input.objectKey) {
       throw new ResumeAnalysisError({
-        message: "Resume object key is required in live mode.",
+        message: "CV object key is required in live mode.",
         failureCode: "UPSTREAM_RESULT_SCHEMA_INVALID",
         httpStatus: 500,
       });
@@ -655,7 +655,7 @@ export async function createResumeAnalysisJob(input: {
     return {
       externalJobId: String(payload.job_id),
       jobStatus: "queued" as ExternalJobStatus,
-      stageText: "Resume uploaded and queued for analysis",
+      stageText: "CV uploaded and queued for analysis",
       errorMessage: null,
     };
   }
@@ -894,5 +894,5 @@ export function getResumeAnalysisErrorMessage(error: unknown) {
 
   return error instanceof Error
     ? error.message
-    : "Resume analysis service request failed.";
+    : "CV review service request failed.";
 }

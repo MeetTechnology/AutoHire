@@ -31,6 +31,15 @@ export function enrichMissingFieldsWithRegistry(
 }
 
 const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
+  doctoral_degree_status: {
+    fieldKey: "doctoral_degree_status",
+    label: "Doctoral Degree Status",
+    type: "text",
+    required: true,
+    helpText:
+      "Describe whether you hold a doctorate, are a candidate, or other status relevant to the program.",
+    aliases: ["Doctoral Degree Status"],
+  },
   highest_degree: {
     fieldKey: "highest_degree",
     label: "Highest Degree",
@@ -81,7 +90,11 @@ const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
     required: true,
     helpText:
       "Provide the year you completed your doctorate; include month if graduation was after 2020.",
-    aliases: ["Doctoral Graduation Year", "Doctorate Graduation Year"],
+    aliases: [
+      "Doctoral Graduation Year",
+      "Doctorate Graduation Year",
+      "Doctoral Graduation Time",
+    ],
   },
   current_job_title: {
     fieldKey: "current_job_title",
@@ -93,6 +106,7 @@ const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
       "Current Full-Time Job Title",
       "Current Job Title",
       "Current Title",
+      "Current Title Equivalence",
     ],
   },
   work_experience_since_2020: {
@@ -106,6 +120,7 @@ const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
       "Work Experience from 2020 to the Present",
       "Work Experience from 2020 to Present",
       "Work Experience 2020 to Present",
+      "Work Experience (2020-Present)",
     ],
   },
   source_country: {
@@ -119,6 +134,7 @@ const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
       "来源地",
       "Country Where Current Full-Time Job Is Located",
       "Country of Current Full-Time Job",
+      "Current Job Country",
     ],
   },
   nationality: {

@@ -61,7 +61,7 @@ describe("resumeScreeningIdentityOnlySchema", () => {
 });
 
 describe("materialConfirmSchema", () => {
-  it("does not require screening identity fields", () => {
+  it("does not require CV review identity fields", () => {
     const parsed = materialConfirmSchema.safeParse({
       fileName: "id.pdf",
       fileType: "application/pdf",

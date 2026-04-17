@@ -108,4 +108,72 @@ describe("normalizeAnalysisResultPayload", () => {
       "highest_degree_other",
     );
   });
+
+  it("parses the new three-step contract without treating !!!null!!! as supplemental markers", () => {
+    const raw = `### 1. Extracted Information
+- Year of Birth: !!!null!!!
+- Doctoral Degree Status: Doctorate completed
+- Doctoral Graduation Time: 2019
+- Current Title Equivalence: Professor
+- Current Job Country: United States
+- Work Experience (2020-Present): Industry R&D
+- Research Area: !!!null!!!
+
+### 2. Analysis Process
+[[[Cannot evaluate condition 7 without research area.]]]
+
+### 3. Determination Result
+{{{Cannot make a final determination due to missing critical information. Missing fields: Year of Birth, Research Area}}}`;
+
+    const result = normalizeAnalysisResultPayload({ raw_response: raw });
+
+    expect(result.eligibilityResult).toBe("INSUFFICIENT_INFO");
+    expect(result.missingFields.map((f) => f.fieldKey).sort()).toEqual(
+      ["birth_date", "research_direction"].sort(),
+    );
+    expect(result.extractedFields.year_of_birth).toBe("");
+    expect(result.extractedFields.research_area).toBe("");
+    expect(result.rawReasoning).toContain("Cannot evaluate condition 7");
+  });
+
+  it("parses new-contract eligible, ineligible, bypass, and borderline determinations", () => {
+    const base = `### 1. Extracted Information
+- Year of Birth: 1990
+- Doctoral Degree Status: PhD
+- Doctoral Graduation Time: 2018
+- Current Title Equivalence: AP
+- Current Job Country: UK
+- Work Experience (2020-Present): Lab
+- Research Area: AI
+
+### 2. Analysis Process
+[[[ok]]]
+
+### 3. Determination Result
+`;
+
+    const eligible = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{After evaluation, your qualifications meet the basic application requirements of this talent program}}}`,
+    });
+    expect(eligible.eligibilityResult).toBe("ELIGIBLE");
+    expect(eligible.reasonText).toBeNull();
+
+    const ineligible = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{We regret to inform you that your qualifications do not meet the basic application requirements of this talent program. The specific reasons are: Area mismatch. If you have any questions, please feel free to contact us at any time by email, WeChat, phone, or WhatsApp}}}`,
+    });
+    expect(ineligible.eligibilityResult).toBe("INELIGIBLE");
+    expect(ineligible.reasonText).toBe("Area mismatch");
+
+    const bypass = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{Only eligible to apply as an overseas postdoctoral researcher coming to work in China}}}`,
+    });
+    expect(bypass.eligibilityResult).toBe("ELIGIBLE");
+    expect(bypass.reasonText).toContain("overseas postdoctoral");
+
+    const borderline = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{Cannot make a final determination. The exact birth year is missing, and the inferred birth year (1992) is within 2 years of the threshold (1990), requiring further confirmation.}}}`,
+    });
+    expect(borderline.eligibilityResult).toBe("INSUFFICIENT_INFO");
+    expect(borderline.missingFields.map((f) => f.fieldKey)).toEqual(["birth_date"]);
+  });
 });
