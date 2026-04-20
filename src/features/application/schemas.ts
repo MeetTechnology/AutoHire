@@ -5,6 +5,7 @@ const uploadConfirmFileFields = z.object({
   fileType: z.string().min(1),
   fileSize: z.number().int().positive(),
   objectKey: z.string().min(1),
+  uploadId: z.string().min(1),
 });
 
 const trimmedNonEmpty = z.preprocess(
@@ -22,6 +23,7 @@ export const uploadIntentSchema = z.object({
   fileName: z.string().min(1),
   fileType: z.string().min(1),
   fileSize: z.number().int().positive(),
+  uploadId: z.string().min(1),
   category: z
     .enum([
       "IDENTITY",

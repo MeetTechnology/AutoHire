@@ -3,7 +3,11 @@ import { NextRequest } from "next/server";
 
 import { POST as resumePost } from "@/app/api/applications/[applicationId]/resume/route";
 import { createSessionToken, getSessionCookieName } from "@/lib/auth/session";
-import { buildApplicationSnapshot } from "@/lib/data/store";
+import {
+  buildApplicationSnapshot,
+  listApplicationEvents,
+  listFileUploadAttempts,
+} from "@/lib/data/store";
 
 function resetMemoryStore() {
   (
@@ -42,6 +46,7 @@ describe("POST /api/applications/[applicationId]/resume", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          uploadId: "upload_resume_missing_identity",
           fileName: "cv.pdf",
           fileType: "application/pdf",
           fileSize: 1500,
@@ -60,6 +65,7 @@ describe("POST /api/applications/[applicationId]/resume", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          uploadId: "upload_resume_success",
           fileName: "cv.pdf",
           fileType: "application/pdf",
           fileSize: 1500,
@@ -78,5 +84,19 @@ describe("POST /api/applications/[applicationId]/resume", () => {
     expect(snapshot?.screeningPassportFullName).toBe("Passport User");
     expect(snapshot?.screeningContactEmail).toBe("passport.user@example.com");
     expect(snapshot?.applicationStatus).toBe("CV_ANALYZING");
+
+    const events = await listApplicationEvents("app_intro");
+    expect(events.some((event) => event.eventType === "resume_upload_confirmed")).toBe(
+      true,
+    );
+    expect(events.some((event) => event.eventType === "analysis_started")).toBe(true);
+
+    const uploads = await listFileUploadAttempts("app_intro");
+    const resumeUpload = uploads.find((item) => item.uploadId === "upload_resume_success");
+    expect(resumeUpload).toMatchObject({
+      uploadId: "upload_resume_success",
+      kind: "RESUME",
+      fileName: "cv.pdf",
+    });
   });
 });

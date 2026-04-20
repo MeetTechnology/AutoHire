@@ -5,6 +5,10 @@ import type {
   MaterialCategory,
   SecondaryAnalysisSnapshot,
 } from "@/features/application/types";
+import {
+  buildTrackedRequestHeaders,
+  trackUploadStage,
+} from "@/lib/tracking/client";
 
 type UploadIntent = {
   uploadUrl: string;
@@ -17,6 +21,13 @@ export type MaterialsResponse = Record<
   Lowercase<MaterialCategory>,
   Array<{ id: string; fileName: string; fileType?: string }>
 >;
+
+function buildFetchOptions(init?: RequestInit) {
+  return {
+    ...init,
+    headers: buildTrackedRequestHeaders(init?.headers),
+  } satisfies RequestInit;
+}
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -45,8 +56,10 @@ export async function fetchSession(explicitToken?: string | null) {
     ? `/api/expert-session?token=${encodeURIComponent(merged)}`
     : "/api/expert-session";
   const response = await fetch(url, {
-    credentials: "include",
-    cache: "no-store",
+    ...buildFetchOptions({
+      credentials: "include",
+      cache: "no-store",
+    }),
   });
 
   return parseResponse<ApplicationSnapshot>(response);
@@ -55,10 +68,10 @@ export async function fetchSession(explicitToken?: string | null) {
 export async function postIntroConfirm(applicationId: string) {
   const response = await fetch(
     `/api/applications/${applicationId}/intro/confirm`,
-    {
+    buildFetchOptions({
       method: "POST",
       credentials: "include",
-    },
+    }),
   );
 
   return parseResponse<{
@@ -70,21 +83,23 @@ export async function postIntroConfirm(applicationId: string) {
 export async function createResumeUploadIntent(
   applicationId: string,
   file: File,
+  uploadId: string,
 ) {
   const response = await fetch(
     `/api/applications/${applicationId}/resume/upload-intent`,
-    {
+    buildFetchOptions({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       credentials: "include",
       body: JSON.stringify({
+        uploadId,
         fileName: file.name,
         fileType: file.type || "application/octet-stream",
         fileSize: file.size,
       }),
-    },
+    }),
   );
 
   return parseResponse<UploadIntent>(response);
@@ -94,17 +109,19 @@ export async function confirmResumeUpload(
   applicationId: string,
   file: File,
   objectKey: string,
+  uploadId: string,
   screening: { passportFullName: string; email: string },
 ) {
   const response = await fetch(
-    `/api/applications/${applicationId}/resume/confirm`,
-    {
+    `/api/applications/${applicationId}/resume`,
+    buildFetchOptions({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       credentials: "include",
       body: JSON.stringify({
+        uploadId,
         fileName: file.name,
         fileType: file.type || "application/octet-stream",
         fileSize: file.size,
@@ -112,7 +129,7 @@ export async function confirmResumeUpload(
         screeningPassportFullName: screening.passportFullName,
         screeningContactEmail: screening.email,
       }),
-    },
+    }),
   );
 
   return parseResponse<{ analysisJobId: string; applicationStatus: string }>(
@@ -120,25 +137,93 @@ export async function confirmResumeUpload(
   );
 }
 
-export async function uploadBinary(intent: UploadIntent, file: File) {
-  const response = await fetch(intent.uploadUrl, {
-    method: intent.method,
-    headers: intent.headers,
-    body: file,
+export async function uploadBinary(
+  intent: UploadIntent,
+  file: File,
+  tracking: {
+    applicationId: string;
+    uploadId: string;
+    kind: "resume" | "material";
+    category?: MaterialCategory | null;
+  },
+) {
+  await trackUploadStage({
+    eventType:
+      tracking.kind === "resume"
+        ? "resume_upload_started"
+        : "material_upload_started",
+    applicationId: tracking.applicationId,
+    pageName: tracking.kind === "resume" ? "apply_resume" : "apply_materials",
+    stepName: tracking.kind === "resume" ? "resume_upload" : "materials",
+    uploadId: tracking.uploadId,
+    kind: tracking.kind,
+    category: tracking.category ?? null,
+    file,
+    objectKey: intent.objectKey,
+    eventStatus: "SUCCESS",
   });
 
-  if (!response.ok && response.status !== 204) {
-    throw new Error("File upload failed.");
+  try {
+    const response = await fetch(intent.uploadUrl, {
+      method: intent.method,
+      headers: intent.headers,
+      body: file,
+    });
+
+    if (!response.ok && response.status !== 204) {
+      await trackUploadStage({
+        eventType:
+          tracking.kind === "resume"
+            ? "resume_upload_failed"
+            : "material_upload_failed",
+        applicationId: tracking.applicationId,
+        pageName:
+          tracking.kind === "resume" ? "apply_resume" : "apply_materials",
+        stepName: tracking.kind === "resume" ? "resume_upload" : "materials",
+        uploadId: tracking.uploadId,
+        kind: tracking.kind,
+        category: tracking.category ?? null,
+        file,
+        failureStage: "put",
+        objectKey: intent.objectKey,
+        eventStatus: "FAIL",
+        errorCode: "oss_put_failed",
+      });
+      throw new Error("File upload failed.");
+    }
+  } catch (error) {
+    if (!(error instanceof Error && error.message === "File upload failed.")) {
+      await trackUploadStage({
+        eventType:
+          tracking.kind === "resume"
+            ? "resume_upload_failed"
+            : "material_upload_failed",
+        applicationId: tracking.applicationId,
+        pageName:
+          tracking.kind === "resume" ? "apply_resume" : "apply_materials",
+        stepName: tracking.kind === "resume" ? "resume_upload" : "materials",
+        uploadId: tracking.uploadId,
+        kind: tracking.kind,
+        category: tracking.category ?? null,
+        file,
+        failureStage: "put",
+        objectKey: intent.objectKey,
+        eventStatus: "FAIL",
+        errorCode: "oss_put_failed",
+        errorMessage: error instanceof Error ? error.message : "File upload failed.",
+      });
+    }
+    throw error;
   }
 }
 
 export async function fetchAnalysisStatus(applicationId: string) {
   const response = await fetch(
     `/api/applications/${applicationId}/analysis-status`,
-    {
+    buildFetchOptions({
       credentials: "include",
       cache: "no-store",
-    },
+    }),
   );
 
   return parseResponse<{
@@ -152,10 +237,10 @@ export async function fetchAnalysisStatus(applicationId: string) {
 export async function fetchAnalysisResult(applicationId: string) {
   const response = await fetch(
     `/api/applications/${applicationId}/analysis-result`,
-    {
+    buildFetchOptions({
       credentials: "include",
       cache: "no-store",
-    },
+    }),
   );
 
   return parseResponse<{
@@ -190,14 +275,14 @@ export async function submitSupplementalFields(
 ) {
   const response = await fetch(
     `/api/applications/${applicationId}/supplemental-fields`,
-    {
+    buildFetchOptions({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       credentials: "include",
       body: JSON.stringify({ fields }),
-    },
+    }),
   );
 
   return parseResponse<{ analysisJobId: string; applicationStatus: string }>(
@@ -208,10 +293,10 @@ export async function submitSupplementalFields(
 export async function triggerSecondaryAnalysis(applicationId: string) {
   const response = await fetch(
     `/api/applications/${applicationId}/secondary-analysis`,
-    {
+    buildFetchOptions({
       method: "POST",
       credentials: "include",
-    },
+    }),
   );
 
   return parseResponse<{
@@ -228,10 +313,10 @@ export async function fetchSecondaryAnalysisResult(
   const query = runId ? `?runId=${encodeURIComponent(runId)}` : "";
   const response = await fetch(
     `/api/applications/${applicationId}/secondary-analysis/result${query}`,
-    {
+    buildFetchOptions({
       credentials: "include",
       cache: "no-store",
-    },
+    }),
   );
 
   return parseResponse<SecondaryAnalysisSnapshot & { applicationId: string }>(
@@ -246,10 +331,10 @@ export async function fetchEditableSecondaryAnalysis(
   const query = runId ? `?runId=${encodeURIComponent(runId)}` : "";
   const response = await fetch(
     `/api/applications/${applicationId}/secondary-analysis/editable${query}`,
-    {
+    buildFetchOptions({
       credentials: "include",
       cache: "no-store",
-    },
+    }),
   );
 
   return parseResponse<
@@ -273,14 +358,14 @@ export async function saveEditableSecondaryAnalysis(
 ) {
   const response = await fetch(
     `/api/applications/${applicationId}/secondary-analysis/save`,
-    {
+    buildFetchOptions({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       credentials: "include",
       body: JSON.stringify(input),
-    },
+    }),
   );
 
   return parseResponse<
@@ -289,10 +374,13 @@ export async function saveEditableSecondaryAnalysis(
 }
 
 export async function fetchMaterials(applicationId: string) {
-  const response = await fetch(`/api/applications/${applicationId}/materials`, {
-    credentials: "include",
-    cache: "no-store",
-  });
+  const response = await fetch(
+    `/api/applications/${applicationId}/materials`,
+    buildFetchOptions({
+      credentials: "include",
+      cache: "no-store",
+    }),
+  );
 
   return parseResponse<MaterialsResponse>(response);
 }
@@ -301,22 +389,24 @@ export async function createMaterialUploadIntent(
   applicationId: string,
   category: MaterialCategory,
   file: File,
+  uploadId: string,
 ) {
   const response = await fetch(
     `/api/applications/${applicationId}/materials/upload-intent`,
-    {
+    buildFetchOptions({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       credentials: "include",
       body: JSON.stringify({
+        uploadId,
         category,
         fileName: file.name,
         fileType: file.type || "application/octet-stream",
         fileSize: file.size,
       }),
-    },
+    }),
   );
 
   return parseResponse<UploadIntent>(response);
@@ -327,21 +417,26 @@ export async function confirmMaterialUpload(
   category: MaterialCategory,
   file: File,
   objectKey: string,
+  uploadId: string,
 ) {
-  const response = await fetch(`/api/applications/${applicationId}/materials`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    credentials: "include",
-    body: JSON.stringify({
-      category,
-      fileName: file.name,
-      fileType: file.type || "application/octet-stream",
-      fileSize: file.size,
-      objectKey,
+  const response = await fetch(
+    `/api/applications/${applicationId}/materials`,
+    buildFetchOptions({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        uploadId,
+        category,
+        fileName: file.name,
+        fileType: file.type || "application/octet-stream",
+        fileSize: file.size,
+        objectKey,
+      }),
     }),
-  });
+  );
 
   return parseResponse<MaterialsResponse>(response);
 }
@@ -349,10 +444,10 @@ export async function confirmMaterialUpload(
 export async function enterMaterialsStage(applicationId: string) {
   const response = await fetch(
     `/api/applications/${applicationId}/materials/enter`,
-    {
+    buildFetchOptions({
       method: "POST",
       credentials: "include",
-    },
+    }),
   );
 
   return parseResponse<{
@@ -366,10 +461,10 @@ export async function enterMaterialsStage(applicationId: string) {
 export async function deleteMaterial(applicationId: string, fileId: string) {
   const response = await fetch(
     `/api/applications/${applicationId}/materials/${fileId}`,
-    {
+    buildFetchOptions({
       method: "DELETE",
       credentials: "include",
-    },
+    }),
   );
 
   return parseResponse<MaterialsResponse>(response);
@@ -381,24 +476,27 @@ export async function saveProductInnovationDescription(
 ) {
   const response = await fetch(
     `/api/applications/${applicationId}/materials/product-description`,
-    {
+    buildFetchOptions({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       credentials: "include",
       body: JSON.stringify({ description }),
-    },
+    }),
   );
 
   return parseResponse<{ productInnovationDescription: string }>(response);
 }
 
 export async function submitApplicationRequest(applicationId: string) {
-  const response = await fetch(`/api/applications/${applicationId}/submit`, {
-    method: "POST",
-    credentials: "include",
-  });
+  const response = await fetch(
+    `/api/applications/${applicationId}/submit`,
+    buildFetchOptions({
+      method: "POST",
+      credentials: "include",
+    }),
+  );
 
   return parseResponse<{ applicationStatus: string; message: string }>(
     response,

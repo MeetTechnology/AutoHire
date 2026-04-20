@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type CSSProperties,
@@ -26,6 +27,7 @@ import {
   shouldRedirectFromApply,
 } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
+import { trackClick, trackPageView } from "@/lib/tracking/client";
 import { cn } from "@/lib/utils";
 
 type ApplyEntryClientProps = {
@@ -133,6 +135,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const [isPending, startTransition] = useTransition();
   const [activeSection, setActiveSection] =
     useState<IntroSectionId>("overview");
+  const hasTrackedPageView = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -184,6 +187,20 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
     };
   }, [router, token]);
 
+  useEffect(() => {
+    if (!snapshot || hasTrackedPageView.current) {
+      return;
+    }
+
+    hasTrackedPageView.current = true;
+    void trackPageView({
+      pageName: "apply_entry",
+      stepName: "intro",
+      applicationId: snapshot.applicationId,
+      token,
+    });
+  }, [snapshot, token]);
+
   function handleStart() {
     if (!snapshot || isFlowStepReadOnly(snapshot.applicationStatus, 0)) {
       return;
@@ -191,6 +208,12 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
 
     startTransition(async () => {
       try {
+        void trackClick({
+          eventType: "start_apply_clicked",
+          pageName: "apply_entry",
+          stepName: "intro",
+          applicationId: snapshot.applicationId,
+        });
         await postIntroConfirm(snapshot.applicationId);
         router.push("/apply/resume");
       } catch (nextError) {

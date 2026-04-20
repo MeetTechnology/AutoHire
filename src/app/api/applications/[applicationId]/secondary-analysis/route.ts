@@ -7,6 +7,7 @@ import {
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError } from "@/lib/http";
 import { getResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
+import { trackEventFromRequest } from "@/lib/tracking/service";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
@@ -25,6 +26,18 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   try {
     const secondary = await startSecondaryAnalysis(applicationId);
+
+    await trackEventFromRequest(request, {
+      eventType: "secondary_analysis_triggered",
+      applicationId,
+      pageName: "apply_result",
+      stepName: "secondary_analysis",
+      actionName: "submit_confirm",
+      eventStatus: "SUCCESS",
+      payload: {
+        runId: secondary.runId,
+      },
+    });
 
     return NextResponse.json(
       {

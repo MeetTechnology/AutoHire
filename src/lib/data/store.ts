@@ -10,8 +10,34 @@ import type {
 import { enrichMissingFieldsWithRegistry } from "@/lib/resume-analysis/missing-field-registry";
 import { getRuntimeMode } from "@/lib/env";
 import { getSampleInvitationSeeds } from "@/lib/data/sample-data";
-import type { Prisma } from "@prisma/client";
-import type { MaterialCategory as PrismaMaterialCategory } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type {
+  AccessResult as PrismaAccessResult,
+  AccessTokenStatusSnapshot as PrismaAccessTokenStatusSnapshot,
+  EventStatus as PrismaEventStatus,
+  MaterialCategory as PrismaMaterialCategory,
+  UploadFailureStage as PrismaUploadFailureStage,
+  UploadKind as PrismaUploadKind,
+} from "@prisma/client";
+
+export type AccessResult =
+  | "VALID"
+  | "INVALID"
+  | "EXPIRED"
+  | "DISABLED"
+  | "SESSION_RESTORE";
+
+export type AccessTokenStatusSnapshot =
+  | "UNKNOWN"
+  | "ACTIVE"
+  | "EXPIRED"
+  | "DISABLED";
+
+export type EventStatus = "SUCCESS" | "FAIL";
+
+export type UploadKind = "RESUME" | "MATERIAL";
+
+export type UploadFailureStage = "INTENT" | "PUT" | "CONFIRM";
 
 type InvitationRecord = {
   id: string;
@@ -32,6 +58,14 @@ type ApplicationRecord = {
   currentStep: string | null;
   eligibilityResult: EligibilityResult;
   latestAnalysisJobId: string | null;
+  firstAccessedAt: Date | null;
+  lastAccessedAt: Date | null;
+  introConfirmedAt: Date | null;
+  resumeUploadStartedAt: Date | null;
+  resumeUploadedAt: Date | null;
+  analysisStartedAt: Date | null;
+  analysisCompletedAt: Date | null;
+  materialsEnteredAt: Date | null;
   submittedAt: Date | null;
   screeningPassportFullName: string | null;
   screeningContactEmail: string | null;
@@ -133,8 +167,65 @@ type EventRecord = {
   id: string;
   applicationId: string;
   eventType: string;
+  eventTime: Date;
+  pageName: string | null;
+  stepName: string | null;
+  actionName: string | null;
+  eventStatus: EventStatus | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  durationMs: number | null;
+  sessionId: string | null;
+  requestId: string | null;
+  ipAddress: string | null;
+  ipHash: string | null;
+  userAgent: string | null;
+  referer: string | null;
   eventPayload: Record<string, unknown> | null;
   createdAt: Date;
+};
+
+type InviteAccessLogRecord = {
+  id: string;
+  occurredAt: Date;
+  invitationId: string | null;
+  applicationId: string | null;
+  tokenStatus: AccessTokenStatusSnapshot;
+  accessResult: AccessResult;
+  ipAddress: string | null;
+  ipHash: string | null;
+  userAgent: string | null;
+  referer: string | null;
+  landingPath: string | null;
+  sessionId: string;
+  requestId: string;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  createdAt: Date;
+};
+
+type FileUploadAttemptRecord = {
+  id: string;
+  applicationId: string;
+  uploadId: string | null;
+  kind: UploadKind;
+  category: MaterialCategory | null;
+  fileName: string;
+  fileExt: string | null;
+  fileSize: number | null;
+  intentCreatedAt: Date | null;
+  uploadStartedAt: Date | null;
+  uploadConfirmedAt: Date | null;
+  uploadFailedAt: Date | null;
+  failureCode: string | null;
+  failureStage: UploadFailureStage | null;
+  durationMs: number | null;
+  objectKey: string | null;
+  sessionId: string | null;
+  requestId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 type PersistedStore = {
@@ -148,6 +239,8 @@ type PersistedStore = {
   supplementalFields: SupplementalFieldRecord[];
   materials: MaterialRecord[];
   events: EventRecord[];
+  accessLogs: InviteAccessLogRecord[];
+  fileUploadAttempts: FileUploadAttemptRecord[];
 };
 
 declare global {
@@ -183,6 +276,14 @@ function buildSampleStore(): PersistedStore {
         currentStep: "resume",
         eligibilityResult: "UNKNOWN",
         latestAnalysisJobId: null,
+        firstAccessedAt: now,
+        lastAccessedAt: now,
+        introConfirmedAt: now,
+        resumeUploadStartedAt: null,
+        resumeUploadedAt: null,
+        analysisStartedAt: null,
+        analysisCompletedAt: null,
+        materialsEnteredAt: null,
         submittedAt: null,
         screeningPassportFullName: null,
         screeningContactEmail: null,
@@ -198,6 +299,14 @@ function buildSampleStore(): PersistedStore {
         currentStep: "supplemental_fields",
         eligibilityResult: "INSUFFICIENT_INFO",
         latestAnalysisJobId: "job_progress",
+        firstAccessedAt: now,
+        lastAccessedAt: now,
+        introConfirmedAt: now,
+        resumeUploadStartedAt: now,
+        resumeUploadedAt: now,
+        analysisStartedAt: now,
+        analysisCompletedAt: now,
+        materialsEnteredAt: null,
         submittedAt: null,
         screeningPassportFullName: null,
         screeningContactEmail: null,
@@ -213,6 +322,14 @@ function buildSampleStore(): PersistedStore {
         currentStep: "materials",
         eligibilityResult: "ELIGIBLE",
         latestAnalysisJobId: "job_submitted",
+        firstAccessedAt: now,
+        lastAccessedAt: now,
+        introConfirmedAt: now,
+        resumeUploadStartedAt: now,
+        resumeUploadedAt: now,
+        analysisStartedAt: now,
+        analysisCompletedAt: now,
+        materialsEnteredAt: now,
         submittedAt: now,
         screeningPassportFullName: null,
         screeningContactEmail: null,
@@ -228,6 +345,14 @@ function buildSampleStore(): PersistedStore {
         currentStep: "result",
         eligibilityResult: "ELIGIBLE",
         latestAnalysisJobId: "job_secondary",
+        firstAccessedAt: now,
+        lastAccessedAt: now,
+        introConfirmedAt: now,
+        resumeUploadStartedAt: now,
+        resumeUploadedAt: now,
+        analysisStartedAt: now,
+        analysisCompletedAt: now,
+        materialsEnteredAt: null,
         submittedAt: null,
         screeningPassportFullName: null,
         screeningContactEmail: null,
@@ -401,6 +526,8 @@ function buildSampleStore(): PersistedStore {
       },
     ],
     events: [],
+    accessLogs: [],
+    fileUploadAttempts: [],
   };
 }
 
@@ -471,6 +598,14 @@ export async function createApplication(input: {
       currentStep: input.currentStep ?? "intro",
       eligibilityResult: "UNKNOWN",
       latestAnalysisJobId: null,
+      firstAccessedAt: null,
+      lastAccessedAt: null,
+      introConfirmedAt: null,
+      resumeUploadStartedAt: null,
+      resumeUploadedAt: null,
+      analysisStartedAt: null,
+      analysisCompletedAt: null,
+      materialsEnteredAt: null,
       submittedAt: null,
       screeningPassportFullName: null,
       screeningContactEmail: null,
@@ -513,6 +648,14 @@ export async function updateApplication(
     currentStep?: string | null;
     eligibilityResult?: EligibilityResult;
     latestAnalysisJobId?: string | null;
+    firstAccessedAt?: Date | null;
+    lastAccessedAt?: Date | null;
+    introConfirmedAt?: Date | null;
+    resumeUploadStartedAt?: Date | null;
+    resumeUploadedAt?: Date | null;
+    analysisStartedAt?: Date | null;
+    analysisCompletedAt?: Date | null;
+    materialsEnteredAt?: Date | null;
     submittedAt?: Date | null;
     screeningPassportFullName?: string | null;
     screeningContactEmail?: string | null;
@@ -1035,17 +1178,77 @@ export async function softDeleteMaterial(
   });
 }
 
-export async function createEvent(
-  applicationId: string,
-  eventType: string,
-  eventPayload: Record<string, unknown> | null,
-) {
+export async function findApplicationEventByIdempotency(input: {
+  applicationId: string;
+  eventType: string;
+  sessionId: string;
+  requestId: string;
+}) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().events.find(
+        (item) =>
+          item.applicationId === input.applicationId &&
+          item.eventType === input.eventType &&
+          item.sessionId === input.sessionId &&
+          item.requestId === input.requestId,
+      ) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.applicationEventLog.findFirst({
+    where: {
+      applicationId: input.applicationId,
+      eventType: input.eventType,
+      sessionId: input.sessionId,
+      requestId: input.requestId,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function createApplicationEventLog(input: {
+  applicationId: string;
+  eventType: string;
+  eventTime?: Date;
+  pageName?: string | null;
+  stepName?: string | null;
+  actionName?: string | null;
+  eventStatus?: EventStatus | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  durationMs?: number | null;
+  sessionId?: string | null;
+  requestId?: string | null;
+  ipAddress?: string | null;
+  ipHash?: string | null;
+  userAgent?: string | null;
+  referer?: string | null;
+  eventPayload?: Record<string, unknown> | null;
+}) {
+  const eventTime = input.eventTime ?? new Date();
+
   if (getRuntimeMode() === "memory") {
     const event: EventRecord = {
       id: createId("event"),
-      applicationId,
-      eventType,
-      eventPayload,
+      applicationId: input.applicationId,
+      eventType: input.eventType,
+      eventTime,
+      pageName: input.pageName ?? null,
+      stepName: input.stepName ?? null,
+      actionName: input.actionName ?? null,
+      eventStatus: input.eventStatus ?? null,
+      errorCode: input.errorCode ?? null,
+      errorMessage: input.errorMessage ?? null,
+      durationMs: input.durationMs ?? null,
+      sessionId: input.sessionId ?? null,
+      requestId: input.requestId ?? null,
+      ipAddress: input.ipAddress ?? null,
+      ipHash: input.ipHash ?? null,
+      userAgent: input.userAgent ?? null,
+      referer: input.referer ?? null,
+      eventPayload: input.eventPayload ?? null,
       createdAt: new Date(),
     };
 
@@ -1056,10 +1259,321 @@ export async function createEvent(
   const prisma = await getPrisma();
   return prisma.applicationEventLog.create({
     data: {
-      applicationId,
-      eventType,
-      eventPayload: eventPayload as Prisma.InputJsonValue,
+      applicationId: input.applicationId,
+      eventType: input.eventType,
+      eventTime,
+      pageName: input.pageName ?? null,
+      stepName: input.stepName ?? null,
+      actionName: input.actionName ?? null,
+      eventStatus: (input.eventStatus ?? null) as PrismaEventStatus | null,
+      errorCode: input.errorCode ?? null,
+      errorMessage: input.errorMessage ?? null,
+      durationMs: input.durationMs ?? null,
+      sessionId: input.sessionId ?? null,
+      requestId: input.requestId ?? null,
+      ipAddress: input.ipAddress ?? null,
+      ipHash: input.ipHash ?? null,
+      userAgent: input.userAgent ?? null,
+      referer: input.referer ?? null,
+      eventPayload:
+        input.eventPayload === undefined
+          ? undefined
+          : input.eventPayload === null
+            ? Prisma.JsonNull
+            : (input.eventPayload as Prisma.InputJsonValue),
     },
+  });
+}
+
+export async function createInviteAccessLog(input: {
+  occurredAt?: Date;
+  invitationId?: string | null;
+  applicationId?: string | null;
+  tokenStatus: AccessTokenStatusSnapshot;
+  accessResult: AccessResult;
+  ipAddress?: string | null;
+  ipHash?: string | null;
+  userAgent?: string | null;
+  referer?: string | null;
+  landingPath?: string | null;
+  sessionId: string;
+  requestId: string;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+}) {
+  const occurredAt = input.occurredAt ?? new Date();
+
+  if (getRuntimeMode() === "memory") {
+    const log: InviteAccessLogRecord = {
+      id: createId("access"),
+      occurredAt,
+      invitationId: input.invitationId ?? null,
+      applicationId: input.applicationId ?? null,
+      tokenStatus: input.tokenStatus,
+      accessResult: input.accessResult,
+      ipAddress: input.ipAddress ?? null,
+      ipHash: input.ipHash ?? null,
+      userAgent: input.userAgent ?? null,
+      referer: input.referer ?? null,
+      landingPath: input.landingPath ?? null,
+      sessionId: input.sessionId,
+      requestId: input.requestId,
+      utmSource: input.utmSource ?? null,
+      utmMedium: input.utmMedium ?? null,
+      utmCampaign: input.utmCampaign ?? null,
+      createdAt: new Date(),
+    };
+
+    getMemoryStore().accessLogs.push(log);
+    return log;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.inviteAccessLog.create({
+    data: {
+      occurredAt,
+      invitationId: input.invitationId ?? null,
+      applicationId: input.applicationId ?? null,
+      tokenStatus: input.tokenStatus as PrismaAccessTokenStatusSnapshot,
+      accessResult: input.accessResult as PrismaAccessResult,
+      ipAddress: input.ipAddress ?? null,
+      ipHash: input.ipHash ?? null,
+      userAgent: input.userAgent ?? null,
+      referer: input.referer ?? null,
+      landingPath: input.landingPath ?? null,
+      sessionId: input.sessionId,
+      requestId: input.requestId,
+      utmSource: input.utmSource ?? null,
+      utmMedium: input.utmMedium ?? null,
+      utmCampaign: input.utmCampaign ?? null,
+    },
+  });
+}
+
+export async function upsertFileUploadAttempt(input: {
+  applicationId: string;
+  uploadId: string;
+  kind: UploadKind;
+  category?: MaterialCategory | null;
+  fileName: string;
+  fileExt?: string | null;
+  fileSize?: number | null;
+  intentCreatedAt?: Date | null;
+  uploadStartedAt?: Date | null;
+  uploadConfirmedAt?: Date | null;
+  uploadFailedAt?: Date | null;
+  failureCode?: string | null;
+  failureStage?: UploadFailureStage | null;
+  durationMs?: number | null;
+  objectKey?: string | null;
+  sessionId?: string | null;
+  requestId?: string | null;
+}) {
+  const nextTimes = {
+    intentCreatedAt: input.intentCreatedAt ?? null,
+    uploadStartedAt: input.uploadStartedAt ?? null,
+    uploadConfirmedAt: input.uploadConfirmedAt ?? null,
+    uploadFailedAt: input.uploadFailedAt ?? null,
+  };
+
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const existing = store.fileUploadAttempts.find(
+      (item) => item.uploadId === input.uploadId,
+    );
+
+    if (existing) {
+      Object.assign(existing, {
+        applicationId: input.applicationId,
+        kind: input.kind,
+        category: input.category ?? existing.category,
+        fileName: input.fileName,
+        fileExt: input.fileExt ?? existing.fileExt,
+        fileSize: input.fileSize ?? existing.fileSize,
+        intentCreatedAt: nextTimes.intentCreatedAt ?? existing.intentCreatedAt,
+        uploadStartedAt: nextTimes.uploadStartedAt ?? existing.uploadStartedAt,
+        uploadConfirmedAt:
+          nextTimes.uploadConfirmedAt ?? existing.uploadConfirmedAt,
+        uploadFailedAt: nextTimes.uploadFailedAt ?? existing.uploadFailedAt,
+        failureCode: input.failureCode ?? existing.failureCode,
+        failureStage: input.failureStage ?? existing.failureStage,
+        objectKey: input.objectKey ?? existing.objectKey,
+        sessionId: input.sessionId ?? existing.sessionId,
+        requestId: input.requestId ?? existing.requestId,
+        durationMs:
+          input.durationMs ??
+          computeUploadDurationMs({
+            intentCreatedAt:
+              nextTimes.intentCreatedAt ?? existing.intentCreatedAt,
+            uploadStartedAt:
+              nextTimes.uploadStartedAt ?? existing.uploadStartedAt,
+            uploadConfirmedAt:
+              nextTimes.uploadConfirmedAt ?? existing.uploadConfirmedAt,
+            uploadFailedAt: nextTimes.uploadFailedAt ?? existing.uploadFailedAt,
+          }),
+        updatedAt: new Date(),
+      });
+
+      return existing;
+    }
+
+    const record: FileUploadAttemptRecord = {
+      id: createId("upload"),
+      applicationId: input.applicationId,
+      uploadId: input.uploadId,
+      kind: input.kind,
+      category: input.category ?? null,
+      fileName: input.fileName,
+      fileExt: input.fileExt ?? null,
+      fileSize: input.fileSize ?? null,
+      intentCreatedAt: nextTimes.intentCreatedAt,
+      uploadStartedAt: nextTimes.uploadStartedAt,
+      uploadConfirmedAt: nextTimes.uploadConfirmedAt,
+      uploadFailedAt: nextTimes.uploadFailedAt,
+      failureCode: input.failureCode ?? null,
+      failureStage: input.failureStage ?? null,
+      durationMs:
+        input.durationMs ??
+        computeUploadDurationMs({
+          intentCreatedAt: nextTimes.intentCreatedAt,
+          uploadStartedAt: nextTimes.uploadStartedAt,
+          uploadConfirmedAt: nextTimes.uploadConfirmedAt,
+          uploadFailedAt: nextTimes.uploadFailedAt,
+        }),
+      objectKey: input.objectKey ?? null,
+      sessionId: input.sessionId ?? null,
+      requestId: input.requestId ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    store.fileUploadAttempts.push(record);
+    return record;
+  }
+
+  const prisma = await getPrisma();
+  const existing = await prisma.fileUploadAttempt.findUnique({
+    where: { uploadId: input.uploadId },
+  });
+  const mergedTimes = {
+    intentCreatedAt: nextTimes.intentCreatedAt ?? existing?.intentCreatedAt ?? null,
+    uploadStartedAt: nextTimes.uploadStartedAt ?? existing?.uploadStartedAt ?? null,
+    uploadConfirmedAt:
+      nextTimes.uploadConfirmedAt ?? existing?.uploadConfirmedAt ?? null,
+    uploadFailedAt: nextTimes.uploadFailedAt ?? existing?.uploadFailedAt ?? null,
+  };
+  const durationMs =
+    input.durationMs ?? computeUploadDurationMs(mergedTimes) ?? existing?.durationMs ?? null;
+
+  return prisma.fileUploadAttempt.upsert({
+    where: { uploadId: input.uploadId },
+    update: {
+      applicationId: input.applicationId,
+      kind: input.kind as PrismaUploadKind,
+      category: (input.category ?? null) as PrismaMaterialCategory | null,
+      fileName: input.fileName,
+      fileExt: input.fileExt ?? undefined,
+      fileSize: input.fileSize ?? undefined,
+      intentCreatedAt: mergedTimes.intentCreatedAt,
+      uploadStartedAt: mergedTimes.uploadStartedAt,
+      uploadConfirmedAt: mergedTimes.uploadConfirmedAt,
+      uploadFailedAt: mergedTimes.uploadFailedAt,
+      failureCode: input.failureCode ?? undefined,
+      failureStage: (input.failureStage ?? null) as PrismaUploadFailureStage | null,
+      durationMs,
+      objectKey: input.objectKey ?? undefined,
+      sessionId: input.sessionId ?? undefined,
+      requestId: input.requestId ?? undefined,
+    },
+    create: {
+      applicationId: input.applicationId,
+      uploadId: input.uploadId,
+      kind: input.kind as PrismaUploadKind,
+      category: (input.category ?? null) as PrismaMaterialCategory | null,
+      fileName: input.fileName,
+      fileExt: input.fileExt ?? null,
+      fileSize: input.fileSize ?? null,
+      intentCreatedAt: mergedTimes.intentCreatedAt,
+      uploadStartedAt: mergedTimes.uploadStartedAt,
+      uploadConfirmedAt: mergedTimes.uploadConfirmedAt,
+      uploadFailedAt: mergedTimes.uploadFailedAt,
+      failureCode: input.failureCode ?? null,
+      failureStage: (input.failureStage ?? null) as PrismaUploadFailureStage | null,
+      durationMs,
+      objectKey: input.objectKey ?? null,
+      sessionId: input.sessionId ?? null,
+      requestId: input.requestId ?? null,
+    },
+  });
+}
+
+export async function createEvent(
+  applicationId: string,
+  eventType: string,
+  eventPayload: Record<string, unknown> | null,
+) {
+  return createApplicationEventLog({
+    applicationId,
+    eventType,
+    eventPayload,
+  });
+}
+
+function computeUploadDurationMs(input: {
+  intentCreatedAt?: Date | null;
+  uploadStartedAt?: Date | null;
+  uploadConfirmedAt?: Date | null;
+  uploadFailedAt?: Date | null;
+}) {
+  const start = input.uploadStartedAt ?? input.intentCreatedAt ?? null;
+  const end = input.uploadConfirmedAt ?? input.uploadFailedAt ?? null;
+
+  if (!start || !end) {
+    return null;
+  }
+
+  return Math.max(0, end.getTime() - start.getTime());
+}
+
+export async function listApplicationEvents(applicationId: string) {
+  if (getRuntimeMode() === "memory") {
+    return getMemoryStore().events
+      .filter((item) => item.applicationId === applicationId)
+      .sort((left, right) => right.eventTime.getTime() - left.eventTime.getTime());
+  }
+
+  const prisma = await getPrisma();
+  return prisma.applicationEventLog.findMany({
+    where: { applicationId },
+    orderBy: { eventTime: "desc" },
+  });
+}
+
+export async function listInviteAccessLogs() {
+  if (getRuntimeMode() === "memory") {
+    return [...getMemoryStore().accessLogs].sort(
+      (left, right) => right.occurredAt.getTime() - left.occurredAt.getTime(),
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.inviteAccessLog.findMany({
+    orderBy: { occurredAt: "desc" },
+  });
+}
+
+export async function listFileUploadAttempts(applicationId?: string) {
+  if (getRuntimeMode() === "memory") {
+    return getMemoryStore().fileUploadAttempts
+      .filter((item) => !applicationId || item.applicationId === applicationId)
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+  }
+
+  const prisma = await getPrisma();
+  return prisma.fileUploadAttempt.findMany({
+    where: applicationId ? { applicationId } : undefined,
+    orderBy: { createdAt: "desc" },
   });
 }
 

@@ -144,8 +144,6 @@ export async function confirmIntro(applicationId: string) {
     currentStep: "resume",
   });
 
-  await createEvent(applicationId, "INTRO_CONFIRMED", { nextStatus });
-
   return updated;
 }
 
@@ -166,15 +164,6 @@ export async function createResumeUploadRecord(input: {
     fileSize: input.fileSize,
     objectKey: input.objectKey,
     versionNo,
-  });
-
-  await createEvent(input.applicationId, "RESUME_CONFIRMED", {
-    fileName: input.fileName,
-    objectKey: input.objectKey,
-    versionNo,
-    screeningIdentityCaptured: true,
-    passportNameLength: input.screeningPassportFullName.length,
-    emailLength: input.screeningContactEmail.length,
   });
 
   await updateApplication(input.applicationId, {
@@ -343,11 +332,6 @@ export async function startInitialAnalysis(input: {
     latestAnalysisJobId: job.id,
   });
 
-  await createEvent(input.applicationId, "ANALYSIS_STARTED", {
-    analysisJobId: job.id,
-    externalJobId: analysis.externalJobId,
-  });
-
   return job;
 }
 
@@ -428,11 +412,6 @@ export async function refreshAnalysisState(applicationId: string) {
       finishedAt: new Date(),
     });
 
-    await createEvent(applicationId, "ANALYSIS_FAILED", {
-      analysisJobId: job.id,
-      errorMessage,
-    });
-
     return {
       jobStatus: "FAILED" as const,
       stageText: "Analysis failed",
@@ -498,12 +477,6 @@ export async function refreshAnalysisState(applicationId: string) {
         eligibilityResult: result.eligibilityResult,
       });
 
-      await createEvent(applicationId, "ANALYSIS_COMPLETED", {
-        analysisJobId: job.id,
-        eligibilityResult: result.eligibilityResult,
-        rawReasoning: result.rawReasoning ?? null,
-      });
-
       await syncExpertJobUpstreamMapping({
         applicationId,
         expertAnalysisJobId: job.id,
@@ -534,11 +507,6 @@ export async function refreshAnalysisState(applicationId: string) {
         stageText: "Analysis failed",
         errorMessage,
         finishedAt: new Date(),
-      });
-
-      await createEvent(applicationId, "ANALYSIS_FAILED", {
-        analysisJobId: job.id,
-        errorMessage,
       });
 
       return {
@@ -623,10 +591,6 @@ export async function submitSupplementalFields(input: {
     latestAnalysisJobId: job.id,
   });
 
-  await createEvent(input.applicationId, "SUPPLEMENTAL_FIELDS_SUBMITTED", {
-    analysisJobId: job.id,
-  });
-
   return job;
 }
 
@@ -685,12 +649,6 @@ export async function startSecondaryAnalysis(applicationId: string) {
     applicationStatus: "SECONDARY_ANALYZING",
     currentStep: "result",
     eligibilityResult: application.eligibilityResult,
-  });
-
-  await createEvent(applicationId, "SECONDARY_ANALYSIS_TRIGGERED", {
-    analysisJobId: latestJob.id,
-    externalJobId: latestJob.externalJobId,
-    runId: secondary.runId,
   });
 
   return secondary;
@@ -1214,11 +1172,6 @@ export async function addMaterialRecord(input: {
 
   const material = await createMaterial(input);
 
-  await createEvent(input.applicationId, "MATERIAL_UPLOADED", {
-    category: input.category,
-    fileName: input.fileName,
-  });
-
   return material;
 }
 
@@ -1334,8 +1287,6 @@ export async function submitApplication(applicationId: string) {
     currentStep: "materials",
     submittedAt: new Date(),
   });
-
-  await createEvent(applicationId, "APPLICATION_SUBMITTED", null);
 
   return updated;
 }

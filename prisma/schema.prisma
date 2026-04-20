@@ -61,6 +61,37 @@ enum MaterialCategory {
   PRODUCT
 }
 
+enum AccessResult {
+  VALID
+  INVALID
+  EXPIRED
+  DISABLED
+  SESSION_RESTORE
+}
+
+enum AccessTokenStatusSnapshot {
+  UNKNOWN
+  ACTIVE
+  EXPIRED
+  DISABLED
+}
+
+enum EventStatus {
+  SUCCESS
+  FAIL
+}
+
+enum UploadKind {
+  RESUME
+  MATERIAL
+}
+
+enum UploadFailureStage {
+  INTENT
+  PUT
+  CONFIRM
+}
+
 model ExpertInvitation {
   id          String      @id @default(cuid())
   expertId    String
@@ -72,6 +103,7 @@ model ExpertInvitation {
   updatedAt   DateTime    @updatedAt
 
   applications Application[]
+  accessLogs   InviteAccessLog[]
 
   @@index([expertId])
 }
@@ -84,25 +116,42 @@ model Application {
   currentStep                 String?
   eligibilityResult           EligibilityResult  @default(UNKNOWN)
   latestAnalysisJobId         String?
+  firstAccessedAt             DateTime?
+  lastAccessedAt              DateTime?
+  introConfirmedAt            DateTime?
+  resumeUploadStartedAt       DateTime?
+  resumeUploadedAt            DateTime?
+  analysisStartedAt           DateTime?
+  analysisCompletedAt         DateTime?
+  materialsEnteredAt          DateTime?
   submittedAt                 DateTime?
   screeningPassportFullName   String?
   screeningContactEmail       String?
-  productInnovationDescription String?         @db.Text
+  productInnovationDescription String?          @db.Text
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
 
-  invitation           ExpertInvitation           @relation(fields: [invitationId], references: [id])
-  resumeFiles          ResumeFile[]
-  analysisJobs         ResumeAnalysisJob[]
-  analysisResults      ResumeAnalysisResult[]
-  secondaryAnalysisRuns SecondaryAnalysisRun[]
+  invitation                  ExpertInvitation              @relation(fields: [invitationId], references: [id])
+  resumeFiles                 ResumeFile[]
+  analysisJobs                ResumeAnalysisJob[]
+  analysisResults             ResumeAnalysisResult[]
+  secondaryAnalysisRuns       SecondaryAnalysisRun[]
   secondaryAnalysisFieldValues SecondaryAnalysisFieldValue[]
-  supplementalFields   SupplementalFieldSubmission[]
-  materials            ApplicationMaterial[]
-  events               ApplicationEventLog[]
+  supplementalFields          SupplementalFieldSubmission[]
+  materials                   ApplicationMaterial[]
+  events                      ApplicationEventLog[]
+  accessLogs                  InviteAccessLog[]
+  fileUploadAttempts          FileUploadAttempt[]
 
   @@index([expertId])
   @@index([applicationStatus])
+  @@index([firstAccessedAt])
+  @@index([lastAccessedAt])
+  @@index([introConfirmedAt])
+  @@index([resumeUploadedAt])
+  @@index([analysisCompletedAt])
+  @@index([materialsEnteredAt])
+  @@index([submittedAt])
 }
 
 model ResumeFile {
@@ -240,14 +289,100 @@ model ApplicationMaterial {
 }
 
 model ApplicationEventLog {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   applicationId String
   eventType     String
+  eventTime     DateTime    @default(now())
+  pageName      String?
+  stepName      String?
+  actionName    String?
+  eventStatus   EventStatus?
+  errorCode     String?
+  errorMessage  String?     @db.Text
+  durationMs    Int?
+  sessionId     String?
+  requestId     String?
+  ipAddress     String?
+  ipHash        String?
+  userAgent     String?
+  referer       String?
   eventPayload  Json?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime    @default(now())
 
   application Application @relation(fields: [applicationId], references: [id])
 
-  @@index([applicationId])
-  @@index([eventType])
+  @@index([applicationId, eventTime])
+  @@index([eventType, eventTime])
+  @@index([pageName, eventTime])
+  @@index([stepName, eventTime])
+  @@index([actionName, eventTime])
+  @@index([eventStatus, eventTime])
+  @@index([sessionId, eventTime])
+  @@index([requestId])
+  @@index([ipAddress, eventTime])
+}
+
+model InviteAccessLog {
+  id            String                    @id @default(cuid())
+  occurredAt    DateTime                  @default(now())
+  invitationId  String?
+  applicationId String?
+  tokenStatus   AccessTokenStatusSnapshot @default(UNKNOWN)
+  accessResult  AccessResult
+  ipAddress     String?
+  ipHash        String?
+  userAgent     String?
+  referer       String?
+  landingPath   String?
+  sessionId     String
+  requestId     String
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  createdAt     DateTime                  @default(now())
+
+  invitation    ExpertInvitation?         @relation(fields: [invitationId], references: [id])
+  application   Application?              @relation(fields: [applicationId], references: [id])
+
+  @@index([occurredAt])
+  @@index([invitationId, occurredAt])
+  @@index([applicationId, occurredAt])
+  @@index([accessResult, occurredAt])
+  @@index([tokenStatus, occurredAt])
+  @@index([sessionId, occurredAt])
+  @@index([requestId])
+  @@index([ipAddress, occurredAt])
+  @@index([utmSource, utmMedium, utmCampaign])
+}
+
+model FileUploadAttempt {
+  id                String             @id @default(cuid())
+  applicationId     String
+  uploadId          String?            @unique
+  kind              UploadKind
+  category          MaterialCategory?
+  fileName          String
+  fileExt           String?
+  fileSize          Int?
+  intentCreatedAt   DateTime?
+  uploadStartedAt   DateTime?
+  uploadConfirmedAt DateTime?
+  uploadFailedAt    DateTime?
+  failureCode       String?
+  failureStage      UploadFailureStage?
+  durationMs        Int?
+  objectKey         String?
+  sessionId         String?
+  requestId         String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  application       Application        @relation(fields: [applicationId], references: [id])
+
+  @@index([applicationId, kind, createdAt])
+  @@index([applicationId, category, createdAt])
+  @@index([kind, createdAt])
+  @@index([failureStage, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([requestId])
 }

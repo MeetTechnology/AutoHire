@@ -8,6 +8,7 @@ import {
 
 describe("resumeConfirmSchema", () => {
   const baseFile = {
+    uploadId: "upload_resume_test",
     fileName: "cv.pdf",
     fileType: "application/pdf",
     fileSize: 1200,
@@ -63,6 +64,7 @@ describe("resumeScreeningIdentityOnlySchema", () => {
 describe("materialConfirmSchema", () => {
   it("does not require CV review identity fields", () => {
     const parsed = materialConfirmSchema.safeParse({
+      uploadId: "upload_material_test",
       fileName: "id.pdf",
       fileType: "application/pdf",
       fileSize: 900,

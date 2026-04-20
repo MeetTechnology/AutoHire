@@ -37,6 +37,11 @@ import type {
   ApplicationSnapshot,
   MaterialCategory,
 } from "@/features/application/types";
+import {
+  createUploadId,
+  trackClick,
+  trackPageView,
+} from "@/lib/tracking/client";
 
 const REQUIRED_CATEGORIES: Array<{
   key: Lowercase<MaterialCategory>;
@@ -70,6 +75,7 @@ export default function MaterialsPage() {
   const [productDescriptionSavedHint, setProductDescriptionSavedHint] =
     useState<string | null>(null);
   const productDescriptionServerKey = useRef<string>("");
+  const hasTrackedPageView = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -120,6 +126,19 @@ export default function MaterialsPage() {
   useEffect(() => {
     setMailtoHref(getMailtoHref());
   }, []);
+
+  useEffect(() => {
+    if (!snapshot || hasTrackedPageView.current) {
+      return;
+    }
+
+    hasTrackedPageView.current = true;
+    void trackPageView({
+      pageName: "apply_materials",
+      stepName: "materials",
+      applicationId: snapshot.applicationId,
+    });
+  }, [snapshot]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -174,17 +193,25 @@ export default function MaterialsPage() {
         setNotice(null);
 
         for (const file of nextFiles) {
+          const uploadId = createUploadId();
           const intent = await createMaterialUploadIntent(
             snapshot.applicationId,
             category,
             file,
+            uploadId,
           );
-          await uploadBinary(intent, file);
+          await uploadBinary(intent, file, {
+            applicationId: snapshot.applicationId,
+            uploadId,
+            kind: "material",
+            category,
+          });
           await confirmMaterialUpload(
             snapshot.applicationId,
             category,
             file,
             intent.objectKey,
+            uploadId,
           );
         }
 
@@ -225,6 +252,12 @@ export default function MaterialsPage() {
 
     startTransition(async () => {
       try {
+        void trackClick({
+          eventType: "submit_clicked",
+          pageName: "apply_materials",
+          stepName: "submit",
+          applicationId: snapshot.applicationId,
+        });
         const response = await submitApplicationRequest(snapshot.applicationId);
         setSnapshot(await fetchSession());
         setNotice(response.message);

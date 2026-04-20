@@ -77,6 +77,7 @@ import type {
   EditableSecondaryAnalysisSnapshot,
   SecondaryAnalysisStatus,
 } from "@/features/application/types";
+import { trackPageView } from "@/lib/tracking/client";
 import { cn } from "@/lib/utils";
 
 type SupplementalFormValues = Record<string, string>;
@@ -924,6 +925,7 @@ function ResultPage() {
     string | null
   >(null);
   const [mailtoHref, setMailtoHref] = useState<string | undefined>(undefined);
+  const hasTrackedPageView = useRef(false);
   const { register, handleSubmit, reset, watch, getValues } =
     useForm<SupplementalFormValues>();
 
@@ -1020,6 +1022,26 @@ function ResultPage() {
       active = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!snapshot || hasTrackedPageView.current) {
+      return;
+    }
+
+    hasTrackedPageView.current = true;
+    void trackPageView({
+      pageName: "apply_result",
+      stepName:
+        snapshot.applicationStatus === "INFO_REQUIRED"
+          ? "supplemental"
+          : snapshot.applicationStatus === "SECONDARY_ANALYZING" ||
+              snapshot.applicationStatus === "SECONDARY_REVIEW" ||
+              snapshot.applicationStatus === "SECONDARY_FAILED"
+            ? "secondary_analysis"
+            : "analysis_result",
+      applicationId: snapshot.applicationId,
+    });
+  }, [snapshot]);
 
   useEffect(() => {
     const status = snapshot?.applicationStatus;

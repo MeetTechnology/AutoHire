@@ -12,6 +12,7 @@ import {
   verifySessionToken,
 } from "@/lib/auth/session";
 import { isClientHttps, jsonError } from "@/lib/http";
+import { trackEventFromRequest } from "@/lib/tracking/service";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
@@ -20,18 +21,45 @@ export async function GET(request: NextRequest) {
     const invitation = await resolveInviteToken(token);
 
     if (!invitation) {
+      await trackEventFromRequest(request, {
+        eventType: "invite_link_invalid",
+        token,
+        pageName: "apply_entry",
+        stepName: "invite_access",
+        actionName: "page_view",
+        eventStatus: "FAIL",
+        landingPath: "/apply",
+      });
       return jsonError("The invitation link is invalid.", 401, {
         code: "INVALID_TOKEN",
       });
     }
 
     if (invitation.tokenStatus === "DISABLED") {
+      await trackEventFromRequest(request, {
+        eventType: "invite_link_disabled",
+        token,
+        pageName: "apply_entry",
+        stepName: "invite_access",
+        actionName: "page_view",
+        eventStatus: "FAIL",
+        landingPath: "/apply",
+      });
       return jsonError("This invitation link has been disabled.", 403, {
         code: "DISABLED_TOKEN",
       });
     }
 
     if (invitation.expiredAt && invitation.expiredAt.getTime() < Date.now()) {
+      await trackEventFromRequest(request, {
+        eventType: "invite_link_expired",
+        token,
+        pageName: "apply_entry",
+        stepName: "invite_access",
+        actionName: "page_view",
+        eventStatus: "FAIL",
+        landingPath: "/apply",
+      });
       return jsonError("This invitation link has expired.", 410, {
         code: "EXPIRED_TOKEN",
       });
@@ -47,6 +75,17 @@ export async function GET(request: NextRequest) {
     if (!snapshot || !sessionToken) {
       return jsonError("Unable to initialize the application session.", 500);
     }
+
+    await trackEventFromRequest(request, {
+      eventType: "invite_link_opened",
+      token,
+      applicationId: application.id,
+      pageName: "apply_entry",
+      stepName: "invite_access",
+      actionName: "page_view",
+      eventStatus: "SUCCESS",
+      landingPath: "/apply",
+    });
 
     const response = NextResponse.json(snapshot);
     response.cookies.set({
@@ -78,6 +117,15 @@ export async function GET(request: NextRequest) {
       code: "APPLICATION_NOT_FOUND",
     });
   }
+
+  await trackEventFromRequest(request, {
+    eventType: "session_restored",
+    applicationId: snapshot.applicationId,
+    pageName: "apply_entry",
+    stepName: "invite_access",
+    actionName: "page_view",
+    eventStatus: "SUCCESS",
+  });
 
   return NextResponse.json(snapshot);
 }

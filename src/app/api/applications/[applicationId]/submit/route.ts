@@ -6,6 +6,7 @@ import {
 } from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError } from "@/lib/http";
+import { trackEventFromRequest } from "@/lib/tracking/service";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
@@ -26,6 +27,15 @@ export async function POST(request: NextRequest, { params }: Params) {
       return jsonError("The application could not be found.", 404);
     }
 
+    await trackEventFromRequest(request, {
+      eventType: "application_submitted",
+      applicationId,
+      pageName: "apply_materials",
+      stepName: "submit",
+      actionName: "submit_confirm",
+      eventStatus: "SUCCESS",
+    });
+
     return NextResponse.json({
       applicationId,
       applicationStatus: application.applicationStatus,
@@ -33,6 +43,18 @@ export async function POST(request: NextRequest, { params }: Params) {
         "We have received your materials and will respond within 1 to 3 business days.",
     });
   } catch (error) {
+    await trackEventFromRequest(request, {
+      eventType: "application_submit_failed",
+      applicationId,
+      pageName: "apply_materials",
+      stepName: "submit",
+      actionName: "submit_confirm",
+      eventStatus: "FAIL",
+      errorCode:
+        error instanceof ApplicationServiceError ? error.code : "submit_failed",
+      errorMessage:
+        error instanceof Error ? error.message : "Application submit failed.",
+    });
     if (error instanceof ApplicationServiceError) {
       return jsonError(error.message, error.status, {
         code: error.code,

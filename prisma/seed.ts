@@ -24,6 +24,8 @@ async function main() {
   const invitations = getSampleInvitationSeeds();
   const now = new Date();
 
+  await prisma.fileUploadAttempt.deleteMany();
+  await prisma.inviteAccessLog.deleteMany();
   await prisma.applicationEventLog.deleteMany();
   await prisma.applicationMaterial.deleteMany();
   await prisma.supplementalFieldSubmission.deleteMany();
@@ -48,6 +50,13 @@ async function main() {
       currentStep: "supplemental_fields",
       eligibilityResult: "INSUFFICIENT_INFO",
       latestAnalysisJobId: "job_progress",
+      firstAccessedAt: now,
+      lastAccessedAt: now,
+      introConfirmedAt: now,
+      resumeUploadStartedAt: now,
+      resumeUploadedAt: now,
+      analysisStartedAt: now,
+      analysisCompletedAt: now,
       createdAt: now,
       updatedAt: now,
       resumeFiles: {
@@ -124,6 +133,14 @@ async function main() {
       currentStep: "materials",
       eligibilityResult: "ELIGIBLE",
       latestAnalysisJobId: "job_submitted",
+      firstAccessedAt: now,
+      lastAccessedAt: now,
+      introConfirmedAt: now,
+      resumeUploadStartedAt: now,
+      resumeUploadedAt: now,
+      analysisStartedAt: now,
+      analysisCompletedAt: now,
+      materialsEnteredAt: now,
       submittedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -193,6 +210,13 @@ async function main() {
       currentStep: "result",
       eligibilityResult: "ELIGIBLE",
       latestAnalysisJobId: "job_secondary",
+      firstAccessedAt: now,
+      lastAccessedAt: now,
+      introConfirmedAt: now,
+      resumeUploadStartedAt: now,
+      resumeUploadedAt: now,
+      analysisStartedAt: now,
+      analysisCompletedAt: now,
       createdAt: now,
       updatedAt: now,
       resumeFiles: {
@@ -237,6 +261,69 @@ async function main() {
         },
       },
     },
+  });
+
+  await prisma.inviteAccessLog.createMany({
+    data: [
+      {
+        invitationId: "invitation_init",
+        applicationId: "app_progress",
+        tokenStatus: "ACTIVE",
+        accessResult: "VALID",
+        ipAddress: "203.0.113.10",
+        landingPath: "/apply",
+        sessionId: "seed_session_valid",
+        requestId: "seed_request_valid",
+        occurredAt: now,
+      },
+      {
+        tokenStatus: "UNKNOWN",
+        accessResult: "INVALID",
+        ipAddress: "198.51.100.24",
+        landingPath: "/apply",
+        sessionId: "seed_session_invalid",
+        requestId: "seed_request_invalid",
+        occurredAt: now,
+      },
+    ],
+  });
+
+  await prisma.fileUploadAttempt.createMany({
+    data: [
+      {
+        applicationId: "app_progress",
+        uploadId: "seed_resume_upload",
+        kind: "RESUME",
+        fileName: "candidate-progress.pdf",
+        fileExt: "pdf",
+        fileSize: 1024,
+        intentCreatedAt: now,
+        uploadStartedAt: now,
+        uploadConfirmedAt: now,
+        durationMs: 0,
+        objectKey: "applications/app_progress/resume/candidate-progress.pdf",
+        sessionId: "seed_session_valid",
+        requestId: "seed_request_valid",
+      },
+      {
+        applicationId: "app_submitted",
+        uploadId: "seed_material_upload_failed",
+        kind: "MATERIAL",
+        category: "IDENTITY",
+        fileName: "passport.pdf",
+        fileExt: "pdf",
+        fileSize: 1000,
+        intentCreatedAt: now,
+        uploadStartedAt: now,
+        uploadFailedAt: now,
+        failureCode: "oss_put_failed",
+        failureStage: "PUT",
+        durationMs: 0,
+        objectKey: "applications/app_submitted/materials/IDENTITY/passport.pdf",
+        sessionId: "seed_session_valid",
+        requestId: "seed_request_upload_fail",
+      },
+    ],
   });
 
   console.log("Seeded AutoHire sample data.");

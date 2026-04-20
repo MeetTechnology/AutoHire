@@ -5,6 +5,7 @@ import { submitSupplementalFields } from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError, parseJsonBody } from "@/lib/http";
 import { getResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
+import { trackEventFromRequest } from "@/lib/tracking/service";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
@@ -42,6 +43,18 @@ export async function POST(request: NextRequest, { params }: Params) {
       code: "REANALYSIS_START_FAILED",
     });
   }
+
+  await trackEventFromRequest(request, {
+    eventType: "supplemental_submitted",
+    applicationId,
+    pageName: "apply_result",
+    stepName: "supplemental",
+    actionName: "submit_confirm",
+    eventStatus: "SUCCESS",
+    payload: {
+      analysisJobId: job.id,
+    },
+  });
 
   return NextResponse.json({
     applicationId,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -36,6 +36,10 @@ import {
   resolveRouteFromStatus,
 } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
+import {
+  createUploadId,
+  trackPageView,
+} from "@/lib/tracking/client";
 
 const RESUME_DRAFT_KEY = "autohire:resume-draft";
 type ResumeDraft = {
@@ -66,6 +70,7 @@ export default function ResumePage() {
   const [draft, setDraft] = useState<ResumeDraft>(EMPTY_DRAFT);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [mailtoHref, setMailtoHref] = useState<string | undefined>(undefined);
+  const hasTrackedPageView = useRef(false);
 
   useEffect(() => {
     const storedDraft = readDraft<ResumeDraft>(RESUME_DRAFT_KEY);
@@ -125,6 +130,19 @@ export default function ResumePage() {
   }, [router]);
 
   useEffect(() => {
+    if (!snapshot || hasTrackedPageView.current) {
+      return;
+    }
+
+    hasTrackedPageView.current = true;
+    void trackPageView({
+      pageName: "apply_resume",
+      stepName: "resume_upload",
+      applicationId: snapshot.applicationId,
+    });
+  }, [snapshot]);
+
+  useEffect(() => {
     if (
       draft.passportFullName === EMPTY_DRAFT.passportFullName &&
       draft.email === EMPTY_DRAFT.email
@@ -161,15 +179,22 @@ export default function ResumePage() {
     startTransition(async () => {
       try {
         setError(null);
+        const uploadId = createUploadId();
         const intent = await createResumeUploadIntent(
           snapshot.applicationId,
           selectedFile,
+          uploadId,
         );
-        await uploadBinary(intent, selectedFile);
+        await uploadBinary(intent, selectedFile, {
+          applicationId: snapshot.applicationId,
+          uploadId,
+          kind: "resume",
+        });
         await confirmResumeUpload(
           snapshot.applicationId,
           selectedFile,
           intent.objectKey,
+          uploadId,
           {
             passportFullName: draft.passportFullName,
             email: draft.email,
