@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   useTransition,
-  type CSSProperties,
 } from "react";
 import { ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -113,15 +112,6 @@ type IntroSectionId = (typeof INTRO_SECTION_ITEMS)[number]["id"];
 
 const ABOUT_US =
   "Meet Technology (Wuhan) Co., Ltd. is a professional talent intermediary company specializing in assisting overseas high-level talents in applying for talent programs in China. We have served more than 100 cities and regions nationwide, organized over 200 meetings, forums, competitions, training sessions, and project investigation activities, connected more than 5,000 overseas high-level talents with local governments and enterprises, and successfully introduced more than 200 overseas high-level talents. More than 20 of those candidates were selected into national and provincial talent programs. We are one of multiple professional service providers participating in the GESF ecosystem.";
-
-/** Decorative backdrop for `/apply` only; replace `public/apply/entry-background.png` for production art. */
-const APPLY_ENTRY_BACKDROP_STYLE: CSSProperties = {
-  backgroundImage:
-    'linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(244, 247, 251, 0.78) 38%, rgba(244, 247, 251, 0.7) 100%), url("/apply/entry-background.png")',
-  backgroundSize: "cover",
-  backgroundPosition: "center",
-  backgroundRepeat: "no-repeat",
-};
 
 export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const router = useRouter();
@@ -327,125 +317,111 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   }
 
   return (
-    <div className="relative isolate min-h-screen w-full">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 z-0"
-        style={APPLY_ENTRY_BACKDROP_STYLE}
-      />
-      <div className="relative z-10">
-        <PageFrame>
-          <PageShell
-            eyebrow="GESF"
-            title="Global Excellent Scientists Fund"
-            description={INTRO_DESCRIPTION}
-            headerTitleClassName="font-normal"
-            headerVariant="centered"
-            steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
-            currentStep={0}
-            stepIndexing="zero"
-            stepLinks={flowStepLinks}
-            maxAccessibleStep={
-              snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 0
-            }
-            headerSlot={
-              <div className="flex justify-center">
-                <span className="inline-flex min-h-11 items-center rounded-full bg-[color:var(--primary)] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(10,25,47,0.16)]">
-                  {APPLICATION_DEADLINE_PILL}
-                </span>
-              </div>
-            }
-          >
-            <div className="mx-auto max-w-4xl space-y-4">
-              {isReadOnlyReview ? (
-                <StatusBanner
-                  tone="neutral"
-                  title="Reference-only access"
-                  description="This invitation has already moved beyond the introduction stage. You may review this page, but the active workflow continues from a later step."
-                />
-              ) : null}
+    <PageFrame>
+      <PageShell
+        eyebrow="GESF"
+        title="Global Excellent Scientists Fund"
+        description={INTRO_DESCRIPTION}
+        headerTitleClassName="font-normal"
+        headerVariant="centered"
+        steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
+        currentStep={0}
+        stepIndexing="zero"
+        stepLinks={flowStepLinks}
+        maxAccessibleStep={
+          snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 0
+        }
+        headerSlot={
+          <div className="flex justify-center">
+            <span className="inline-flex min-h-11 items-center rounded-full bg-[color:var(--primary)] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(10,25,47,0.16)]">
+              {APPLICATION_DEADLINE_PILL}
+            </span>
+          </div>
+        }
+      >
+        <div className="mx-auto max-w-4xl space-y-4">
+          {isReadOnlyReview ? (
+            <StatusBanner
+              tone="neutral"
+              title="Reference-only access"
+              description="This invitation has already moved beyond the introduction stage. You may review this page, but the active workflow continues from a later step."
+            />
+          ) : null}
 
-              {isLoading ? (
-                <StatusBanner
-                  tone="loading"
-                  title="Preparing your invitation"
-                  description="Validating the invitation link and checking whether an application session is already available."
-                />
-              ) : null}
+          {isLoading ? (
+            <StatusBanner
+              tone="loading"
+              title="Preparing your invitation"
+              description="Validating the invitation link and checking whether an application session is already available."
+            />
+          ) : null}
 
-              {error ? (
-                <StatusBanner
-                  tone="danger"
-                  title="Unable to open the application entry"
-                >
-                  <p className="text-sm leading-6">{error}</p>
-                  <p className="text-xs text-[color:var(--foreground-soft)]">
-                    For local testing, you can use the sample token:
-                    <code className="ml-2 rounded-md bg-white px-2 py-1 text-[0.72rem] text-[color:var(--primary)]">
-                      sample-init-token
-                    </code>
-                  </p>
-                </StatusBanner>
-              ) : null}
+          {error ? (
+            <StatusBanner tone="danger" title="Unable to open the application entry">
+              <p className="text-sm leading-6">{error}</p>
+              <p className="text-xs text-[color:var(--foreground-soft)]">
+                For local testing, you can use the sample token:
+                <code className="ml-2 rounded-md bg-white px-2 py-1 text-[0.72rem] text-[color:var(--primary)]">
+                  sample-init-token
+                </code>
+              </p>
+            </StatusBanner>
+          ) : null}
 
-              <section className="overflow-hidden rounded-[1.75rem] border border-[color:var(--border)] bg-[color:var(--background-elevated)] shadow-[var(--shadow-card)]">
-                <div className="divide-y divide-[color:var(--border)]">
-                  {INTRO_SECTION_ITEMS.map((section) => {
-                    const isOpen = activeSection === section.id;
+          <section className="overflow-hidden rounded-[1.75rem] border border-[color:var(--border)] bg-[color:var(--background-elevated)] shadow-[var(--shadow-card)]">
+            <div className="divide-y divide-[color:var(--border)]">
+              {INTRO_SECTION_ITEMS.map((section) => {
+                const isOpen = activeSection === section.id;
 
-                    return (
-                      <div key={section.id} className="bg-white/72">
-                        <button
-                          type="button"
-                          className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left transition hover:bg-[color:var(--muted)]/55 sm:px-6"
-                          onClick={() =>
-                            setActiveSection((current) =>
-                              current === section.id ? current : section.id,
-                            )
-                          }
-                        >
-                          <div className="min-w-0">
-                            <p className="text-lg font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
-                              {section.title}
-                            </p>
-                            <p className="mt-1 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                              {section.summary}
-                            </p>
-                          </div>
-                          <ChevronRight
-                            className={cn(
-                              "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200",
-                              isOpen
-                                ? "rotate-90 text-[color:var(--primary)]"
-                                : "",
-                            )}
-                            aria-hidden
-                          />
-                        </button>
-                        {isOpen ? (
-                          <div className="border-t border-[color:var(--border)] bg-[color:var(--muted)]/38 px-5 py-5 sm:px-6">
-                            {renderSectionContent(section.id)}
-                          </div>
-                        ) : null}
+                return (
+                  <div key={section.id} className="bg-white/72">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left transition hover:bg-[color:var(--muted)]/55 sm:px-6"
+                      onClick={() =>
+                        setActiveSection((current) =>
+                          current === section.id ? current : section.id,
+                        )
+                      }
+                    >
+                      <div className="min-w-0">
+                        <p className="text-lg font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
+                          {section.title}
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-[color:var(--foreground-soft)]">
+                          {section.summary}
+                        </p>
                       </div>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <div className="flex justify-center py-4">
-                <ActionButton
-                  onClick={handleStart}
-                  disabled={isPending || isReadOnlyReview}
-                >
-                  <span>{isPending ? "Opening..." : "Upload CV"}</span>
-                  <ChevronRight className="h-4 w-4" aria-hidden />
-                </ActionButton>
-              </div>
+                      <ChevronRight
+                        className={cn(
+                          "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200",
+                          isOpen ? "rotate-90 text-[color:var(--primary)]" : "",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                    {isOpen ? (
+                      <div className="border-t border-[color:var(--border)] bg-[color:var(--muted)]/38 px-5 py-5 sm:px-6">
+                        {renderSectionContent(section.id)}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-          </PageShell>
-        </PageFrame>
-      </div>
-    </div>
+          </section>
+
+          <div className="flex justify-center py-4">
+            <ActionButton
+              onClick={handleStart}
+              disabled={isPending || isReadOnlyReview}
+            >
+              <span>{isPending ? "Opening..." : "Upload CV"}</span>
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </ActionButton>
+          </div>
+        </div>
+      </PageShell>
+    </PageFrame>
   );
 }
