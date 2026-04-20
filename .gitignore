@@ -45,3 +45,6 @@ bun-debug.log*
 
 
 GESF Recruitment Website
+
+# Sentry Config File
+.env.sentry-build-plugin
