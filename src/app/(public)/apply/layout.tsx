@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+  import type { CSSProperties, ReactNode } from "react";
 
 const APPLY_FLOW_BACKDROP_STYLE: CSSProperties = {
   backgroundImage:
