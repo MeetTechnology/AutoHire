@@ -671,6 +671,32 @@ function buildSecondaryRunSummary(
   } satisfies Record<string, unknown>;
 }
 
+export function shouldShowFullSecondaryFieldSet(
+  run: SecondaryAnalysisSnapshot["run"] | EditableSecondaryAnalysisSnapshot["run"],
+) {
+  const totalPrompts = run?.totalPrompts ?? null;
+
+  if (!totalPrompts || totalPrompts <= 0) {
+    return true;
+  }
+
+  const completedPrompts = Math.max(0, run?.completedPrompts ?? 0);
+  return completedPrompts >= totalPrompts;
+}
+
+export function filterSecondaryFieldsForPromptProgress<
+  TField extends { sourceValue: string },
+>(
+  fields: TField[],
+  run: SecondaryAnalysisSnapshot["run"] | EditableSecondaryAnalysisSnapshot["run"],
+) {
+  if (shouldShowFullSecondaryFieldSet(run)) {
+    return fields;
+  }
+
+  return fields.filter((field) => field.sourceValue.trim().length > 0);
+}
+
 function buildEditableFieldsFromSource(input: {
   sourceValuesByNo: Map<number, string>;
   storedFields: StoredSecondaryFieldValue[];
@@ -786,15 +812,21 @@ async function persistSecondaryAnalysisSnapshot(input: {
 
     return {
       runRecord,
-      editableFields,
+      editableFields: filterSecondaryFieldsForPromptProgress(
+        editableFields,
+        input.run,
+      ),
     };
   }
 
   const sourceValuesByNo = parseSecondaryFieldSourceValues(completedTexts);
-  const editableFields = buildEditableFieldsFromSource({
-    sourceValuesByNo,
-    storedFields: existingFields,
-  });
+  const editableFields = filterSecondaryFieldsForPromptProgress(
+    buildEditableFieldsFromSource({
+      sourceValuesByNo,
+      storedFields: existingFields,
+    }),
+    input.run,
+  );
 
   const storedFields = (await upsertSecondaryAnalysisFieldValues({
     applicationId: input.applicationId,

@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   ApplicationServiceError,
   enterMaterialsStage,
+  filterSecondaryFieldsForPromptProgress,
   getEditableSecondaryAnalysisSnapshot,
   getMaterialsByCategory,
   getSnapshot,
   saveEditableSecondaryAnalysisFields,
+  shouldShowFullSecondaryFieldSet,
   startSecondaryAnalysis,
   submitApplication,
 } from "@/lib/application/service";
@@ -183,5 +185,76 @@ describe("secondary analysis editable service flow", () => {
       status: 409,
       code: "MATERIALS_MINIMUM_REQUIREMENTS_NOT_MET",
     } satisfies Partial<ApplicationServiceError>);
+  });
+});
+
+describe("secondary analysis prompt-progress field visibility", () => {
+  const fields = [
+    { fieldKey: "secondary_field_01", sourceValue: "Jane Doe" },
+    { fieldKey: "secondary_field_15", sourceValue: "" },
+    { fieldKey: "secondary_field_22", sourceValue: "Senior researcher" },
+  ];
+
+  it("keeps only produced fields while prompt progress is incomplete", () => {
+    const run = {
+      id: "run-1",
+      status: "processing" as const,
+      totalPrompts: 9,
+      completedPrompts: 4,
+      failedPromptIds: [],
+      errorMessage: null,
+    };
+
+    expect(shouldShowFullSecondaryFieldSet(run)).toBe(false);
+    expect(filterSecondaryFieldsForPromptProgress(fields, run)).toEqual([
+      { fieldKey: "secondary_field_01", sourceValue: "Jane Doe" },
+      { fieldKey: "secondary_field_22", sourceValue: "Senior researcher" },
+    ]);
+  });
+
+  it("keeps no fields while incomplete prompt progress has no produced values", () => {
+    const run = {
+      id: "run-1",
+      status: "processing" as const,
+      totalPrompts: 9,
+      completedPrompts: 0,
+      failedPromptIds: [],
+      errorMessage: null,
+    };
+
+    expect(
+      filterSecondaryFieldsForPromptProgress(
+        fields.map((field) => ({ ...field, sourceValue: "" })),
+        run,
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps missing fields once all prompts complete", () => {
+    const run = {
+      id: "run-1",
+      status: "completed" as const,
+      totalPrompts: 9,
+      completedPrompts: 9,
+      failedPromptIds: [],
+      errorMessage: null,
+    };
+
+    expect(shouldShowFullSecondaryFieldSet(run)).toBe(true);
+    expect(filterSecondaryFieldsForPromptProgress(fields, run)).toEqual(fields);
+  });
+
+  it("preserves the full field set when prompt totals are unavailable", () => {
+    const run = {
+      id: "run-1",
+      status: "processing" as const,
+      totalPrompts: null,
+      completedPrompts: null,
+      failedPromptIds: [],
+      errorMessage: null,
+    };
+
+    expect(shouldShowFullSecondaryFieldSet(run)).toBe(true);
+    expect(filterSecondaryFieldsForPromptProgress(fields, run)).toEqual(fields);
   });
 });
