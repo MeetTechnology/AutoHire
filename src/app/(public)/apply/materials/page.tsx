@@ -288,7 +288,7 @@ export default function MaterialsPage() {
   );
   const minimumRequirementsMet = missingRequiredCategories.length === 0;
   const isSubmitted = snapshot?.applicationStatus === "SUBMITTED";
-  const materialsFlowStepIndex = isSubmitted ? 4 : 3;
+  const materialsFlowStepIndex = isSubmitted ? 3 : 2;
   const flowStepLinks = useMemo(
     () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
     [snapshot?.applicationStatus],
@@ -308,11 +308,7 @@ export default function MaterialsPage() {
     <PageFrame>
       <PageShell
         eyebrow={`Step ${materialsFlowStepIndex + 1}`}
-        title={
-          isSubmitted
-            ? "Submission complete"
-            : "Supporting materials"
-        }
+        title={isSubmitted ? "Submission complete" : "Supporting materials"}
         description={
           isSubmitted
             ? "Your application package has been received. The page below keeps your application number, expected review timing, and an evidence summary for reference."
@@ -324,7 +320,7 @@ export default function MaterialsPage() {
         stepIndexing="zero"
         stepLinks={flowStepLinks}
         maxAccessibleStep={
-          snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 4
+          snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 3
         }
       >
         <div className="mx-auto max-w-4xl space-y-4">
@@ -431,7 +427,9 @@ export default function MaterialsPage() {
                         ? "Read-only uploaded evidence for this category."
                         : "Expand to review guidance, upload files, and manage the current list."
                     }
-                    defaultOpen={isRequiredCategory && !requirementMet && !isSubmitted}
+                    defaultOpen={
+                      isRequiredCategory && !requirementMet && !isSubmitted
+                    }
                     meta={
                       <div className="flex flex-wrap items-center gap-2">
                         {isRequiredCategory ? (
@@ -461,12 +459,14 @@ export default function MaterialsPage() {
                               <textarea
                                 value={productDescriptionDraft}
                                 onChange={(event) => {
-                                  setProductDescriptionDraft(event.target.value);
+                                  setProductDescriptionDraft(
+                                    event.target.value,
+                                  );
                                   setProductDescriptionSavedHint(null);
                                 }}
                                 disabled={isPending}
                                 rows={5}
-                                className="w-full rounded-xl border border-[color:var(--border-strong)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground)] outline-none ring-[color:var(--accent)] focus-visible:ring-2"
+                                className="w-full rounded-xl border border-[color:var(--border-strong)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground)] ring-[color:var(--accent)] outline-none focus-visible:ring-2"
                               />
                               {productDescriptionError ? (
                                 <p className="text-xs font-medium text-red-600">
@@ -490,7 +490,7 @@ export default function MaterialsPage() {
                               </div>
                             </div>
                           ) : (
-                            <p className="whitespace-pre-wrap rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground)]">
+                            <p className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm whitespace-pre-wrap text-[color:var(--foreground)]">
                               {snapshot?.productInnovationDescription?.trim()
                                 ? snapshot.productInnovationDescription
                                 : "No product description was provided."}
@@ -545,7 +545,9 @@ export default function MaterialsPage() {
                             className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground-soft)]"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <span className="truncate">{record.fileName}</span>
+                              <span className="truncate">
+                                {record.fileName}
+                              </span>
                               {!isSubmitted ? (
                                 <button
                                   type="button"

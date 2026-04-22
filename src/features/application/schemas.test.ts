@@ -15,7 +15,13 @@ describe("resumeConfirmSchema", () => {
     objectKey: "applications/app_intro/resume/cv.pdf",
   };
 
-  it("accepts trimmed passport name and normalizes email", () => {
+  it("accepts file confirmation without CV review identity fields", () => {
+    const parsed = resumeConfirmSchema.safeParse(baseFile);
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts optional trimmed passport name and normalizes email", () => {
     const parsed = resumeConfirmSchema.safeParse({
       ...baseFile,
       screeningPassportFullName: "  Wei Zhang  ",
@@ -29,7 +35,7 @@ describe("resumeConfirmSchema", () => {
     }
   });
 
-  it("rejects whitespace-only passport name", () => {
+  it("rejects whitespace-only passport name when provided", () => {
     const parsed = resumeConfirmSchema.safeParse({
       ...baseFile,
       screeningPassportFullName: "   ",
@@ -39,7 +45,7 @@ describe("resumeConfirmSchema", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("rejects invalid email", () => {
+  it("rejects invalid email when provided", () => {
     const parsed = resumeConfirmSchema.safeParse({
       ...baseFile,
       screeningPassportFullName: "Jane Doe",

@@ -40,40 +40,51 @@ describe("POST /api/applications/[applicationId]/resume", () => {
     resetMemoryStore();
   });
 
-  it("returns 400 when CV review identity is missing", async () => {
+  it("starts CV review when applicant-entered identity is missing", async () => {
     const response = await resumePost(
-      buildAuthorizedRequest("http://localhost/api/applications/app_intro/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uploadId: "upload_resume_missing_identity",
-          fileName: "cv.pdf",
-          fileType: "application/pdf",
-          fileSize: 1500,
-          objectKey: "applications/app_intro/resume/cv.pdf",
-        }),
-      }),
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_intro/resume",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uploadId: "upload_resume_missing_identity",
+            fileName: "cv.pdf",
+            fileType: "application/pdf",
+            fileSize: 1500,
+            objectKey: "applications/app_intro/resume/cv.pdf",
+          }),
+        },
+      ),
       { params: Promise.resolve({ applicationId: "app_intro" }) },
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
+
+    const snapshot = await buildApplicationSnapshot("app_intro");
+    expect(snapshot?.screeningPassportFullName).toBeNull();
+    expect(snapshot?.screeningContactEmail).toBeNull();
+    expect(snapshot?.applicationStatus).toBe("CV_ANALYZING");
   });
 
   it("persists CV review identity on confirm", async () => {
     const response = await resumePost(
-      buildAuthorizedRequest("http://localhost/api/applications/app_intro/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uploadId: "upload_resume_success",
-          fileName: "cv.pdf",
-          fileType: "application/pdf",
-          fileSize: 1500,
-          objectKey: "applications/app_intro/resume/cv.pdf",
-          screeningPassportFullName: "  Passport User  ",
-          screeningContactEmail: "  Passport.User@Example.COM ",
-        }),
-      }),
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_intro/resume",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uploadId: "upload_resume_success",
+            fileName: "cv.pdf",
+            fileType: "application/pdf",
+            fileSize: 1500,
+            objectKey: "applications/app_intro/resume/cv.pdf",
+            screeningPassportFullName: "  Passport User  ",
+            screeningContactEmail: "  Passport.User@Example.COM ",
+          }),
+        },
+      ),
       { params: Promise.resolve({ applicationId: "app_intro" }) },
     );
 
@@ -86,13 +97,17 @@ describe("POST /api/applications/[applicationId]/resume", () => {
     expect(snapshot?.applicationStatus).toBe("CV_ANALYZING");
 
     const events = await listApplicationEvents("app_intro");
-    expect(events.some((event) => event.eventType === "resume_upload_confirmed")).toBe(
+    expect(
+      events.some((event) => event.eventType === "resume_upload_confirmed"),
+    ).toBe(true);
+    expect(events.some((event) => event.eventType === "analysis_started")).toBe(
       true,
     );
-    expect(events.some((event) => event.eventType === "analysis_started")).toBe(true);
 
     const uploads = await listFileUploadAttempts("app_intro");
-    const resumeUpload = uploads.find((item) => item.uploadId === "upload_resume_success");
+    const resumeUpload = uploads.find(
+      (item) => item.uploadId === "upload_resume_success",
+    );
     expect(resumeUpload).toMatchObject({
       uploadId: "upload_resume_success",
       kind: "RESUME",

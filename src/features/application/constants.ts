@@ -33,12 +33,8 @@ export const EXPERT_PROGRAM_CONTACT_EMAIL = "review-contact@example.com";
 
 export const APPLICATION_FLOW_STEPS = [
   {
-    label: "Upload CV",
-    hint: "Provide identity basics and your latest CV file.",
-  },
-  {
     label: "CV Review",
-    hint: "Wait for the CV review outcome and complete any required follow-up before supporting materials.",
+    hint: "Upload your latest CV and wait for the review outcome.",
   },
   {
     label: "Additional Information",

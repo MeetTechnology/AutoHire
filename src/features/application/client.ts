@@ -110,7 +110,7 @@ export async function confirmResumeUpload(
   file: File,
   objectKey: string,
   uploadId: string,
-  screening: { passportFullName: string; email: string },
+  screening?: { passportFullName: string; email: string },
 ) {
   const response = await fetch(
     `/api/applications/${applicationId}/resume`,
@@ -126,8 +126,12 @@ export async function confirmResumeUpload(
         fileType: file.type || "application/octet-stream",
         fileSize: file.size,
         objectKey,
-        screeningPassportFullName: screening.passportFullName,
-        screeningContactEmail: screening.email,
+        ...(screening
+          ? {
+              screeningPassportFullName: screening.passportFullName,
+              screeningContactEmail: screening.email,
+            }
+          : {}),
       }),
     }),
   );
@@ -210,7 +214,8 @@ export async function uploadBinary(
         objectKey: intent.objectKey,
         eventStatus: "FAIL",
         errorCode: "oss_put_failed",
-        errorMessage: error instanceof Error ? error.message : "File upload failed.",
+        errorMessage:
+          error instanceof Error ? error.message : "File upload failed.",
       });
     }
     throw error;

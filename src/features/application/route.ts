@@ -3,7 +3,7 @@ import type {
   ApplicationStatus,
 } from "@/features/application/types";
 
-export type ApplicationFlowStep = 0 | 1 | 2 | 3 | 4;
+export type ApplicationFlowStep = 0 | 1 | 2 | 3;
 
 export function resolveRouteFromStatus(status: ApplicationStatus) {
   if (status === "INIT") {
@@ -22,9 +22,7 @@ export function resolveRouteFromStatus(status: ApplicationStatus) {
     status === "SECONDARY_REVIEW" ||
     status === "SECONDARY_FAILED"
   ) {
-    return status === "INTRO_VIEWED" || status === "CV_UPLOADED"
-      ? "/apply/resume"
-      : "/apply/result";
+    return "/apply/resume";
   }
 
   if (status === "MATERIALS_IN_PROGRESS" || status === "SUBMITTED") {
@@ -38,21 +36,21 @@ export function shouldRedirectFromApply(snapshot: ApplicationSnapshot) {
   return snapshot.applicationStatus !== "INIT";
 }
 
-export function getReachableFlowStep(status: ApplicationStatus): ApplicationFlowStep {
+export function getReachableFlowStep(
+  status: ApplicationStatus,
+): ApplicationFlowStep {
   if (status === "INIT") {
     return 0;
   }
 
-  if (status === "INTRO_VIEWED" || status === "CV_UPLOADED") {
-    return 1;
-  }
-
   if (
+    status === "INTRO_VIEWED" ||
+    status === "CV_UPLOADED" ||
     status === "CV_ANALYZING" ||
     status === "REANALYZING" ||
     status === "INELIGIBLE"
   ) {
-    return 2;
+    return 1;
   }
 
   if (
@@ -62,11 +60,15 @@ export function getReachableFlowStep(status: ApplicationStatus): ApplicationFlow
     status === "SECONDARY_REVIEW" ||
     status === "SECONDARY_FAILED"
   ) {
-    return 3;
+    return 2;
   }
 
-  if (status === "MATERIALS_IN_PROGRESS" || status === "SUBMITTED") {
-    return 4;
+  if (status === "MATERIALS_IN_PROGRESS") {
+    return 2;
+  }
+
+  if (status === "SUBMITTED") {
+    return 3;
   }
 
   return 0;
@@ -87,23 +89,23 @@ export function isFlowStepReadOnly(
 }
 
 /**
- * Stepper destinations for the five-step journey (with intro).
- * Step 3 ("Additional Information") opens materials upload except while
+ * Stepper destinations for the four-step journey (with intro).
+ * Step 2 ("Additional Information") opens materials upload except while
  * supplemental fields are required (`INFO_REQUIRED`), when it stays on the
- * result page. Step 4 is always the materials route (submission / read-only).
+ * unified CV Review route. Step 3 is always the materials route
+ * (submission / read-only).
  */
 export function buildApplyFlowStepLinks(
   applicationStatus?: ApplicationStatus | null,
 ): readonly string[] {
   const additionalInformationHref =
     applicationStatus === "INFO_REQUIRED"
-      ? "/apply/result?view=additional"
+      ? "/apply/resume?view=additional"
       : "/apply/materials";
 
   return [
     "/apply",
-    "/apply/resume",
-    "/apply/result?view=review",
+    "/apply/resume?view=review",
     additionalInformationHref,
     "/apply/materials",
   ];

@@ -14,8 +14,7 @@ const trimmedNonEmpty = z.preprocess(
 );
 
 const normalizedEmail = z.preprocess(
-  (value) =>
-    typeof value === "string" ? value.trim().toLowerCase() : value,
+  (value) => (typeof value === "string" ? value.trim().toLowerCase() : value),
   z.string().email(),
 );
 
@@ -41,8 +40,8 @@ export const uploadIntentSchema = z.object({
 });
 
 export const resumeConfirmSchema = uploadConfirmFileFields.extend({
-  screeningPassportFullName: trimmedNonEmpty,
-  screeningContactEmail: normalizedEmail,
+  screeningPassportFullName: trimmedNonEmpty.optional(),
+  screeningContactEmail: normalizedEmail.optional(),
 });
 
 /** Client-side check for the two CV review identity fields (no file fields). */

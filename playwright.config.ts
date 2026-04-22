@@ -13,6 +13,12 @@ export default defineConfig({
   ],
   webServer: {
     command: "bun run dev -- --port 3100",
+    env: {
+      ...process.env,
+      APP_RUNTIME_MODE: "memory",
+      FILE_STORAGE_MODE: "mock",
+      RESUME_ANALYSIS_MODE: "mock",
+    },
     port: 3100,
     reuseExistingServer: false,
   },

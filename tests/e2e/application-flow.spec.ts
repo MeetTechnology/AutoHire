@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-async function uploadVirtualFile(page: Page, name: string) {
+async function uploadVirtualFile(page: Page, name: string, index = 0) {
   await page
     .locator('input[type="file"]')
-    .first()
+    .nth(index)
     .setInputFiles({
       name,
       mimeType: "application/pdf",
@@ -16,6 +16,10 @@ async function initializeBrowserSession(page: Page, token: string) {
   await page.goto(`/apply?t=${token}`);
 }
 
+test.beforeEach(async ({ request }) => {
+  await request.post("/api/test/reset-memory");
+});
+
 test("invalid token shows an error", async ({ page }) => {
   await page.goto("/apply?t=bad-token");
 
@@ -25,28 +29,20 @@ test("invalid token shows an error", async ({ page }) => {
 test("eligible resume flow can reach materials and submit", async ({
   page,
 }) => {
-  await initializeBrowserSession(page, "sample-init-token");
-  await expect(
-    page.getByRole("button", { name: "Next: Upload CV" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Next: Upload CV" }).click();
+  await page.goto("/apply/resume?t=sample-init-token");
 
   await expect(
     page.getByRole("heading", {
-      name: /Upload your CV and confirm the core identity details/i,
+      name: /Upload and track your CV Review/i,
     }),
   ).toBeVisible();
-  await page
-    .getByPlaceholder("Enter the passport name exactly as shown")
-    .fill("E2E Passport Name");
-  await page
-    .getByPlaceholder("name@example.com")
-    .fill("e2e-candidate@example.com");
+  await expect(page.getByLabel("Passport Full Name")).toHaveCount(0);
+  await expect(page.getByText("Draft saves automatically")).toHaveCount(0);
   await uploadVirtualFile(page, "candidate-eligible.pdf");
-  await page.getByRole("button", { name: "Submit CV" }).click();
+  await page.getByRole("button", { name: "Start CV Review" }).click();
 
   await expect(
-    page.getByText("The initial eligibility review has passed", {
+    page.getByText("Initial CV review passed", {
       exact: true,
     }),
   ).toBeVisible({ timeout: 10000 });
@@ -58,11 +54,17 @@ test("eligible resume flow can reach materials and submit", async ({
 
   await expect(
     page.getByRole("heading", {
-      name: /Complete the final package and confirm submission/,
+      name: /Supporting materials/,
     }),
   ).toBeVisible();
   await uploadVirtualFile(page, "passport.pdf");
+  await uploadVirtualFile(page, "degree.pdf", 1);
+  await uploadVirtualFile(page, "employment.pdf", 2);
   await expect(page.getByText("passport.pdf")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("degree.pdf")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("employment.pdf")).toBeVisible({
+    timeout: 10000,
+  });
 
   await page.getByRole("button", { name: "Confirm Submission" }).click();
   await expect(
@@ -77,6 +79,7 @@ test("insufficient info flow supports supplemental fields", async ({
 }) => {
   await initializeBrowserSession(page, "sample-progress-token");
   await page.goto("/apply/result?view=additional");
+  await expect(page).toHaveURL(/\/apply\/resume\?view=additional/);
 
   await expect(
     page.getByText("Some required information is still missing"),
@@ -92,7 +95,7 @@ test("insufficient info flow supports supplemental fields", async ({
     .click();
 
   await expect(
-    page.getByText("The initial eligibility review has passed", {
+    page.getByText("Initial CV review passed", {
       exact: true,
     }),
   ).toBeVisible({ timeout: 10000 });
@@ -105,12 +108,12 @@ test("insufficient info flow supports supplemental fields", async ({
 });
 
 test("submitted token restores submitted materials page", async ({ page }) => {
-  await initializeBrowserSession(page, "sample-submitted-token");
-  await page.goto("/apply/materials");
+  await page.goto("/apply/materials?t=sample-submitted-token");
 
   await expect(
     page.getByRole("heading", {
-      name: /Your application package has been received/,
+      name: /Submission complete/,
+      level: 1,
     }),
   ).toBeVisible();
   await expect(

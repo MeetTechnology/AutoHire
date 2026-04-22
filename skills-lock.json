@@ -11,6 +11,11 @@
       "sourceType": "github",
       "computedHash": "b927391093b9e04f091c9c04da47096e2217deb7acaccbfbc9690261626085b6"
     },
+    "shadcn": {
+      "source": "shadcn-ui/ui",
+      "sourceType": "github",
+      "computedHash": "03365c7543539f6e6689a754e65b3d8ea023ba9d6ea12a9b5550462bf060af8c"
+    },
     "ux-designer": {
       "source": "Shubhamsaboo/awesome-llm-apps",
       "sourceType": "github",

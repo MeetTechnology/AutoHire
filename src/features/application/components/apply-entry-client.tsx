@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -35,7 +29,6 @@ type ApplyEntryClientProps = {
 
 const PROCESS = [
   "Project Introduction",
-  "Upload CV",
   "CV Review",
   "Additional Information",
   "Submission Complete",
@@ -357,7 +350,10 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
           ) : null}
 
           {error ? (
-            <StatusBanner tone="danger" title="Unable to open the application entry">
+            <StatusBanner
+              tone="danger"
+              title="Unable to open the application entry"
+            >
               <p className="text-sm leading-6">{error}</p>
               <p className="text-xs text-[color:var(--foreground-soft)]">
                 For local testing, you can use the sample token:
@@ -416,7 +412,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
               onClick={handleStart}
               disabled={isPending || isReadOnlyReview}
             >
-              <span>{isPending ? "Opening..." : "Upload CV"}</span>
+              <span>{isPending ? "Opening..." : "Continue to CV Review"}</span>
               <ChevronRight className="h-4 w-4" aria-hidden />
             </ActionButton>
           </div>
