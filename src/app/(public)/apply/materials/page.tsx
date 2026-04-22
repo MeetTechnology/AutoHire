@@ -307,7 +307,6 @@ export default function MaterialsPage() {
   return (
     <PageFrame>
       <PageShell
-        eyebrow={`Step ${materialsFlowStepIndex + 1}`}
         title={isSubmitted ? "Submission complete" : "Supporting materials"}
         description={
           isSubmitted

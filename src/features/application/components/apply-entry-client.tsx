@@ -312,7 +312,6 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   return (
     <PageFrame>
       <PageShell
-        eyebrow="GESF"
         title="Global Excellent Scientists Fund"
         description={INTRO_DESCRIPTION}
         headerTitleClassName="font-normal"

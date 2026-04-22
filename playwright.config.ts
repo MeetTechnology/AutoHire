@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  /** Single shared Next.js process + in-memory store; parallel tests race on global state. */
+  workers: 1,
   use: {
     baseURL: "http://127.0.0.1:3100",
   },

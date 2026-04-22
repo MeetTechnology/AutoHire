@@ -21,7 +21,7 @@ Write TypeScript and React using existing Next.js conventions. Prefer domain fol
 
 ## Testing Guidelines
 
-Add Vitest coverage beside route handlers, feature logic, and server utilities. Use Playwright for full flows in `tests/e2e`, especially resume upload, analysis, materials, and submit paths. Run `bun run test` before pushing logic changes and `bun run test:e2e` for routing or user-flow changes.
+Add Vitest coverage beside route handlers, feature logic, and server utilities. Use Playwright for full flows in `tests/e2e`, especially resume upload, analysis, materials, and submit paths. Run `bun run test` before pushing logic changes and `bun run test:e2e` for routing or user-flow changes. **E2e:** keep `workers: 1` (shared memory store on one dev server); wait for data-bound UI after navigation, not only headings; confirm each file in the UI before the next `setInputFiles` when uploads disable inputs; if port 3100 is in use, stop the stray `next dev` or change Playwright `webServer` port.
 
 ## Commit & Pull Request Guidelines
 

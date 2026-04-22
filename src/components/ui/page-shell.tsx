@@ -23,7 +23,6 @@ type PageFrameProps = {
 };
 
 type PageShellProps = {
-  eyebrow?: string;
   title: string;
   description: string;
   children?: ReactNode;
@@ -161,7 +160,6 @@ export function PageFrame({ children, maxWidth, className }: PageFrameProps) {
 }
 
 export function PageShell({
-  eyebrow,
   title,
   description,
   children,
@@ -204,15 +202,9 @@ export function PageShell({
 
         {headerVariant === "centered" ? (
           <div className="mx-auto flex max-w-4xl flex-col items-center px-3 py-7 text-center sm:px-4 sm:py-10">
-            {eyebrow ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-strong)] bg-white px-3 py-1 text-[0.68rem] font-semibold tracking-[0.18em] text-[color:var(--primary)] uppercase">
-                <span className="h-2 w-2 rounded-full bg-[color:var(--accent)]" />
-                {eyebrow}
-              </span>
-            ) : null}
             <h1
               className={cn(
-                "mt-4 max-w-4xl text-[2rem] leading-tight tracking-[-0.04em] text-[color:var(--primary)] sm:text-[2.6rem]",
+                "max-w-4xl text-[2rem] leading-tight tracking-[-0.04em] text-[color:var(--primary)] sm:text-[2.6rem]",
                 headerTitleClassName ?? "font-semibold",
               )}
             >
@@ -227,12 +219,6 @@ export function PageShell({
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
             <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--background-elevated)] px-4 py-4 shadow-[var(--shadow-card)] sm:px-5 sm:py-5">
               <div className="max-w-4xl space-y-3">
-                {eyebrow ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-strong)] bg-white px-3 py-1 text-[0.68rem] font-semibold tracking-[0.18em] text-[color:var(--primary)] uppercase">
-                    <span className="h-2 w-2 rounded-full bg-[color:var(--accent)]" />
-                    {eyebrow}
-                  </span>
-                ) : null}
                 <div className="space-y-2">
                   <h1
                     className={cn(

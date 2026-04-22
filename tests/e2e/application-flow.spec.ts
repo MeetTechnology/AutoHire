@@ -16,6 +16,16 @@ async function initializeBrowserSession(page: Page, token: string) {
   await page.goto(`/apply?t=${token}`);
 }
 
+/** Waits until client `fetchSession` has set `snapshot` (MetaStrip is gated on it). */
+async function waitForMaterialsPageSession(page: Page) {
+  await expect(
+    page.getByRole("heading", {
+      name: /Supporting materials/,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Application number")).toBeVisible();
+}
+
 test.beforeEach(async ({ request }) => {
   await request.post("/api/test/reset-memory");
 });
@@ -52,18 +62,14 @@ test("eligible resume flow can reach materials and submit", async ({
   await expect(page.getByText("Detailed review")).toHaveCount(0);
   await page.getByRole("link", { name: /Additional Information/i }).click();
 
-  await expect(
-    page.getByRole("heading", {
-      name: /Supporting materials/,
-    }),
-  ).toBeVisible();
+  await waitForMaterialsPageSession(page);
   await uploadVirtualFile(page, "passport.pdf");
+  await expect(page.getByText("passport.pdf")).toBeVisible({ timeout: 15000 });
   await uploadVirtualFile(page, "degree.pdf", 1);
+  await expect(page.getByText("degree.pdf")).toBeVisible({ timeout: 15000 });
   await uploadVirtualFile(page, "employment.pdf", 2);
-  await expect(page.getByText("passport.pdf")).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText("degree.pdf")).toBeVisible({ timeout: 10000 });
   await expect(page.getByText("employment.pdf")).toBeVisible({
-    timeout: 10000,
+    timeout: 15000,
   });
 
   await page.getByRole("button", { name: "Confirm Submission" }).click();

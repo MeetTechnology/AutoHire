@@ -48,3 +48,6 @@ GESF Recruitment Website
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# mock storage
+mock-storage

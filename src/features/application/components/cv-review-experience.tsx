@@ -1061,7 +1061,6 @@ export function CvReviewExperience() {
   return (
     <PageFrame>
       <PageShell
-        eyebrow={`Step ${currentResultStep + 1}`}
         title={
           currentResultStep === 1
             ? "Upload and track your CV Review."
