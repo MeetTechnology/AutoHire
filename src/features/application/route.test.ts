@@ -27,7 +27,7 @@ describe("resolveRouteFromStatus", () => {
   });
 
   it("maps later review states to the additional-information step", () => {
-    expect(getReachableFlowStep("ELIGIBLE")).toBe(2);
+    expect(getReachableFlowStep("ELIGIBLE")).toBe(3);
     expect(getReachableFlowStep("INFO_REQUIRED")).toBe(3);
     expect(getReachableFlowStep("SECONDARY_REVIEW")).toBe(3);
     expect(getReachableFlowStep("MATERIALS_IN_PROGRESS")).toBe(4);
@@ -40,6 +40,7 @@ describe("buildApplyFlowStepLinks", () => {
     expect(buildApplyFlowStepLinks("INFO_REQUIRED")[3]).toBe(
       "/apply/result?view=additional",
     );
+    expect(buildApplyFlowStepLinks("ELIGIBLE")[3]).toBe("/apply/materials");
     expect(buildApplyFlowStepLinks("SECONDARY_REVIEW")[3]).toBe(
       "/apply/materials",
     );

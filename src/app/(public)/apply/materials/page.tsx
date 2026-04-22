@@ -20,6 +20,7 @@ import {
   confirmMaterialUpload,
   createMaterialUploadIntent,
   deleteMaterial,
+  enterMaterialsStage,
   fetchMaterials,
   fetchSession,
   type MaterialsResponse,
@@ -82,10 +83,22 @@ export default function MaterialsPage() {
 
     async function load() {
       try {
-        const nextSnapshot = await fetchSession();
+        let nextSnapshot = await fetchSession();
 
         if (!active) {
           return;
+        }
+
+        if (
+          nextSnapshot.applicationStatus === "ELIGIBLE" ||
+          nextSnapshot.applicationStatus === "SECONDARY_REVIEW"
+        ) {
+          await enterMaterialsStage(nextSnapshot.applicationId);
+          nextSnapshot = await fetchSession();
+
+          if (!active) {
+            return;
+          }
         }
 
         if (

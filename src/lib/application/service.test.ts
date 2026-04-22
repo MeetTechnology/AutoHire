@@ -11,6 +11,7 @@ import {
   shouldShowFullSecondaryFieldSet,
   startSecondaryAnalysis,
   submitApplication,
+  submitSupplementalFields,
 } from "@/lib/application/service";
 
 function resetMemoryStore() {
@@ -121,12 +122,12 @@ describe("secondary analysis editable service flow", () => {
     });
   });
 
-  it("only allows entering materials after detailed analysis review is ready", async () => {
-    await expect(enterMaterialsStage("app_secondary")).rejects.toMatchObject({
-      status: 409,
-      code: "MATERIALS_ENTRY_NOT_READY",
-    } satisfies Partial<ApplicationServiceError>);
+  it("allows entering materials after the initial CV review is eligible", async () => {
+    const entered = await enterMaterialsStage("app_secondary");
+    expect(entered?.applicationStatus).toBe("MATERIALS_IN_PROGRESS");
+  });
 
+  it("still allows entering materials from completed legacy detailed review", async () => {
     const started = await startSecondaryAnalysis("app_secondary");
     await getEditableSecondaryAnalysisSnapshot({
       applicationId: "app_secondary",
@@ -146,6 +147,20 @@ describe("secondary analysis editable service flow", () => {
     await expect(submitApplication("app_secondary")).rejects.toMatchObject({
       status: 409,
       code: "SUBMISSION_STAGE_NOT_READY",
+    } satisfies Partial<ApplicationServiceError>);
+  });
+
+  it("blocks supplemental reanalysis after the initial CV review is eligible", async () => {
+    await expect(
+      submitSupplementalFields({
+        applicationId: "app_secondary",
+        fields: {
+          highest_degree: "Doctorate",
+        },
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "SUPPLEMENTAL_FIELDS_NOT_REQUIRED",
     } satisfies Partial<ApplicationServiceError>);
   });
 

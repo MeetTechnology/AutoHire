@@ -135,6 +135,7 @@ const SECONDARY_FIELD_CONFIGS: Record<number, SecondaryFieldConfig> = {
     placeholder: "Enter the doctoral graduation country.",
   },
   18: {
+    expertVisible: false,
     placeholder: "Enter the doctoral institution name in Chinese.",
   },
   19: {
@@ -154,6 +155,7 @@ const SECONDARY_FIELD_CONFIGS: Record<number, SecondaryFieldConfig> = {
     placeholder: "Enter the current title in English.",
   },
   24: {
+    expertVisible: false,
     placeholder: "Enter the current employer in Chinese.",
   },
   25: {

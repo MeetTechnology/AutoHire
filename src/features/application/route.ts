@@ -50,13 +50,13 @@ export function getReachableFlowStep(status: ApplicationStatus): ApplicationFlow
   if (
     status === "CV_ANALYZING" ||
     status === "REANALYZING" ||
-    status === "INELIGIBLE" ||
-    status === "ELIGIBLE"
+    status === "INELIGIBLE"
   ) {
     return 2;
   }
 
   if (
+    status === "ELIGIBLE" ||
     status === "INFO_REQUIRED" ||
     status === "SECONDARY_ANALYZING" ||
     status === "SECONDARY_REVIEW" ||

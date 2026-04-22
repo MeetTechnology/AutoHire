@@ -9,14 +9,10 @@ import {
   useTransition,
   type ChangeEvent,
 } from "react";
-import { ChevronsDown } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { flushSync } from "react-dom";
 import { useForm } from "react-hook-form";
 
 import type { MissingField } from "@/features/analysis/types";
-import type { EditableSecondaryField } from "@/features/analysis/types";
-import { buildVisibleExtractedFieldSummary } from "@/features/analysis/display";
 import {
   getInitialCvReviewFieldValue,
   hasInitialCvReviewExtract,
@@ -24,7 +20,6 @@ import {
 } from "@/features/analysis/initial-cv-review-extract";
 import {
   ActionButton,
-  DisclosureSection,
   MetaStrip,
   MobileSupportCard,
   PageFrame,
@@ -34,19 +29,12 @@ import {
   getInputClassName,
 } from "@/components/ui/page-shell";
 import {
-  enterMaterialsStage,
-  fetchEditableSecondaryAnalysis,
   fetchAnalysisResult,
   fetchAnalysisStatus,
   fetchSession,
-  saveEditableSecondaryAnalysis,
   submitSupplementalFields,
-  triggerSecondaryAnalysis,
 } from "@/features/application/client";
-import {
-  APPLICATION_FLOW_STEPS_WITH_INTRO,
-  EXPERT_PROGRAM_CONTACT_EMAIL,
-} from "@/features/application/constants";
+import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
 import {
   clearDraft,
   readDraft,
@@ -60,11 +48,6 @@ import {
   shouldShowApiProgressSecondary,
 } from "@/features/application/analysis-progress-model";
 import {
-  getDetailedReviewProgressSummary,
-  isDetailedReviewReadyForUi,
-  shouldShowDetailedReviewStartedNotice,
-} from "@/features/application/detailed-review-progress";
-import {
   buildApplyFlowStepLinks,
   canAccessFlowStep,
   getReachableFlowStep,
@@ -72,11 +55,7 @@ import {
   resolveRouteFromStatus,
 } from "@/features/application/route";
 import type { ApplicationFlowStep } from "@/features/application/route";
-import type {
-  ApplicationSnapshot,
-  EditableSecondaryAnalysisSnapshot,
-  SecondaryAnalysisStatus,
-} from "@/features/application/types";
+import type { ApplicationSnapshot } from "@/features/application/types";
 import { trackPageView } from "@/lib/tracking/client";
 import { cn } from "@/lib/utils";
 
@@ -135,107 +114,6 @@ function translateChoiceLabel(option: string) {
   };
 
   return translations[option] ?? option;
-}
-
-function getSecondaryStatusMessage(status: SecondaryAnalysisStatus) {
-  switch (status) {
-    case "pending":
-      return "The detailed review step has been queued.";
-    case "processing":
-      return "The detailed review step is running.";
-    case "retrying":
-      return "The detailed review step is retrying after a temporary issue.";
-    case "completed":
-      return "The detailed review step has completed.";
-    case "completed_partial":
-      return "The detailed review step finished with partial output.";
-    case "failed":
-      return "The detailed review step failed.";
-    default:
-      return "The detailed review step has not started yet.";
-  }
-}
-
-function sortSecondaryFieldsMissingFirst(
-  rows: EditableSecondaryField[],
-): EditableSecondaryField[] {
-  return [...rows].sort((left, right) => {
-    if (left.isMissing !== right.isMissing) {
-      return left.isMissing ? -1 : 1;
-    }
-
-    return left.no - right.no;
-  });
-}
-
-function secondaryFieldNosMissingFirst(
-  fields: EditableSecondaryField[],
-): number[] {
-  return sortSecondaryFieldsMissingFirst(fields).map((field) => field.no);
-}
-
-function formatSavedAt(value: string | null) {
-  if (!value) {
-    return "Not saved yet";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Not saved yet";
-  }
-
-  return date.toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function getSecondaryFieldState(field: EditableSecondaryField) {
-  if (field.isMissing) {
-    return {
-      label: "Missing",
-      className: "border-slate-400 bg-slate-200 text-[#0A192F]",
-    };
-  }
-
-  if (field.isEdited) {
-    return {
-      label: "Expert edited",
-      className: "border-emerald-200 bg-emerald-50 text-emerald-900",
-    };
-  }
-
-  return {
-    label: "Model value",
-    className: "border-slate-300 bg-slate-100 text-slate-700",
-  };
-}
-
-function buildDraftSecondaryField(
-  field: EditableSecondaryField,
-  input: {
-    editedValue: string;
-    hasOverride: boolean;
-  },
-) {
-  const effectiveValue = input.hasOverride
-    ? input.editedValue
-    : field.sourceValue;
-
-  return {
-    ...field,
-    editedValue: input.editedValue,
-    hasOverride: input.hasOverride,
-    effectiveValue,
-    isMissing: effectiveValue.trim().length === 0,
-    isEdited:
-      input.hasOverride &&
-      input.editedValue.trim() !== field.sourceValue.trim(),
-  } satisfies EditableSecondaryField;
 }
 
 function renderSupplementalField(
@@ -398,161 +276,6 @@ function renderSupplementalField(
   );
 }
 
-function renderEditableSecondaryField(input: {
-  field: EditableSecondaryField;
-  disabled: boolean;
-  onChange: (no: number, value: string) => void;
-  onReset: (no: number) => void;
-}) {
-  const { field, disabled, onChange, onReset } = input;
-  const inputClassName = getInputClassName();
-  const state = getSecondaryFieldState(field);
-  const helperText = field.helpText
-    ? field.helpText
-    : field.sourceValue
-      ? "You may replace the extracted value if it needs correction."
-      : "No model value was extracted for this field yet. Please complete it manually if available.";
-  const controlId = `secondary-field-${field.fieldKey}`;
-  const blockAnchorId = `secondary-field-block-${field.fieldKey}`;
-
-  const control =
-    field.inputType === "textarea" ? (
-      <textarea
-        id={controlId}
-        aria-label={field.label}
-        value={field.hasOverride ? field.editedValue : field.effectiveValue}
-        disabled={disabled}
-        className={getInputClassName("min-h-32")}
-        placeholder={field.placeholder}
-        onChange={(event) => onChange(field.no, event.currentTarget.value)}
-      />
-    ) : field.inputType === "select" ? (
-      <select
-        id={controlId}
-        aria-label={field.label}
-        value={field.hasOverride ? field.editedValue : field.effectiveValue}
-        disabled={disabled}
-        className={inputClassName}
-        onChange={(event) => onChange(field.no, event.currentTarget.value)}
-      >
-        <option value="">Please select</option>
-        {field.options?.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    ) : field.inputType === "radio" ? (
-      <div className="flex flex-wrap gap-3">
-        {field.options?.map((option) => (
-          <label
-            key={option}
-            className={cn(
-              "inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm text-slate-800 transition",
-              disabled ? "opacity-60" : "hover:border-slate-500",
-            )}
-          >
-            <input
-              type="radio"
-              value={option}
-              disabled={disabled}
-              checked={
-                (field.hasOverride
-                  ? field.editedValue
-                  : field.effectiveValue) === option
-              }
-              onChange={(event) =>
-                onChange(field.no, event.currentTarget.value)
-              }
-            />
-            <span>{option}</span>
-          </label>
-        ))}
-      </div>
-    ) : (
-      <input
-        id={controlId}
-        aria-label={field.label}
-        type={field.inputType === "number" ? "number" : field.inputType}
-        value={field.hasOverride ? field.editedValue : field.effectiveValue}
-        disabled={disabled}
-        min={field.inputType === "date" ? "1900-01-01" : undefined}
-        max={field.inputType === "date" ? "2100-12-31" : undefined}
-        className={inputClassName}
-        placeholder={field.placeholder}
-        onChange={(event) => onChange(field.no, event.currentTarget.value)}
-      />
-    );
-
-  return (
-    <div
-      key={field.no}
-      id={blockAnchorId}
-      className={cn(
-        "block scroll-mt-24 rounded-xl border p-3.5 text-sm text-slate-700",
-        field.isMissing
-          ? "border-[color:var(--accent)] bg-white"
-          : "border-[color:var(--border)] bg-[color:var(--muted)]/55",
-      )}
-    >
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="space-y-2">
-          <label
-            htmlFor={field.inputType === "radio" ? undefined : controlId}
-            className="block text-sm font-semibold text-[#0A192F]"
-          >
-            {field.label}
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold tracking-[0.1em] text-slate-700 uppercase">
-              No. {field.no}
-              {field.column ? ` / ${field.column}` : ""}
-            </span>
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.12em] uppercase",
-                state.className,
-              )}
-            >
-              {state.label}
-            </span>
-          </div>
-        </div>
-        <ActionButton
-          type="button"
-          variant="ghost"
-          disabled={disabled || !field.hasOverride}
-          onClick={() => onReset(field.no)}
-        >
-          Reset to Model Value
-        </ActionButton>
-      </div>
-      <div className="mt-4">
-        <div
-          className={cn(
-            field.sourceValue
-              ? "rounded-xl bg-[color:var(--muted)]/75 p-2"
-              : "",
-          )}
-        >
-          {control}
-        </div>
-      </div>
-      <div className="mt-3 space-y-2 text-xs leading-6 text-slate-500">
-        <p>{helperText}</p>
-        {field.isEdited ? (
-          <p>
-            Model value:{" "}
-            <span className="font-medium text-slate-700">
-              {field.sourceValue || "No extracted value"}
-            </span>
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function AnalysisProgressPanel({
   title,
   description,
@@ -612,39 +335,9 @@ function AnalysisProgressPanel({
   );
 }
 
-function mergeSecondaryDraft(
-  fields: EditableSecondaryField[],
-  draftValues:
-    | Record<
-        string,
-        {
-          editedValue: string;
-          hasOverride: boolean;
-        }
-      >
-    | null
-    | undefined,
-) {
-  if (!draftValues) {
-    return fields;
-  }
-
-  return fields.map((field) => {
-    const draft = draftValues[field.fieldKey];
-
-    if (!draft) {
-      return field;
-    }
-
-    return buildDraftSecondaryField(field, draft);
-  });
-}
-
 function getInitialBanner(
   snapshot: ApplicationSnapshot | null,
   statusText: string,
-  detailedStatusText?: string | null,
-  detailedReviewReadyForUi = true,
 ) {
   if (!snapshot) {
     return null;
@@ -684,10 +377,7 @@ function getInitialBanner(
       <StatusBanner
         tone="success"
         title="Initial CV review passed"
-        description={
-          detailedStatusText ??
-          "Run the detailed review step. When it completes, you can continue to supporting materials."
-        }
+        description="Continue to Additional Information to upload supporting materials."
       />
     );
   }
@@ -697,36 +387,17 @@ function getInitialBanner(
       <StatusBanner
         tone="loading"
         title="Detailed review in progress"
-        description={
-          detailedStatusText ??
-          "When this step finishes, you can continue to supporting materials."
-        }
+        description="When this legacy review step finishes, you can continue to supporting materials."
       />
     );
   }
 
   if (snapshot.applicationStatus === "SECONDARY_REVIEW") {
-    if (!detailedReviewReadyForUi) {
-      return (
-        <StatusBanner
-          tone="loading"
-          title="Detailed review in progress"
-          description={
-            detailedStatusText ??
-            "The remaining prompts are still finishing. Progress will update before the review becomes ready."
-          }
-        />
-      );
-    }
-
     return (
       <StatusBanner
         tone="success"
         title="Detailed review is ready"
-        description={
-          detailedStatusText ??
-          "Review the fields below, save any changes you need, and then continue to supporting materials."
-        }
+        description="Continue to Additional Information to upload supporting materials."
       />
     );
   }
@@ -736,10 +407,7 @@ function getInitialBanner(
       <StatusBanner
         tone="danger"
         title="The detailed review step could not be completed"
-        description={
-          detailedStatusText ??
-          "Supporting materials stay locked until this step completes successfully."
-        }
+        description="Please contact the program team if you need help continuing to supporting materials."
       />
     );
   }
@@ -776,13 +444,13 @@ function InitialCvReviewExtractCard({
             <tr className="border-b border-[color:var(--border)] bg-slate-50">
               <th
                 scope="col"
-                className="w-1/3 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[color:var(--primary)]"
+                className="w-1/3 px-4 py-3 text-left text-xs font-semibold tracking-wide text-[color:var(--primary)] uppercase"
               >
                 Field
               </th>
               <th
                 scope="col"
-                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[color:var(--primary)]"
+                className="px-4 py-3 text-left text-xs font-semibold tracking-wide text-[color:var(--primary)] uppercase"
               >
                 Value
               </th>
@@ -796,14 +464,17 @@ function InitialCvReviewExtractCard({
               );
 
               return (
-                <tr key={row.key} className="border-b border-[color:var(--border)] last:border-b-0">
+                <tr
+                  key={row.key}
+                  className="border-b border-[color:var(--border)] last:border-b-0"
+                >
                   <th
                     scope="row"
-                    className="align-top px-4 py-3 text-left text-sm font-medium text-[color:var(--primary)]"
+                    className="px-4 py-3 text-left align-top text-sm font-medium text-[color:var(--primary)]"
                   >
                     {row.label}
                   </th>
-                  <td className="px-4 py-3 text-sm text-[color:var(--foreground-soft)] whitespace-normal break-words">
+                  <td className="px-4 py-3 text-sm break-words whitespace-normal text-[color:var(--foreground-soft)]">
                     {value ? value : "Not provided"}
                   </td>
                 </tr>
@@ -861,7 +532,9 @@ function InitialCvReviewDeterminationCard({
       displaySummary ??
       "You meet the basic application requirements for initial CV review.";
     const secondary =
-      reasonText && displaySummary && displaySummary.trim() !== reasonText.trim()
+      reasonText &&
+      displaySummary &&
+      displaySummary.trim() !== reasonText.trim()
         ? displaySummary
         : null;
 
@@ -895,24 +568,9 @@ function ResultPage() {
     "Preparing your CV review outcome...",
   );
   const [error, setError] = useState<string | null>(null);
-  const [secondaryError, setSecondaryError] = useState<string | null>(null);
-  const [secondarySaveMessage, setSecondarySaveMessage] = useState<
-    string | null
-  >(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [editableSecondarySnapshot, setEditableSecondarySnapshot] =
-    useState<EditableSecondaryAnalysisSnapshot | null>(null);
-  const [secondaryDraftFields, setSecondaryDraftFields] = useState<
-    EditableSecondaryField[]
-  >([]);
-  /** Field `no` order from last committed (saved) missing-first layout; kept while editing. */
-  const committedSecondaryFieldOrderRef = useRef<number[]>([]);
   const [isSubmittingSupplemental, startSupplementalTransition] =
     useTransition();
-  const [isStartingSecondary, startSecondaryTransition] = useTransition();
-  const [isSavingSecondary, startSecondarySaveTransition] = useTransition();
-  const [isEnteringMaterials, startMaterialsTransition] = useTransition();
-  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [analysisSegment, setAnalysisSegment] = useState<{
     segmentKey: string;
     startedAt: number;
@@ -965,21 +623,6 @@ function ResultPage() {
 
     const refreshedSession = await fetchSession();
     setSnapshot(refreshedSession);
-  }
-
-  async function fetchDetailedAnalysisState(
-    applicationId: string,
-    runId?: string | null,
-  ) {
-    const [nextDetailedSnapshot, refreshedSession] = await Promise.all([
-      fetchEditableSecondaryAnalysis(applicationId, runId),
-      fetchSession(),
-    ]);
-
-    return {
-      nextDetailedSnapshot,
-      refreshedSession,
-    };
   }
 
   useEffect(() => {
@@ -1191,129 +834,6 @@ function ResultPage() {
   }, [reset, snapshot?.applicationId]);
 
   useEffect(() => {
-    if (!snapshot?.applicationId) {
-      return;
-    }
-
-    let active = true;
-
-    void fetchDetailedAnalysisState(snapshot.applicationId)
-      .then(({ nextDetailedSnapshot, refreshedSession }) => {
-        if (active) {
-          setEditableSecondarySnapshot(nextDetailedSnapshot);
-          const draftKey = nextDetailedSnapshot.runId
-            ? `autohire:secondary:${snapshot.applicationId}:${nextDetailedSnapshot.runId}`
-            : null;
-          const storedDraft = draftKey
-            ? readDraft<
-                Record<
-                  string,
-                  {
-                    editedValue: string;
-                    hasOverride: boolean;
-                  }
-                >
-              >(draftKey)
-            : null;
-          setSecondaryDraftFields(
-            mergeSecondaryDraft(
-              nextDetailedSnapshot.fields,
-              storedDraft?.values,
-            ),
-          );
-          setSnapshot(refreshedSession);
-        }
-      })
-      .catch(() => undefined);
-
-    return () => {
-      active = false;
-    };
-  }, [snapshot?.applicationId]);
-
-  useEffect(() => {
-    if (
-      !snapshot?.applicationId ||
-      !editableSecondarySnapshot ||
-      !["pending", "processing", "retrying"].includes(
-        editableSecondarySnapshot.status,
-      )
-    ) {
-      return;
-    }
-
-    let active = true;
-    const timer = window.setInterval(async () => {
-      try {
-        const { nextDetailedSnapshot, refreshedSession } =
-          await fetchDetailedAnalysisState(
-            snapshot.applicationId,
-            editableSecondarySnapshot.runId,
-          );
-
-        if (!active) {
-          return;
-        }
-
-        setEditableSecondarySnapshot(nextDetailedSnapshot);
-        const draftKey = nextDetailedSnapshot.runId
-          ? `autohire:secondary:${snapshot.applicationId}:${nextDetailedSnapshot.runId}`
-          : null;
-        const storedDraft = draftKey
-          ? readDraft<
-              Record<
-                string,
-                {
-                  editedValue: string;
-                  hasOverride: boolean;
-                }
-              >
-            >(draftKey)
-          : null;
-        setSecondaryDraftFields(
-          mergeSecondaryDraft(nextDetailedSnapshot.fields, storedDraft?.values),
-        );
-        setSnapshot(refreshedSession);
-        setSecondaryError(null);
-      } catch (nextError) {
-        if (active) {
-          setSecondaryError(
-            nextError instanceof Error
-              ? nextError.message
-              : "Failed to refresh the detailed review.",
-          );
-        }
-      }
-    }, 2000);
-
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [editableSecondarySnapshot, snapshot?.applicationId]);
-
-  useEffect(() => {
-    function updateJumpToBottomVisibility() {
-      const doc = document.documentElement;
-      const scrollTop = window.scrollY || doc.scrollTop;
-      const maxScroll = Math.max(0, doc.scrollHeight - window.innerHeight);
-      const nearBottom = maxScroll - scrollTop < 160;
-      setShowJumpToBottom(scrollTop > 240 && !nearBottom && maxScroll > 320);
-    }
-
-    updateJumpToBottomVisibility();
-    window.addEventListener("scroll", updateJumpToBottomVisibility, {
-      passive: true,
-    });
-    window.addEventListener("resize", updateJumpToBottomVisibility);
-
-    return () => {
-      window.removeEventListener("scroll", updateJumpToBottomVisibility);
-      window.removeEventListener("resize", updateJumpToBottomVisibility);
-    };
-  }, [snapshot?.applicationStatus]);
-
-  useEffect(() => {
     if (
       !snapshot?.applicationId ||
       snapshot.applicationStatus !== "INFO_REQUIRED"
@@ -1331,34 +851,6 @@ function ResultPage() {
       subscription.unsubscribe();
     };
   }, [snapshot?.applicationId, snapshot?.applicationStatus, watch]);
-
-  useEffect(() => {
-    if (!snapshot?.applicationId || !editableSecondarySnapshot?.runId) {
-      return;
-    }
-
-    const values = Object.fromEntries(
-      secondaryDraftFields.map((field) => [
-        field.fieldKey,
-        {
-          editedValue: field.editedValue,
-          hasOverride: field.hasOverride,
-        },
-      ]),
-    );
-    const draftKey = `autohire:secondary:${snapshot.applicationId}:${editableSecondarySnapshot.runId}`;
-    const timer = window.setTimeout(() => {
-      writeDraft(draftKey, values);
-    }, 180);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [
-    editableSecondarySnapshot?.runId,
-    secondaryDraftFields,
-    snapshot?.applicationId,
-  ]);
 
   function onSubmit(values: SupplementalFormValues) {
     if (
@@ -1395,299 +887,16 @@ function ResultPage() {
     });
   }
 
-  function onTriggerSecondaryAnalysis() {
-    if (
-      !snapshot ||
-      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
-    ) {
-      return;
-    }
-
-    startSecondaryTransition(async () => {
-      try {
-        setSecondaryError(null);
-        setSecondarySaveMessage(null);
-        const triggered = await triggerSecondaryAnalysis(
-          snapshot.applicationId,
-        );
-        const { nextDetailedSnapshot, refreshedSession } =
-          await fetchDetailedAnalysisState(
-            snapshot.applicationId,
-            triggered.runId,
-          );
-
-        setEditableSecondarySnapshot(nextDetailedSnapshot);
-        setSecondaryDraftFields(nextDetailedSnapshot.fields);
-        setSnapshot(refreshedSession);
-      } catch (nextError) {
-        setSecondaryError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Failed to start the detailed review.",
-        );
-      }
-    });
-  }
-
-  function updateSecondaryDraftField(no: number, value: string) {
-    if (
-      snapshot &&
-      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
-    ) {
-      return;
-    }
-    setSecondarySaveMessage(null);
-    setSecondaryDraftFields((current) =>
-      current.map((field) =>
-        field.no === no
-          ? buildDraftSecondaryField(field, {
-              editedValue: value,
-              hasOverride: true,
-            })
-          : field,
-      ),
-    );
-  }
-
-  function resetSecondaryDraftField(no: number) {
-    if (
-      snapshot &&
-      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
-    ) {
-      return;
-    }
-    setSecondarySaveMessage(null);
-    setSecondaryDraftFields((current) =>
-      current.map((field) =>
-        field.no === no
-          ? buildDraftSecondaryField(field, {
-              editedValue: "",
-              hasOverride: false,
-            })
-          : field,
-      ),
-    );
-  }
-
-  function onSaveSecondaryFields() {
-    const runId = editableSecondarySnapshot?.runId;
-
-    if (
-      !snapshot ||
-      !runId ||
-      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
-    ) {
-      return;
-    }
-
-    startSecondarySaveTransition(async () => {
-      try {
-        setSecondaryError(null);
-        const nextSnapshot = await saveEditableSecondaryAnalysis(
-          snapshot.applicationId,
-          {
-            runId,
-            fields: Object.fromEntries(
-              secondaryDraftFields.map((field) => [
-                field.fieldKey,
-                {
-                  value: field.editedValue,
-                  hasOverride: field.hasOverride,
-                },
-              ]),
-            ),
-          },
-        );
-
-        const refreshedSession = await fetchSession();
-
-        const firstStillMissing = nextSnapshot.fields.find(
-          (field) => field.isMissing,
-        );
-
-        flushSync(() => {
-          setEditableSecondarySnapshot(nextSnapshot);
-          setSecondaryDraftFields(nextSnapshot.fields);
-          setSnapshot(refreshedSession);
-          setSecondarySaveMessage(
-            "The detailed review fields have been saved.",
-          );
-        });
-        clearDraft(`autohire:secondary:${snapshot.applicationId}:${runId}`);
-
-        if (firstStillMissing) {
-          document
-            .getElementById(
-              `secondary-field-block-${firstStillMissing.fieldKey}`,
-            )
-            ?.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      } catch (nextError) {
-        setSecondaryError(
-          nextError instanceof Error
-            ? nextError.message
-            : "The detailed review fields could not be saved.",
-        );
-      }
-    });
-  }
-
-  function onContinueToMaterials() {
-    if (
-      !snapshot ||
-      isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
-    ) {
-      return;
-    }
-
-    startMaterialsTransition(async () => {
-      try {
-        setSecondaryError(null);
-        if (editableSecondarySnapshot?.runId) {
-          clearDraft(
-            `autohire:secondary:${snapshot.applicationId}:${editableSecondarySnapshot.runId}`,
-          );
-        }
-        await enterMaterialsStage(snapshot.applicationId);
-        router.push("/apply/materials");
-      } catch (nextError) {
-        setSecondaryError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Unable to continue to supporting materials.",
-        );
-      }
-    });
-  }
-
-  const visibleExtractedFields = buildVisibleExtractedFieldSummary(
-    snapshot?.latestResult?.extractedFields ?? {},
-  );
   const hasInitialCvReviewSeven = useMemo(
     () => hasInitialCvReviewExtract(snapshot?.latestResult?.extractedFields),
     [snapshot?.latestResult?.extractedFields],
   );
-  const secondaryRunAlreadyStarted = Boolean(editableSecondarySnapshot?.runId);
-  const canTriggerSecondaryAnalysis = Boolean(
-    snapshot &&
-    snapshot.applicationStatus === "ELIGIBLE" &&
-    !secondaryRunAlreadyStarted,
-  );
-  const isSecondaryRunning = Boolean(
-    editableSecondarySnapshot &&
-    ["pending", "processing", "retrying"].includes(
-      editableSecondarySnapshot.status,
-    ),
-  );
-  const detailedReviewProgress = getDetailedReviewProgressSummary(
-    editableSecondarySnapshot?.run ?? null,
-    editableSecondarySnapshot?.status ?? "idle",
-  );
-  const detailedReviewReadyForUi = isDetailedReviewReadyForUi(
-    snapshot?.applicationStatus,
-    detailedReviewProgress,
-  );
-  const shouldShowStartedSecondaryNotice = shouldShowDetailedReviewStartedNotice(
-    editableSecondarySnapshot?.runId,
-    detailedReviewProgress,
-  );
-  const secondaryHasUnsavedChanges =
-    editableSecondarySnapshot?.fields.length === secondaryDraftFields.length &&
-    secondaryDraftFields.some((field) => {
-      const savedField = editableSecondarySnapshot.fields.find(
-        (item) => item.no === field.no,
-      );
-
-      return (
-        savedField?.editedValue !== field.editedValue ||
-        savedField?.hasOverride !== field.hasOverride
-      );
-    });
-
-  useEffect(() => {
-    if (secondaryHasUnsavedChanges) {
-      return;
-    }
-
-    if (secondaryDraftFields.length === 0) {
-      return;
-    }
-
-    committedSecondaryFieldOrderRef.current =
-      secondaryFieldNosMissingFirst(secondaryDraftFields);
-  }, [
-    secondaryHasUnsavedChanges,
-    secondaryDraftFields,
-    editableSecondarySnapshot?.runId,
-  ]);
-
-  /** Missing-first when saved; while editing, reuse last committed row order via ref. */
-  const orderedSecondaryDraftFields = useMemo(() => {
-    const byNo = new Map(
-      secondaryDraftFields.map((field) => [field.no, field] as const),
-    );
-
-    if (!secondaryHasUnsavedChanges) {
-      return sortSecondaryFieldsMissingFirst(secondaryDraftFields);
-    }
-
-    const committed = committedSecondaryFieldOrderRef.current;
-    const draftNos = secondaryDraftFields.map((field) => field.no);
-    const sameLength = committed.length === secondaryDraftFields.length;
-    const sameMultiset =
-      sameLength &&
-      committed.every((no) => byNo.has(no)) &&
-      draftNos.every((no) => committed.includes(no));
-
-    if (!sameMultiset) {
-      return sortSecondaryFieldsMissingFirst(secondaryDraftFields);
-    }
-
-    return committed
-      .map((no) => byNo.get(no))
-      .filter((field): field is EditableSecondaryField => field !== undefined);
-  }, [secondaryDraftFields, secondaryHasUnsavedChanges]);
-  const secondaryMissingCount = secondaryDraftFields.filter(
-    (field) => field.isMissing,
-  ).length;
   const missingFields = snapshot?.latestResult?.missingFields ?? [];
   const hasMissingFields = missingFields.length > 0;
-  const showDetailedAnalysisSection = Boolean(
-    snapshot &&
-    [
-      "ELIGIBLE",
-      "SECONDARY_ANALYZING",
-      "SECONDARY_REVIEW",
-      "SECONDARY_FAILED",
-    ].includes(snapshot.applicationStatus),
-  );
-  const secondaryInputsDisabled = Boolean(
-    !editableSecondarySnapshot ||
-    ["pending", "processing", "retrying"].includes(
-      editableSecondarySnapshot.status,
-    ),
-  );
-  const canContinueToMaterials =
-    snapshot?.applicationStatus === "SECONDARY_REVIEW";
+  const showSupplementalFields = hasMissingFields && currentResultStep === 3;
   const isReadOnlyReview = snapshot
     ? isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
     : false;
-  const detailedStatusDescription =
-    editableSecondarySnapshot?.status &&
-    editableSecondarySnapshot.status !== "idle"
-      ? getSecondaryStatusMessage(editableSecondarySnapshot.status)
-      : null;
-  const detailedReviewStatusValue =
-    detailedReviewProgress?.statusValue ?? editableSecondarySnapshot?.status ?? null;
-  const shouldShowDetailedResult = Boolean(
-    editableSecondarySnapshot &&
-    (editableSecondarySnapshot.status !== "idle" ||
-      editableSecondarySnapshot.fields.length > 0 ||
-      editableSecondarySnapshot.runId),
-  );
-  const shouldShowJumpToBottom =
-    showJumpToBottom &&
-    (hasMissingFields || orderedSecondaryDraftFields.length > 6);
   const isAnalyzingStage = Boolean(
     snapshot &&
     ["CV_ANALYZING", "REANALYZING", "SECONDARY_ANALYZING"].includes(
@@ -1732,7 +941,13 @@ function ResultPage() {
       secondaryMessage,
       ariaValueText,
     };
-  }, [snapshot, analysisSegment, statusText, analysisJobStatus, analysisUiTick]);
+  }, [
+    snapshot,
+    analysisSegment,
+    statusText,
+    analysisJobStatus,
+    analysisUiTick,
+  ]);
 
   useEffect(() => {
     if (!requestedResultView) {
@@ -1751,23 +966,23 @@ function ResultPage() {
       case "REANALYZING":
         return "Your CV is still being reviewed. This page will update automatically; please keep it open.";
       case "INFO_REQUIRED":
-        return "CV review needs a few more fields. Submit the items below and CV review will run again.";
+        return currentResultStep === 3
+          ? "CV review needs a few more fields. Submit the items below and CV review will run again."
+          : "CV review needs a few more fields. Continue to Additional Information to complete them.";
       case "ELIGIBLE":
-        return "Initial CV review is complete. Complete the detailed review step, then you can upload supporting materials.";
+        return "Initial CV review is complete. Continue to Additional Information to upload supporting materials.";
       case "SECONDARY_ANALYZING":
-        return "The detailed review step is running. This page will refresh automatically until it is ready.";
+        return "A legacy detailed review is running. This page will refresh automatically until it is ready.";
       case "SECONDARY_REVIEW":
-        return detailedReviewReadyForUi
-          ? "The detailed review is ready. Save any edits you need, then continue to supporting materials."
-          : "The detailed review is finishing the remaining prompts. Progress will update automatically until it is ready.";
+        return "Continue to Additional Information to upload supporting materials.";
       case "SECONDARY_FAILED":
-        return "The detailed review step did not finish successfully. Supporting materials stay locked until this step succeeds.";
+        return "The legacy detailed review step did not finish successfully. Please contact the program team if you need help continuing.";
       case "INELIGIBLE":
         return "This submission does not meet the published requirements. See the summary below for the reasons provided.";
       default:
         return "This page shows your CV review status, any recognized information from your CV, and the next step you should take.";
     }
-  }, [detailedReviewReadyForUi, snapshot]);
+  }, [currentResultStep, snapshot]);
   const flowStepLinks = useMemo(
     () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
     [snapshot?.applicationStatus],
@@ -1778,12 +993,6 @@ function ResultPage() {
         timeStyle: "short",
       })
     : "Autosaving locally";
-  const secondarySaveState = secondaryInputsDisabled
-    ? "Editing unlocks when ready"
-    : secondaryHasUnsavedChanges
-      ? "Unsaved changes"
-      : "All changes saved";
-
   return (
     <PageFrame>
       <PageShell
@@ -1861,16 +1070,13 @@ function ResultPage() {
                   }
                 />
               ) : (
-                getInitialBanner(
-                  snapshot,
-                  statusText,
-                  detailedStatusDescription,
-                  detailedReviewReadyForUi,
-                )
+                getInitialBanner(snapshot, statusText)
               )}
 
               {hasInitialCvReviewSeven && snapshot.latestResult ? (
-                <InitialCvReviewExtractCard latestResult={snapshot.latestResult} />
+                <InitialCvReviewExtractCard
+                  latestResult={snapshot.latestResult}
+                />
               ) : null}
 
               {hasInitialCvReviewSeven ? (
@@ -1886,58 +1092,28 @@ function ResultPage() {
                 />
               ) : null}
 
-              {visibleExtractedFields.length > 0 ? (
-                <DisclosureSection
-                  title="Recognized information summary"
-                  summary="These items were extracted from the current CV and normalized for display."
-                  defaultOpen={!hasInitialCvReviewSeven}
-                >
-                  <div className="space-y-2">
-                    {visibleExtractedFields.map((field) => (
-                      <div
-                        key={`${field.no}-${field.label}`}
-                        className="flex flex-col gap-1 rounded-xl border border-[color:var(--border)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <span className="text-sm font-medium text-[color:var(--primary)]">
-                          {field.label}
-                        </span>
-                        <span className="text-sm text-[color:var(--foreground-soft)]">
-                          {field.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </DisclosureSection>
-              ) : null}
-
-              {hasMissingFields ? (
+              {showSupplementalFields ? (
                 <SectionCard
                   title="Additional information requested"
-                  description={
-                    snapshot.applicationStatus === "INFO_REQUIRED"
-                      ? "Suggested-from-CV entries are shaded softly. Only blank fields need your input before you submit again."
-                      : "These fields were previously marked as missing and remain visible here for reference."
-                  }
+                  description="Suggested-from-CV entries are shaded softly. Only blank fields need your input before you submit again."
                 >
                   <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
-                    {snapshot.applicationStatus === "INFO_REQUIRED" ? (
-                      <MetaStrip
-                        items={[
-                          {
-                            label: "Scope",
-                            value: "Complete missing items only",
-                          },
-                          {
-                            label: "Draft",
-                            value: supplementalDraftLabel,
-                          },
-                          {
-                            label: "After submit",
-                            value: "CV review runs again immediately",
-                          },
-                        ]}
-                      />
-                    ) : null}
+                    <MetaStrip
+                      items={[
+                        {
+                          label: "Scope",
+                          value: "Complete missing items only",
+                        },
+                        {
+                          label: "Draft",
+                          value: supplementalDraftLabel,
+                        },
+                        {
+                          label: "After submit",
+                          value: "CV review runs again immediately",
+                        },
+                      ]}
+                    />
                     <div className="grid gap-4">
                       {missingFields.map((field) =>
                         renderSupplementalField(
@@ -1948,248 +1124,22 @@ function ResultPage() {
                         ),
                       )}
                     </div>
-                    {snapshot.applicationStatus === "INFO_REQUIRED" ? (
-                      <ActionButton
-                        type="submit"
-                        disabled={isSubmittingSupplemental || isReadOnlyReview}
-                        className="w-full sm:w-auto"
-                      >
-                        {isSubmittingSupplemental
-                          ? "Submitting and Reanalyzing..."
-                          : "Submit Additional Information"}
-                      </ActionButton>
-                    ) : (
-                      <StatusBanner
-                        tone="neutral"
-                        title="Read-only field context"
-                        description="The missing-field set is displayed for reference. Editing is available only when the workflow returns to the information-required state."
-                      />
-                    )}
+                    <ActionButton
+                      type="submit"
+                      disabled={isSubmittingSupplemental || isReadOnlyReview}
+                      className="w-full sm:w-auto"
+                    >
+                      {isSubmittingSupplemental
+                        ? "Submitting and Reanalyzing..."
+                        : "Submit Additional Information"}
+                    </ActionButton>
                   </form>
                 </SectionCard>
               ) : null}
-
-              {showDetailedAnalysisSection ? (
-                <>
-                  {detailedReviewStatusValue || detailedReviewProgress ? (
-                    <SectionCard
-                      title="Detailed review progress"
-                      description={
-                        detailedReviewReadyForUi
-                          ? "The detailed review has finished. You can review the fields below and continue when ready."
-                          : "The detailed review is still running. Track the latest status here before the ready state appears."
-                      }
-                    >
-                      <MetaStrip
-                        items={[
-                          ...(detailedReviewStatusValue
-                            ? [
-                                {
-                                  label: "Status",
-                                  value: detailedReviewStatusValue,
-                                },
-                              ]
-                            : []),
-                          ...(detailedReviewProgress
-                            ? [
-                                {
-                                  label: "Progress",
-                                  value: detailedReviewProgress.progressLabel,
-                                },
-                              ]
-                            : []),
-                        ]}
-                      />
-                    </SectionCard>
-                  ) : null}
-
-                  <SectionCard
-                    title="Detailed review"
-                    description="When this step succeeds, you can upload supporting materials and move toward final submission."
-                  >
-                    <div className="flex flex-wrap gap-3">
-                    {canTriggerSecondaryAnalysis ? (
-                      <ActionButton
-                        variant="primary"
-                        onClick={onTriggerSecondaryAnalysis}
-                        disabled={
-                          isStartingSecondary ||
-                          isSecondaryRunning ||
-                          isReadOnlyReview
-                        }
-                      >
-                        {isStartingSecondary || isSecondaryRunning
-                          ? "Running detailed review…"
-                          : "Start detailed review"}
-                      </ActionButton>
-                    ) : null}
-                    {shouldShowStartedSecondaryNotice ? (
-                      <span className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-600">
-                        The detailed review has already been started for this
-                        application.
-                      </span>
-                    ) : null}
-                    </div>
-                  </SectionCard>
-                </>
-              ) : null}
-
-              {secondaryError ? (
-                <StatusBanner
-                  tone="danger"
-                  title="Detailed review could not be refreshed"
-                  description={secondaryError}
-                />
-              ) : null}
-
-              {shouldShowDetailedResult && editableSecondarySnapshot ? (
-                <DisclosureSection
-                  title="Detailed review result"
-                  summary={getSecondaryStatusMessage(
-                    editableSecondarySnapshot.status,
-                  )}
-                  defaultOpen={snapshot.applicationStatus === "SECONDARY_REVIEW"}
-                >
-                  <div className="space-y-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <MetaStrip
-                        items={[
-                          {
-                            label: "Needs attention",
-                            value: `${secondaryMissingCount} fields`,
-                          },
-                          {
-                            label: "Saved",
-                            value: formatSavedAt(editableSecondarySnapshot.savedAt),
-                          },
-                          {
-                            label: "Status",
-                            value: secondarySaveState,
-                          },
-                        ]}
-                      />
-                      {editableSecondarySnapshot.runId ? (
-                        <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold tracking-[0.12em] text-slate-600 uppercase">
-                          Run #{editableSecondarySnapshot.runId}
-                        </span>
-                      ) : null}
-                      {canContinueToMaterials ? (
-                        <ActionButton
-                          variant="success"
-                          onClick={onContinueToMaterials}
-                          disabled={isEnteringMaterials || isReadOnlyReview}
-                          className="w-full sm:w-auto"
-                        >
-                          {isEnteringMaterials
-                            ? "Opening Final Step..."
-                            : "Next: Submission Complete"}
-                        </ActionButton>
-                      ) : null}
-                    </div>
-
-                    {secondarySaveMessage ? (
-                      <StatusBanner
-                        tone="success"
-                        title="Detailed review fields saved"
-                        description={secondarySaveMessage}
-                      />
-                    ) : null}
-
-                    {orderedSecondaryDraftFields.length > 0 ? (
-                      <form
-                        className="space-y-4"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          onSaveSecondaryFields();
-                        }}
-                      >
-                        <div className="grid gap-4">
-                          {orderedSecondaryDraftFields.map((field) =>
-                            renderEditableSecondaryField({
-                              field,
-                              disabled:
-                                secondaryInputsDisabled || isReadOnlyReview,
-                              onChange: updateSecondaryDraftField,
-                              onReset: resetSecondaryDraftField,
-                            }),
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-3">
-                          <ActionButton
-                            type="submit"
-                            disabled={
-                              isReadOnlyReview ||
-                              secondaryInputsDisabled ||
-                              !secondaryHasUnsavedChanges ||
-                              isSavingSecondary
-                            }
-                          >
-                            {isSavingSecondary
-                              ? "Saving detailed review fields…"
-                              : "Save detailed review fields"}
-                          </ActionButton>
-                          <span className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-600">
-                            Reset to Model Value clears the manual override for
-                            that field.
-                          </span>
-                        </div>
-                      </form>
-                    ) : editableSecondarySnapshot.status === "completed" ||
-                      editableSecondarySnapshot.status ===
-                        "completed_partial" ? (
-                      <p className="text-sm leading-6 text-slate-600">
-                        The detailed review finished, but no editable fields
-                        were prepared.
-                      </p>
-                    ) : (
-                      <div className="rounded-md border border-dashed border-slate-400 bg-slate-100 p-3.5 text-sm leading-6 text-slate-600">
-                        The detailed review is still preparing the editable
-                        field set. This page will update automatically.
-                      </div>
-                    )}
-
-                    {editableSecondarySnapshot.errorMessage ? (
-                      <StatusBanner
-                        tone="danger"
-                        title="Detailed review diagnostics"
-                        description={editableSecondarySnapshot.errorMessage}
-                      />
-                    ) : null}
-                  </div>
-                </DisclosureSection>
-              ) : null}
             </>
-          ) : null}
-          {snapshot ? (
-            <p className="text-center text-sm leading-6 text-[color:var(--foreground-soft)]">
-              Experts may contact the program team at{" "}
-              <a
-                className="inline-block border-b-2 border-current font-bold leading-none text-[color:var(--primary)] hover:text-[color:var(--primary-strong)]"
-                href={`mailto:${EXPERT_PROGRAM_CONTACT_EMAIL}`}
-              >
-                {EXPERT_PROGRAM_CONTACT_EMAIL}
-              </a>{" "}
-              with questions about this application process.
-            </p>
           ) : null}
         </div>
       </PageShell>
-
-      {shouldShowJumpToBottom ? (
-        <button
-          type="button"
-          className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-md border border-slate-300 bg-white/95 px-4 py-2.5 text-sm font-semibold text-[#0A192F] shadow-[0_10px_24px_rgba(10,25,47,0.14)] backdrop-blur-sm transition hover:border-[#166534] hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-[#22C55E]/35 focus-visible:outline-none"
-          onClick={() => {
-            window.scrollTo({
-              top: document.documentElement.scrollHeight,
-              behavior: "smooth",
-            });
-          }}
-        >
-          <ChevronsDown className="h-4 w-4 text-[#166534]" aria-hidden />
-          Jump to bottom
-        </button>
-      ) : null}
     </PageFrame>
   );
 }

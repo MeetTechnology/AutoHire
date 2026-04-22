@@ -10,7 +10,18 @@ export type VisibleExtractedField = {
   value: string;
 };
 
-export const HIDDEN_FIELD_NOS = new Set([8, 9, 10, 11, 28, 30, 31, 34]);
+export const HIDDEN_FIELD_NOS = new Set([
+  8,
+  9,
+  10,
+  11,
+  18,
+  24,
+  28,
+  30,
+  31,
+  34,
+]);
 
 export const EXTRACTED_FIELD_DEFINITIONS: VisibleExtractedFieldDefinition[] = [
   { no: 1, label: "*Full Name", aliases: ["*姓名", "姓名", "name"] },

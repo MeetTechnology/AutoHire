@@ -4,13 +4,16 @@ import {
   parseSecondaryFieldSourceValues,
   parseSecondaryVisibleFields,
 } from "@/features/analysis/secondary";
+import { SECONDARY_FIELD_DEFINITIONS } from "@/features/analysis/secondary-fields";
 
 describe("parseSecondaryVisibleFields", () => {
   it("parses visible NO fields, applies label mapping, and strips placeholder values", () => {
     const fields = parseSecondaryVisibleFields([
       `NO.1###Jane Doe
 NO.10###1900-01-01
+NO.18###北京大学
 NO.15###Doctorate
+NO.24###清华大学
 NO.29###National talent program (2024)
 NO.32###Biochemistry^^^Biotechnology
 NO.34###Internal summary`,
@@ -43,6 +46,11 @@ NO.34###Internal summary`,
         value: "Biochemistry\nBiotechnology",
       },
     ]);
+  });
+
+  it("excludes explicit Chinese-name fields from applicant-visible definitions", () => {
+    expect(SECONDARY_FIELD_DEFINITIONS.map((field) => field.no)).not.toContain(18);
+    expect(SECONDARY_FIELD_DEFINITIONS.map((field) => field.no)).not.toContain(24);
   });
 
   it("merges duplicate NO blocks from multiple generated texts", () => {

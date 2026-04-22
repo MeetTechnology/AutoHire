@@ -532,6 +532,14 @@ export async function submitSupplementalFields(input: {
   applicationId: string;
   fields: Record<string, unknown>;
 }) {
+  await requireApplicationStage({
+    applicationId: input.applicationId,
+    allowedStatuses: ["INFO_REQUIRED"],
+    message:
+      "Supplemental information can only be submitted when additional information is required.",
+    code: "SUPPLEMENTAL_FIELDS_NOT_REQUIRED",
+  });
+
   const latestJob = await getLatestAnalysisJob(input.applicationId);
   const latestResumeFile = await getLatestResumeFile(input.applicationId);
   const latestResult = await getLatestAnalysisResult(input.applicationId);
@@ -1326,9 +1334,9 @@ export async function submitApplication(applicationId: string) {
 export async function enterMaterialsStage(applicationId: string) {
   await requireApplicationStage({
     applicationId,
-    allowedStatuses: ["SECONDARY_REVIEW"],
+    allowedStatuses: ["ELIGIBLE", "SECONDARY_REVIEW"],
     message:
-      "You can continue to supporting materials only after the detailed analysis is complete.",
+      "You can continue to supporting materials only after the initial CV review has passed.",
     code: "MATERIALS_ENTRY_NOT_READY",
   });
 

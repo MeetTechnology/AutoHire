@@ -18,7 +18,6 @@ describe("buildVisibleExtractedFieldSummary", () => {
 
     expect(fields.map((field) => field.label)).toEqual([
       "*Full Name",
-      "Current Employer (Chinese)",
       "Previous Selection for a Chinese Provincial or National Talent Program (include program name and year if applicable)",
     ]);
     expect(fields.some((field) => field.label === "备注")).toBe(false);
