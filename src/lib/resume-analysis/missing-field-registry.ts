@@ -144,12 +144,20 @@ const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
     required: true,
     aliases: ["国籍/族群", "国籍"],
   },
+  name: {
+    fieldKey: "name",
+    label: "Name",
+    type: "text",
+    required: true,
+    helpText: "Please provide your full name exactly as it should be used for contact.",
+    aliases: ["姓名", "*姓名", "*Full Name", "Full Name"],
+  },
   personal_email: {
     fieldKey: "personal_email",
     label: "Personal Email",
     type: "text",
     required: true,
-    aliases: ["个人邮箱", "个人邮箱（唯一）"],
+    aliases: ["个人邮箱", "个人邮箱（唯一）", "Personal Email", "Personal Email (Unique)"],
   },
   work_email: {
     fieldKey: "work_email",
@@ -160,10 +168,17 @@ const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
   },
   phone_number: {
     fieldKey: "phone_number",
-    label: "Mobile Number",
+    label: "Phone Number",
     type: "text",
     required: true,
-    aliases: ["手机号", "手机号（唯一）", "联系电话"],
+    aliases: [
+      "手机号",
+      "手机号（唯一）",
+      "联系电话",
+      "Phone Number",
+      "Mobile Number",
+      "Mobile Number (Unique)",
+    ],
   },
   chinese_proficiency: {
     fieldKey: "chinese_proficiency",

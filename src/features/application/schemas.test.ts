@@ -21,17 +21,19 @@ describe("resumeConfirmSchema", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("accepts optional trimmed passport name and normalizes email", () => {
+  it("accepts optional trimmed passport name, phone number, and normalizes email", () => {
     const parsed = resumeConfirmSchema.safeParse({
       ...baseFile,
       screeningPassportFullName: "  Wei Zhang  ",
       screeningContactEmail: "  Wei@Zhang.COM ",
+      screeningPhoneNumber: "  +1 555 010 8888  ",
     });
 
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.screeningPassportFullName).toBe("Wei Zhang");
       expect(parsed.data.screeningContactEmail).toBe("wei@zhang.com");
+      expect(parsed.data.screeningPhoneNumber).toBe("+1 555 010 8888");
     }
   });
 
@@ -62,6 +64,7 @@ describe("resumeScreeningIdentityOnlySchema", () => {
       resumeScreeningIdentityOnlySchema.safeParse({
         screeningPassportFullName: "X",
         screeningContactEmail: "x@example.com",
+        screeningPhoneNumber: "+1 555 010 7777",
       }).success,
     ).toBe(true);
   });

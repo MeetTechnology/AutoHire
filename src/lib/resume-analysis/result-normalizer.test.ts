@@ -111,6 +111,9 @@ describe("normalizeAnalysisResultPayload", () => {
 
   it("parses the new three-step contract without treating !!!null!!! as supplemental markers", () => {
     const raw = `### 1. Extracted Information
+- Name: Jane Doe
+- Personal Email: !!!null!!!
+- Phone Number: !!!null!!!
 - Year of Birth: !!!null!!!
 - Doctoral Degree Status: Doctorate completed
 - Doctoral Graduation Time: 2019
@@ -131,6 +134,9 @@ describe("normalizeAnalysisResultPayload", () => {
     expect(result.missingFields.map((f) => f.fieldKey).sort()).toEqual(
       ["birth_date", "research_direction"].sort(),
     );
+    expect(result.extractedFields.name).toBe("Jane Doe");
+    expect(result.extractedFields.personal_email).toBe("");
+    expect(result.extractedFields.phone_number).toBe("");
     expect(result.extractedFields.year_of_birth).toBe("");
     expect(result.extractedFields.research_area).toBe("");
     expect(result.rawReasoning).toContain("Cannot evaluate condition 7");
@@ -138,6 +144,9 @@ describe("normalizeAnalysisResultPayload", () => {
 
   it("parses new-contract eligible, ineligible, bypass, and borderline determinations", () => {
     const base = `### 1. Extracted Information
+- Name: Jane Doe
+- Personal Email: jane.doe@example.com
+- Phone Number: +1 555 010 2000
 - Year of Birth: 1990
 - Doctoral Degree Status: PhD
 - Doctoral Graduation Time: 2018
@@ -157,6 +166,7 @@ describe("normalizeAnalysisResultPayload", () => {
     });
     expect(eligible.eligibilityResult).toBe("ELIGIBLE");
     expect(eligible.reasonText).toBeNull();
+    expect(eligible.extractedFields.personal_email).toBe("jane.doe@example.com");
 
     const ineligible = normalizeAnalysisResultPayload({
       raw_response: `${base}{{{We regret to inform you that your qualifications do not meet the basic application requirements of this talent program. The specific reasons are: Area mismatch. If you have any questions, please feel free to contact us at any time by email, WeChat, phone, or WhatsApp}}}`,
@@ -175,5 +185,32 @@ describe("normalizeAnalysisResultPayload", () => {
     });
     expect(borderline.eligibilityResult).toBe("INSUFFICIENT_INFO");
     expect(borderline.missingFields.map((f) => f.fieldKey)).toEqual(["birth_date"]);
+  });
+
+  it("does not infer missing contact fields as critical when the determination says critical information is missing", () => {
+    const raw = `### 1. Extracted Information
+- Name: !!!null!!!
+- Personal Email: !!!null!!!
+- Phone Number: !!!null!!!
+- Year of Birth: 1990
+- Doctoral Degree Status: !!!null!!!
+- Doctoral Graduation Time: !!!null!!!
+- Current Title Equivalence: Associate Professor
+- Current Job Country: United States
+- Work Experience (2020-Present): 2020-Present, United States, Example University, Associate Professor
+- Research Area: AI
+
+### 2. Analysis Process
+[[[The contact details are not required for eligibility, but the doctoral status is still missing.]]]
+
+### 3. Determination Result
+{{{Cannot make a final determination due to missing critical information. Missing fields: Doctoral Degree Status}}}`;
+
+    const result = normalizeAnalysisResultPayload({ raw_response: raw });
+
+    expect(result.eligibilityResult).toBe("INSUFFICIENT_INFO");
+    expect(result.missingFields.map((field) => field.fieldKey)).toEqual([
+      "doctoral_degree_status",
+    ]);
   });
 });

@@ -157,6 +157,10 @@ function buildMockMissingFields(): MissingField[] {
 function getMockScenarioFromFileName(fileName: string) {
   const lower = fileName.toLowerCase();
 
+  if (lower.includes("contact-missing")) {
+    return "eligible_contact_missing";
+  }
+
   if (lower.includes("eligible")) {
     return "eligible";
   }
@@ -169,76 +173,139 @@ function getMockScenarioFromFileName(fileName: string) {
 }
 
 function buildMockRawText(scenario: string) {
+  if (scenario === "eligible_contact_missing") {
+    return `### 1. Extracted Information
+- Name: Jane Doe
+- Personal Email: !!!null!!!
+- Phone Number: !!!null!!!
+- Year of Birth: 1988
+- Doctoral Degree Status: Doctorate completed
+- Doctoral Graduation Time: 2018
+- Current Title Equivalence: Associate Professor
+- Current Job Country: United States
+- Work Experience (2020-Present): 2020-2022, United States, Example University, Research Scientist; 2022-Present, United States, Example University, Associate Professor
+- Research Area: Semiconductor materials
+
+### 2. Analysis Process
+[[[The core eligibility information is complete. Personal contact fields are still missing from the resume extract.]]]
+
+### 3. Determination Result
+{{{After evaluation, your qualifications meet the basic application requirements of this talent program}}}`;
+  }
+
   if (scenario === "eligible") {
-    return `[[[
-Name: Jane Doe
-Gender: Female
-Date of Birth (use 1900-01-01 if unavailable): 1988-01-01
-Highest Degree: Doctorate
-Current Employer (Chinese): Example University
-Provincial / National Talent Program History: National talent program (2022)
-Document Expiry Date (use 1900-01-01 if unavailable): 1900-01-01
-Applicant Background: Internal field not shown to experts
-Overall Assessment: Key information is complete and meets the application threshold.
-]]]
+    return `### 1. Extracted Information
+- Name: Jane Doe
+- Personal Email: jane.doe@example.com
+- Phone Number: +1 555 010 2000
+- Year of Birth: 1988
+- Doctoral Degree Status: Doctorate completed
+- Doctoral Graduation Time: 2018
+- Current Title Equivalence: Associate Professor
+- Current Job Country: United States
+- Work Experience (2020-Present): 2020-2022, United States, Example University, Research Scientist; 2022-Present, United States, Example University, Associate Professor
+- Research Area: Semiconductor materials
+
+### 2. Analysis Process
+[[[Key eligibility information is complete and the applicant meets the threshold.]]]
+
+### 3. Determination Result
 {{{After evaluation, your qualifications meet the basic application requirements of this talent program}}}`;
   }
 
   if (scenario === "ineligible") {
-    return `[[[
-Name: Jane Doe
-Highest Degree: Master's
-Current Title: Lecturer
-Overall Assessment: The current academic qualifications and representative achievements do not meet the application requirements.
-]]]
+    return `### 1. Extracted Information
+- Name: Jane Doe
+- Personal Email: jane.doe@example.com
+- Phone Number: +1 555 010 2000
+- Year of Birth: 1988
+- Doctoral Degree Status: Master's only
+- Doctoral Graduation Time: !!!null!!!
+- Current Title Equivalence: Lecturer/Teaching/Research Assistant
+- Current Job Country: United States
+- Work Experience (2020-Present): 2020-Present, United States, Example College, Lecturer
+- Research Area: Pure humanities
+
+### 2. Analysis Process
+[[[The current academic qualifications and research area do not meet the program requirements.]]]
+
+### 3. Determination Result
 {{{We regret to inform you that your qualifications do not meet the basic application requirements of this talent program. The specific reasons are: Your current academic qualifications and representative achievements do not meet the application requirements. If you have any questions, please feel free to contact us at any time by email, WeChat, phone, or WhatsApp}}}`;
   }
 
-  return `[[[
-Name: Jane Doe
-Gender: Female
-Date of Birth (use 1900-01-01 if unavailable): 1900-01-01
-Highest Degree: To be confirmed
-Current Employer (Chinese): To be confirmed
-Provincial / National Talent Program History: National talent program (2022)
-Notes: For internal reference only
-Overall Assessment: Part of the background can be identified from the current materials, but key application information is still missing.
-]]]
-!!!Year of Birth!!!
-!!!Highest Degree!!!
-!!!Current Employer!!!`;
+  return `### 1. Extracted Information
+- Name: Jane Doe
+- Personal Email: jane.doe@example.com
+- Phone Number: +1 555 010 2000
+- Year of Birth: !!!null!!!
+- Doctoral Degree Status: !!!null!!!
+- Doctoral Graduation Time: !!!null!!!
+- Current Title Equivalence: !!!null!!!
+- Current Job Country: United States
+- Work Experience (2020-Present): !!!null!!!
+- Research Area: Semiconductor materials
+
+### 2. Analysis Process
+[[[Part of the applicant background can be identified, but key eligibility information is still missing.]]]
+
+### 3. Determination Result
+{{{Cannot make a final determination due to missing critical information. Missing fields: Year of Birth, Highest Degree, Current Employer}}}`;
 }
 
 function buildMockExtractedFields(scenario: string) {
+  if (scenario === "eligible_contact_missing") {
+    return {
+      name: "Jane Doe",
+      personal_email: "",
+      phone_number: "",
+      year_of_birth: "1988",
+      doctoral_degree_status: "Doctorate completed",
+      doctoral_graduation_time: "2018",
+      current_title_equivalence: "Associate Professor",
+      current_job_country: "United States",
+      work_experience_2020_present:
+        "2020-2022, United States, Example University, Research Scientist; 2022-Present, United States, Example University, Associate Professor",
+      research_area: "Semiconductor materials",
+    };
+  }
+
   if (scenario === "eligible") {
     return {
-      "*姓名": "Jane Doe",
-      "性别": "Female",
-      "*出生日期（无则1900-01-01）": "1988-01-01",
-      "最高学位": "Doctorate",
-      "就职单位中文": "Example University",
-      "（省/国）入选信息": "National talent program (2022)",
-      "证件过期日（无则1900-01-01）": "1900-01-01",
-      "申报人基本情况": "Internal field not shown to experts",
+      name: "Jane Doe",
+      personal_email: "jane.doe@example.com",
+      phone_number: "+1 555 010 2000",
+      year_of_birth: "1988",
+      doctoral_degree_status: "Doctorate completed",
+      doctoral_graduation_time: "2018",
+      current_title_equivalence: "Associate Professor",
+      current_job_country: "United States",
+      work_experience_2020_present:
+        "2020-2022, United States, Example University, Research Scientist; 2022-Present, United States, Example University, Associate Professor",
+      research_area: "Semiconductor materials",
     };
   }
 
   if (scenario === "ineligible") {
     return {
-      "*姓名": "Jane Doe",
-      "最高学位": "Master's",
-      "目前职称": "Lecturer",
+      name: "Jane Doe",
+      personal_email: "jane.doe@example.com",
+      phone_number: "+1 555 010 2000",
+      year_of_birth: "1988",
+      doctoral_degree_status: "Master's only",
+      current_title_equivalence: "Lecturer/Teaching/Research Assistant",
+      current_job_country: "United States",
+      research_area: "Pure humanities",
     };
   }
 
   return {
-    "*姓名": "Jane Doe",
-    "性别": "Female",
-    "*出生日期（无则1900-01-01）": "1900-01-01",
-    "最高学位": "",
-    "就职单位中文": "",
-    "（省/国）入选信息": "National talent program (2022)",
-    "备注": "For internal reference only",
+    name: "Jane Doe",
+    personal_email: "jane.doe@example.com",
+    phone_number: "+1 555 010 2000",
+    year_of_birth: "",
+    doctoral_degree_status: "",
+    current_job_country: "United States",
+    research_area: "Semiconductor materials",
   };
 }
 

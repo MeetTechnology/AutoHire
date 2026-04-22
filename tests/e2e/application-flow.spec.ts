@@ -43,13 +43,13 @@ test("eligible resume flow can reach materials and submit", async ({
 
   await expect(
     page.getByRole("heading", {
-      name: /Upload and track your CV Review/i,
+      name: /Upload and track your CV Submission/i,
     }),
   ).toBeVisible();
   await expect(page.getByLabel("Passport Full Name")).toHaveCount(0);
   await expect(page.getByText("Draft saves automatically")).toHaveCount(0);
   await uploadVirtualFile(page, "candidate-eligible.pdf");
-  await page.getByRole("button", { name: "Start CV Review" }).click();
+  await page.getByRole("button", { name: "Submit CV" }).click();
 
   await expect(
     page.getByText("Initial CV review passed", {
@@ -111,6 +111,32 @@ test("insufficient info flow supports supplemental fields", async ({
   await expect(
     page.getByRole("button", { name: "Next: Submission Complete" }),
   ).toHaveCount(0);
+});
+
+test("eligible review with missing contact fields requires completion before materials", async ({
+  page,
+}) => {
+  await page.goto("/apply/resume?t=sample-init-token");
+
+  await uploadVirtualFile(page, "candidate-contact-missing.pdf");
+  await page.getByRole("button", { name: "Submit CV" }).click();
+
+  await expect(
+    page.getByRole("heading", {
+      name: /Complete your contact details to continue/i,
+    }),
+  ).toBeVisible({ timeout: 10000 });
+
+  await page.getByRole("textbox", { name: /^Name$/i }).fill("Taylor Chen");
+  await page
+    .getByRole("textbox", { name: /Personal Email/i })
+    .fill("taylor.chen@example.com");
+  await page
+    .getByRole("textbox", { name: /Phone Number/i })
+    .fill("+1 555 010 7000");
+  await page.getByRole("button", { name: "Save Contact Details" }).click();
+
+  await waitForMaterialsPageSession(page);
 });
 
 test("submitted token restores submitted materials page", async ({ page }) => {

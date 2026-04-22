@@ -42,12 +42,14 @@ export const uploadIntentSchema = z.object({
 export const resumeConfirmSchema = uploadConfirmFileFields.extend({
   screeningPassportFullName: trimmedNonEmpty.optional(),
   screeningContactEmail: normalizedEmail.optional(),
+  screeningPhoneNumber: trimmedNonEmpty.optional(),
 });
 
 /** Client-side check for the two CV review identity fields (no file fields). */
 export const resumeScreeningIdentityOnlySchema = z.object({
   screeningPassportFullName: trimmedNonEmpty,
   screeningContactEmail: normalizedEmail,
+  screeningPhoneNumber: trimmedNonEmpty.optional(),
 });
 
 export const materialConfirmSchema = uploadConfirmFileFields.extend({

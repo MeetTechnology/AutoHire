@@ -29,7 +29,7 @@ type ApplyEntryClientProps = {
 
 const PROCESS = [
   "Project Introduction",
-  "CV Review",
+  "CV Submission",
   "Additional Information",
   "Submission Complete",
 ] as const;
@@ -85,7 +85,7 @@ const INTRO_SECTION_ITEMS = [
     id: "process",
     title: "Online Application Process",
     summary:
-      "Five steps, progress saves at each stage, and feedback after you submit.",
+      "Four steps, progress saves at each stage, and feedback after you submit.",
   },
   {
     id: "timeline",
@@ -258,7 +258,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
       case "process":
         return (
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-4">
               {PROCESS.map((item, index) => (
                 <div
                   key={item}
@@ -411,7 +411,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
               onClick={handleStart}
               disabled={isPending || isReadOnlyReview}
             >
-              <span>{isPending ? "Opening..." : "Continue to CV Review"}</span>
+              <span>{isPending ? "Opening..." : "Continue to CV Submission"}</span>
               <ChevronRight className="h-4 w-4" aria-hidden />
             </ActionButton>
           </div>

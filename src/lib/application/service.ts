@@ -7,16 +7,22 @@ import {
 import { translateVisibleFieldValue } from "@/features/analysis/display";
 import type {
   EditableSecondaryField,
-  MissingField,
 } from "@/features/analysis/types";
 import type {
   AnalysisJobStatus,
   ApplicationStatus,
+  ApplicationSnapshot,
   EditableSecondaryAnalysisSnapshot,
   EligibilityResult,
   MaterialCategory,
   SecondaryAnalysisSnapshot,
 } from "@/features/application/types";
+import {
+  getScreeningContactPatchFromExtractedFields,
+  getScreeningContactPatchFromFieldValues,
+  hasMissingScreeningContactFields,
+  isScreeningContactFieldKey,
+} from "@/lib/application/screening-contact";
 import { createSessionToken } from "@/lib/auth/session";
 import { hashInviteToken } from "@/lib/auth/token";
 import {
@@ -87,6 +93,25 @@ type StoredSecondaryFieldValue = {
   savedAt: Date;
 };
 
+function resolvePostReviewApplicationStatus(input: {
+  eligibilityResult: EligibilityResult;
+  extractedFields: Record<string, unknown>;
+  application: {
+    screeningPassportFullName?: string | null;
+    screeningContactEmail?: string | null;
+    screeningPhoneNumber?: string | null;
+  };
+}) {
+  if (
+    input.eligibilityResult === "ELIGIBLE" &&
+    hasMissingScreeningContactFields(input.extractedFields, input.application)
+  ) {
+    return "INFO_REQUIRED" as const;
+  }
+
+  return mapEligibilityToApplicationStatus(input.eligibilityResult);
+}
+
 export async function resolveInviteToken(token: string) {
   return findInvitationByTokenHash(hashInviteToken(token));
 }
@@ -155,6 +180,7 @@ export async function createResumeUploadRecord(input: {
   objectKey: string;
   screeningPassportFullName?: string;
   screeningContactEmail?: string;
+  screeningPhoneNumber?: string;
 }) {
   const versionNo = (await getLatestResumeVersion(input.applicationId)) + 1;
   const record = await createResumeFile({
@@ -174,6 +200,9 @@ export async function createResumeUploadRecord(input: {
       : {}),
     ...(typeof input.screeningContactEmail === "string"
       ? { screeningContactEmail: input.screeningContactEmail }
+      : {}),
+    ...(typeof input.screeningPhoneNumber === "string"
+      ? { screeningPhoneNumber: input.screeningPhoneNumber }
       : {}),
   });
 
@@ -477,14 +506,43 @@ export async function refreshAnalysisState(applicationId: string) {
         missingFields: result.missingFields ?? [],
       });
 
-      const nextStatus = mapEligibilityToApplicationStatus(
-        result.eligibilityResult,
+      const application = await getApplicationById(applicationId);
+      const currentApplicationContactState = application as
+        | {
+            screeningPassportFullName?: string | null;
+            screeningContactEmail?: string | null;
+            screeningPhoneNumber?: string | null;
+          }
+        | null;
+      const screeningContactPatch = getScreeningContactPatchFromExtractedFields(
+        extractedFields,
       );
+      const nextApplicationContactState = {
+        screeningPassportFullName:
+          screeningContactPatch.screeningPassportFullName ??
+          currentApplicationContactState?.screeningPassportFullName ??
+          null,
+        screeningContactEmail:
+          screeningContactPatch.screeningContactEmail ??
+          currentApplicationContactState?.screeningContactEmail ??
+          null,
+        screeningPhoneNumber:
+          screeningContactPatch.screeningPhoneNumber ??
+          currentApplicationContactState?.screeningPhoneNumber ??
+          null,
+      };
+
+      const nextStatus = resolvePostReviewApplicationStatus({
+        eligibilityResult: result.eligibilityResult,
+        extractedFields,
+        application: nextApplicationContactState,
+      });
 
       await updateApplication(applicationId, {
         applicationStatus: nextStatus,
         currentStep: "result",
         eligibilityResult: result.eligibilityResult,
+        ...screeningContactPatch,
       });
 
       await syncExpertJobUpstreamMapping({
@@ -543,7 +601,7 @@ export async function submitSupplementalFields(input: {
   applicationId: string;
   fields: Record<string, unknown>;
 }) {
-  await requireApplicationStage({
+  const application = await requireApplicationStage({
     applicationId: input.applicationId,
     allowedStatuses: ["INFO_REQUIRED"],
     message:
@@ -553,18 +611,23 @@ export async function submitSupplementalFields(input: {
 
   const latestJob = await getLatestAnalysisJob(input.applicationId);
   const latestResumeFile = await getLatestResumeFile(input.applicationId);
-  const latestResult = await getLatestAnalysisResult(input.applicationId);
-  const currentMissingFields = (
-    (latestResult?.missingFields as MissingField[] | null) ?? []
-  ).map((field) =>
-    enrichMissingFieldWithRegistry({
-      ...field,
-      sourceItemName: field.sourceItemName || field.label || field.fieldKey,
-    }),
+  const snapshot = await buildApplicationSnapshot(input.applicationId);
+  const currentMissingFields = (snapshot?.latestResult?.missingFields ?? []).map(
+    (field) =>
+      enrichMissingFieldWithRegistry({
+        ...field,
+        sourceItemName: field.sourceItemName || field.label || field.fieldKey,
+      }),
   );
   const normalizedPayload = buildSupplementalFieldPayload(
     input.fields,
     currentMissingFields,
+  );
+  const screeningContactPatch = getScreeningContactPatchFromFieldValues(
+    normalizedPayload.valuesByFieldKey,
+  );
+  const hasNonContactMissingFields = currentMissingFields.some(
+    (field) => !isScreeningContactFieldKey(field.fieldKey),
   );
 
   await createSupplementalFieldSubmission({
@@ -575,6 +638,22 @@ export async function submitSupplementalFields(input: {
       missingFieldsSnapshot: currentMissingFields,
     },
   });
+
+  if (Object.keys(screeningContactPatch).length > 0) {
+    await updateApplication(input.applicationId, screeningContactPatch);
+  }
+
+  if (!hasNonContactMissingFields && application.eligibilityResult === "ELIGIBLE") {
+    await updateApplication(input.applicationId, {
+      applicationStatus: "ELIGIBLE",
+      currentStep: "result",
+    });
+
+    return {
+      id: null,
+      applicationStatus: "ELIGIBLE" as const,
+    };
+  }
 
   if (latestJob?.id && latestJob.externalJobId) {
     await syncExpertJobUpstreamMapping({
@@ -611,7 +690,10 @@ export async function submitSupplementalFields(input: {
     latestAnalysisJobId: job.id,
   });
 
-  return job;
+  return {
+    id: job.id,
+    applicationStatus: "REANALYZING" as const,
+  };
 }
 
 export async function startSecondaryAnalysis(applicationId: string) {
@@ -1392,6 +1474,23 @@ export async function enterMaterialsStage(applicationId: string) {
       "You can continue to supporting materials only after the initial CV review has passed.",
     code: "MATERIALS_ENTRY_NOT_READY",
   });
+
+  const snapshot = (await buildApplicationSnapshot(
+    applicationId,
+  )) as ApplicationSnapshot | null;
+  const hasMissingContactFields = Boolean(
+    snapshot?.latestResult?.missingFields.some((field) =>
+      isScreeningContactFieldKey(field.fieldKey),
+    ),
+  );
+
+  if (hasMissingContactFields) {
+    throw new ApplicationServiceError(
+      "Please complete the missing contact fields before continuing to supporting materials.",
+      409,
+      "SCREENING_CONTACT_FIELDS_REQUIRED",
+    );
+  }
 
   const updated = await updateApplication(applicationId, {
     applicationStatus: "MATERIALS_IN_PROGRESS",

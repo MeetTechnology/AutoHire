@@ -110,7 +110,7 @@ export async function confirmResumeUpload(
   file: File,
   objectKey: string,
   uploadId: string,
-  screening?: { passportFullName: string; email: string },
+  screening?: { passportFullName: string; email: string; phoneNumber?: string },
 ) {
   const response = await fetch(
     `/api/applications/${applicationId}/resume`,
@@ -130,6 +130,9 @@ export async function confirmResumeUpload(
           ? {
               screeningPassportFullName: screening.passportFullName,
               screeningContactEmail: screening.email,
+                ...(screening.phoneNumber
+                  ? { screeningPhoneNumber: screening.phoneNumber }
+                  : {}),
             }
           : {}),
       }),
@@ -290,7 +293,10 @@ export async function submitSupplementalFields(
     }),
   );
 
-  return parseResponse<{ analysisJobId: string; applicationStatus: string }>(
+  return parseResponse<{
+    analysisJobId: string | null;
+    applicationStatus: string;
+  }>(
     response,
   );
 }

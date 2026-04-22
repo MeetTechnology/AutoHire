@@ -323,21 +323,6 @@ export default function MaterialsPage() {
         }
       >
         <div className="mx-auto max-w-4xl space-y-4">
-          {snapshot ? (
-            <MetaStrip
-              items={[
-                {
-                  label: "Application number",
-                  value: snapshot.applicationId,
-                },
-                {
-                  label: "Estimated review time",
-                  value: "1-3 business days",
-                },
-              ]}
-            />
-          ) : null}
-
           {!isSubmitted ? <MobileSupportCard href={mailtoHref} /> : null}
 
           {error ? (
@@ -478,14 +463,14 @@ export default function MaterialsPage() {
                                 </p>
                               ) : null}
                               <div className="flex justify-end">
-                                <button
+                                <ActionButton
                                   type="button"
                                   onClick={handleSaveProductDescription}
                                   disabled={isPending}
-                                  className="rounded-full border border-[color:var(--border-strong)] bg-white px-4 py-2 text-xs font-semibold tracking-[0.12em] text-[color:var(--primary)] uppercase transition hover:bg-slate-50 disabled:opacity-50"
+                                  className="w-full sm:w-auto"
                                 >
                                   Save description
-                                </button>
+                                </ActionButton>
                               </div>
                             </div>
                           ) : (

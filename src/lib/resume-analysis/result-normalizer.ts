@@ -1,4 +1,8 @@
 import type { MissingField } from "@/features/analysis/types";
+import {
+  INITIAL_CV_REVIEW_CONTACT_FIELD_KEYS,
+  INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS,
+} from "@/features/analysis/initial-cv-review-extract";
 import type { EligibilityResult } from "@/features/application/types";
 import {
   buildMissingFieldsFromItemNames,
@@ -38,14 +42,9 @@ const INSUFFICIENT_INFO_SUMMARY_EN =
 const NEW_CONTRACT_SECTION_1 = "### 1. Extracted Information";
 const NEW_CONTRACT_SECTION_3 = "### 3. Determination Result";
 
-const INITIAL_CV_REVIEW_SEVEN_KEYS = [
-  "year_of_birth",
-  "doctoral_degree_status",
-  "doctoral_graduation_time",
-  "current_title_equivalence",
-  "current_job_country",
-  "work_experience_2020_present",
-  "research_area",
+const INITIAL_CV_REVIEW_TEN_KEYS = [
+  ...INITIAL_CV_REVIEW_CONTACT_FIELD_KEYS,
+  ...INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS,
 ] as const;
 
 const BYPASS_POSTDOC_PREFIX =
@@ -68,7 +67,7 @@ function stripMarkdownBold(value: string) {
   return value.replace(/\*\*/g, "").trim();
 }
 
-function normalizeSevenFieldRawValue(raw: string) {
+function normalizeInitialCvReviewRawValue(raw: string) {
   const stripped = stripMarkdownBold(raw).trim();
 
   if (!stripped || /^!!!\s*null\s*!!!$/i.test(stripped)) {
@@ -105,6 +104,9 @@ function parseExtractedInformationSection(text: string): Record<string, string> 
   }
 
   const patterns: Array<{ key: string; re: RegExp }> = [
+    { key: "name", re: /^-\s*Name:\s*(.+)$/gim },
+    { key: "personal_email", re: /^-\s*Personal Email:\s*(.+)$/gim },
+    { key: "phone_number", re: /^-\s*Phone Number:\s*(.+)$/gim },
     { key: "year_of_birth", re: /^-\s*Year of Birth:\s*(.+)$/gim },
     {
       key: "doctoral_degree_status",
@@ -128,7 +130,7 @@ function parseExtractedInformationSection(text: string): Record<string, string> 
 
   const out: Record<string, string> = {};
 
-  for (const key of INITIAL_CV_REVIEW_SEVEN_KEYS) {
+  for (const key of INITIAL_CV_REVIEW_TEN_KEYS) {
     out[key] = "";
   }
 
@@ -137,7 +139,7 @@ function parseExtractedInformationSection(text: string): Record<string, string> 
     const match = re.exec(body);
 
     if (match?.[1]) {
-      out[key] = normalizeSevenFieldRawValue(match[1]);
+      out[key] = normalizeInitialCvReviewRawValue(match[1]);
     }
   }
 
@@ -162,7 +164,7 @@ function parseMissingFieldNamesAfterMarker(formal: string) {
   return parts;
 }
 
-function sevenFieldLabelsForInference(): Record<string, string> {
+function criticalFieldLabelsForInference(): Record<string, string> {
   return {
     year_of_birth: "Year of Birth",
     doctoral_degree_status: "Doctoral Degree Status",
@@ -171,11 +173,11 @@ function sevenFieldLabelsForInference(): Record<string, string> {
     current_job_country: "Current Job Country",
     work_experience_2020_present: "Work Experience (2020-Present)",
     research_area: "Research Area",
-  } satisfies Record<(typeof INITIAL_CV_REVIEW_SEVEN_KEYS)[number], string>;
+  } satisfies Record<(typeof INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS)[number], string>;
 }
 
-function inferMissingItemNamesFromSevenFields(seven: Record<string, string>) {
-  const labels = sevenFieldLabelsForInference();
+function inferMissingItemNamesFromCriticalFields(seven: Record<string, string>) {
+  const labels = criticalFieldLabelsForInference();
   const names: string[] = [];
 
   for (const [key, label] of Object.entries(labels)) {
@@ -192,15 +194,15 @@ function parseNewThreeStepContract(
   coercedExtractedFields: Record<string, unknown>,
 ): ParsedDecision {
   const fromSection1 = parseExtractedInformationSection(text);
-  const sevenLayer: Record<string, unknown> = {};
+  const tenFieldLayer: Record<string, unknown> = {};
 
-  for (const key of INITIAL_CV_REVIEW_SEVEN_KEYS) {
-    sevenLayer[key] = fromSection1[key] ?? "";
+  for (const key of INITIAL_CV_REVIEW_TEN_KEYS) {
+    tenFieldLayer[key] = fromSection1[key] ?? "";
   }
 
   const extractedFields: Record<string, unknown> = {
     ...coercedExtractedFields,
-    ...sevenLayer,
+    ...tenFieldLayer,
   };
 
   const rawReasoning = extractFirstBlock(text, "[[[", "]]]");
@@ -216,7 +218,7 @@ function parseNewThreeStepContract(
     let names = parseMissingFieldNamesAfterMarker(trimmedFormal);
 
     if (names.length === 0) {
-      names = inferMissingItemNamesFromSevenFields(
+      names = inferMissingItemNamesFromCriticalFields(
         fromSection1 as Record<string, string>,
       );
     }

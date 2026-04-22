@@ -41,6 +41,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     uploadId,
     screeningPassportFullName,
     screeningContactEmail,
+    screeningPhoneNumber,
     fileName,
     fileType,
     fileSize,
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     objectKey,
     screeningPassportFullName,
     screeningContactEmail,
+    screeningPhoneNumber,
   });
   let job;
 

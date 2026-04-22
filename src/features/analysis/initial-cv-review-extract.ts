@@ -1,4 +1,23 @@
+export const INITIAL_CV_REVIEW_CONTACT_FIELD_KEYS = [
+  "name",
+  "personal_email",
+  "phone_number",
+] as const;
+
+export const INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS = [
+  "year_of_birth",
+  "doctoral_degree_status",
+  "doctoral_graduation_time",
+  "current_title_equivalence",
+  "current_job_country",
+  "work_experience_2020_present",
+  "research_area",
+] as const;
+
 export const INITIAL_CV_REVIEW_FIELD_ROWS = [
+  { key: "name", label: "Name" },
+  { key: "personal_email", label: "Personal Email" },
+  { key: "phone_number", label: "Phone Number" },
   { key: "year_of_birth", label: "Year of Birth" },
   { key: "doctoral_degree_status", label: "Doctoral Degree Status" },
   { key: "doctoral_graduation_time", label: "Doctoral Graduation Time" },
@@ -10,6 +29,9 @@ export const INITIAL_CV_REVIEW_FIELD_ROWS = [
   },
   { key: "research_area", label: "Research Area" },
 ] as const;
+
+export type InitialCvReviewFieldKey =
+  (typeof INITIAL_CV_REVIEW_FIELD_ROWS)[number]["key"];
 
 export function hasInitialCvReviewExtract(
   extractedFields: Record<string, unknown> | null | undefined,

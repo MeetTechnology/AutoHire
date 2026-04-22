@@ -13,6 +13,7 @@ import {
   submitApplication,
   submitSupplementalFields,
 } from "@/lib/application/service";
+import { updateApplication } from "@/lib/data/store";
 
 function resetMemoryStore() {
   (
@@ -127,6 +128,19 @@ describe("secondary analysis editable service flow", () => {
     expect(entered?.applicationStatus).toBe("MATERIALS_IN_PROGRESS");
   });
 
+  it("blocks entering materials when contact fields are still missing", async () => {
+    await updateApplication("app_secondary", {
+      screeningPassportFullName: null,
+      screeningContactEmail: null,
+      screeningPhoneNumber: null,
+    });
+
+    await expect(enterMaterialsStage("app_secondary")).rejects.toMatchObject({
+      status: 409,
+      code: "SCREENING_CONTACT_FIELDS_REQUIRED",
+    } satisfies Partial<ApplicationServiceError>);
+  });
+
   it("still allows entering materials from completed legacy detailed review", async () => {
     const started = await startSecondaryAnalysis("app_secondary");
     await getEditableSecondaryAnalysisSnapshot({
@@ -162,6 +176,58 @@ describe("secondary analysis editable service flow", () => {
       status: 409,
       code: "SUPPLEMENTAL_FIELDS_NOT_REQUIRED",
     } satisfies Partial<ApplicationServiceError>);
+  });
+
+  it("keeps the existing reanalysis path for insufficient-info submissions", async () => {
+    const result = await submitSupplementalFields({
+      applicationId: "app_progress",
+      fields: {
+        highest_degree: "Doctorate",
+        current_employer: "Example University",
+      },
+    });
+
+    expect(result.applicationStatus).toBe("REANALYZING");
+    expect(result.id).toBeTruthy();
+
+    const snapshot = await getSnapshot("app_progress");
+    expect(snapshot?.applicationStatus).toBe("REANALYZING");
+  });
+
+  it("saves contact-only completion without starting reanalysis", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "INFO_REQUIRED",
+      screeningPassportFullName: null,
+      screeningContactEmail: null,
+      screeningPhoneNumber: null,
+    });
+
+    const result = await submitSupplementalFields({
+      applicationId: "app_secondary",
+      fields: {
+        name: "  Contact Expert  ",
+        personal_email: "  Contact.Expert@Example.COM  ",
+        phone_number: "  +1 555 010 5000  ",
+      },
+    });
+
+    expect(result).toEqual({
+      id: null,
+      applicationStatus: "ELIGIBLE",
+    });
+
+    const snapshot = await getSnapshot("app_secondary");
+    expect(snapshot?.applicationStatus).toBe("ELIGIBLE");
+    expect(snapshot?.screeningPassportFullName).toBe("Contact Expert");
+    expect(snapshot?.screeningContactEmail).toBe("contact.expert@example.com");
+    expect(snapshot?.screeningPhoneNumber).toBe("+1 555 010 5000");
+    expect(snapshot?.latestResult?.extractedFields.name).toBe("Contact Expert");
+    expect(snapshot?.latestResult?.extractedFields.personal_email).toBe(
+      "contact.expert@example.com",
+    );
+    expect(snapshot?.latestResult?.extractedFields.phone_number).toBe(
+      "+1 555 010 5000",
+    );
   });
 
   it("returns all ten material buckets after entering the materials stage", async () => {

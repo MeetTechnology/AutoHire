@@ -59,6 +59,7 @@ import {
 } from "@/features/application/route";
 import type { ApplicationFlowStep } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
+import { isScreeningContactFieldKey } from "@/lib/application/screening-contact";
 import { createUploadId, trackPageView } from "@/lib/tracking/client";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +81,24 @@ const RESULT_VIEW_TO_STEP = {
   review: 1,
   additional: 2,
 } as const;
+
+/**
+ * Once initial CV review passes, `getReachableFlowStep` advances to step 2 because
+ * Additional Information is unlocked — but `/apply/resume` is still the primary
+ * surface for these statuses. `isFlowStepReadOnly(_, 1)` would then treat step 1
+ * as "past", showing reference-only mode incorrectly after refresh.
+ */
+function isUnifiedCvReviewPrimarySurfaceStatus(
+  status: ApplicationSnapshot["applicationStatus"],
+): boolean {
+  return (
+    status === "ELIGIBLE" ||
+    status === "INFO_REQUIRED" ||
+    status === "SECONDARY_ANALYZING" ||
+    status === "SECONDARY_REVIEW" ||
+    status === "SECONDARY_FAILED"
+  );
+}
 
 function getMailtoHref() {
   if (typeof window === "undefined") {
@@ -341,6 +360,9 @@ function AnalysisProgressPanel({
 function getInitialBanner(
   snapshot: ApplicationSnapshot | null,
   statusText: string,
+  input?: {
+    isEligibleContactCompletion?: boolean;
+  },
 ) {
   if (!snapshot) {
     return null;
@@ -419,10 +441,16 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="neutral"
-        title="Some required information is still missing"
+        title={
+          input?.isEligibleContactCompletion
+            ? "CV review passed, but a few contact details are still missing"
+            : "Some required information is still missing"
+        }
         description={
-          snapshot.latestResult?.displaySummary ??
-          "Please complete the fields below and run CV review again."
+          input?.isEligibleContactCompletion
+            ? "Please complete the missing contact fields below before continuing to supporting materials."
+            : (snapshot.latestResult?.displaySummary ??
+              "Please complete the fields below and run CV review again.")
         }
       />
     );
@@ -921,20 +949,28 @@ export function CvReviewExperience() {
     startSupplementalTransition(async () => {
       try {
         setError(null);
-        await submitSupplementalFields(snapshot.applicationId, values);
-        setSnapshot((current) =>
-          current
-            ? {
-                ...current,
-                applicationStatus: "REANALYZING",
-              }
-            : current,
-        );
-        setStatusText(
-          "The system is reanalyzing your CV with the supplemental information...",
-        );
+        const result = await submitSupplementalFields(snapshot.applicationId, values);
         clearDraft(`autohire:supplemental:${snapshot.applicationId}`);
-        await syncAnalysisProgress(snapshot.applicationId);
+
+        if (result.applicationStatus === "REANALYZING") {
+          setSnapshot((current) =>
+            current
+              ? {
+                  ...current,
+                  applicationStatus: "REANALYZING",
+                }
+              : current,
+          );
+          setStatusText(
+            "The system is reanalyzing your CV with the supplemental information...",
+          );
+          await syncAnalysisProgress(snapshot.applicationId);
+          return;
+        }
+
+        const refreshedSession = await fetchSession();
+        setSnapshot(refreshedSession);
+        router.push("/apply/materials");
       } catch (nextError) {
         setError(
           nextError instanceof Error
@@ -945,19 +981,58 @@ export function CvReviewExperience() {
     });
   }
 
-  const hasInitialCvReviewSeven = useMemo(
+  const hasInitialCvReviewExtractData = useMemo(
     () => hasInitialCvReviewExtract(snapshot?.latestResult?.extractedFields),
     [snapshot?.latestResult?.extractedFields],
   );
-  const missingFields = snapshot?.latestResult?.missingFields ?? [];
+  const missingFields = useMemo(
+    () => snapshot?.latestResult?.missingFields ?? [],
+    [snapshot?.latestResult?.missingFields],
+  );
+  const missingContactFields = useMemo(
+    () => missingFields.filter((field) => isScreeningContactFieldKey(field.fieldKey)),
+    [missingFields],
+  );
+  const missingCriticalFields = useMemo(
+    () =>
+      missingFields.filter((field) => !isScreeningContactFieldKey(field.fieldKey)),
+    [missingFields],
+  );
   const hasMissingFields = missingFields.length > 0;
   const showSupplementalFields = hasMissingFields && currentResultStep === 2;
+  const isEligibleContactCompletion = Boolean(
+    snapshot &&
+      snapshot.applicationStatus === "INFO_REQUIRED" &&
+      snapshot.eligibilityResult === "ELIGIBLE" &&
+      missingContactFields.length > 0 &&
+      missingCriticalFields.length === 0,
+  );
+  const hasMixedContactAndCriticalGaps = Boolean(
+    snapshot &&
+      snapshot.applicationStatus === "INFO_REQUIRED" &&
+      snapshot.eligibilityResult === "INSUFFICIENT_INFO" &&
+      missingContactFields.length > 0 &&
+      missingCriticalFields.length > 0,
+  );
   const showUploadState = Boolean(
     snapshot &&
     ["INTRO_VIEWED", "CV_UPLOADED"].includes(snapshot.applicationStatus),
   );
   const isReadOnlyReview = snapshot
-    ? isFlowStepReadOnly(snapshot.applicationStatus, currentResultStep)
+    ? (() => {
+        const stepReadOnly = isFlowStepReadOnly(
+          snapshot.applicationStatus,
+          currentResultStep,
+        );
+        if (
+          stepReadOnly &&
+          currentResultStep === 1 &&
+          isUnifiedCvReviewPrimarySurfaceStatus(snapshot.applicationStatus)
+        ) {
+          return false;
+        }
+        return stepReadOnly;
+      })()
     : false;
   const isAnalyzingStage = Boolean(
     snapshot &&
@@ -1028,6 +1103,18 @@ export function CvReviewExperience() {
       case "REANALYZING":
         return "Your CV is still being reviewed. This page will update automatically; please keep it open.";
       case "INFO_REQUIRED":
+        if (isEligibleContactCompletion) {
+          return currentResultStep === 2
+            ? "Your CV review already passed. Add the missing contact details below before you continue to supporting materials."
+            : "Your CV review passed, but we still need a few contact details before you continue to supporting materials.";
+        }
+
+        if (hasMixedContactAndCriticalGaps) {
+          return currentResultStep === 2
+            ? "CV review still needs a few eligibility fields and contact details. Submit the missing items below and CV review will run again."
+            : "CV review still needs a few eligibility fields and contact details. Continue to Additional Information to complete them.";
+        }
+
         return currentResultStep === 2
           ? "CV review needs a few more fields. Submit the items below and CV review will run again."
           : "CV review needs a few more fields. Continue to Additional Information to complete them.";
@@ -1047,7 +1134,7 @@ export function CvReviewExperience() {
       default:
         return "This page shows your CV review status, any recognized information from your CV, and the next step you should take.";
     }
-  }, [currentResultStep, snapshot]);
+  }, [currentResultStep, hasMixedContactAndCriticalGaps, isEligibleContactCompletion, snapshot]);
   const flowStepLinks = useMemo(
     () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
     [snapshot?.applicationStatus],
@@ -1063,8 +1150,10 @@ export function CvReviewExperience() {
       <PageShell
         title={
           currentResultStep === 1
-            ? "Upload and track your CV Review."
-            : "Provide the remaining information needed to finish CV review."
+            ? "Upload and track your CV Submission."
+            : isEligibleContactCompletion
+              ? "Complete your contact details to continue."
+              : "Provide the remaining information needed to finish CV review."
         }
         description={headerSummary}
         headerVariant="centered"
@@ -1173,8 +1262,8 @@ export function CvReviewExperience() {
                         className="w-full sm:w-auto"
                       >
                         {isUploadingResume
-                          ? "Starting CV Review..."
-                          : "Start CV Review"}
+                          ? "Submitting CV..."
+                          : "Submit CV"}
                       </ActionButton>
                     </div>
                   </div>
@@ -1184,7 +1273,7 @@ export function CvReviewExperience() {
                   title={
                     snapshot.applicationStatus === "SECONDARY_ANALYZING"
                       ? "Detailed review in progress"
-                      : "CV Review is running"
+                      : "CV submission is running"
                   }
                   description={
                     snapshot.applicationStatus === "SECONDARY_ANALYZING"
@@ -1207,32 +1296,60 @@ export function CvReviewExperience() {
                   }
                 />
               ) : (
-                getInitialBanner(snapshot, statusText)
+                getInitialBanner(snapshot, statusText, {
+                  isEligibleContactCompletion,
+                })
               )}
 
-              {hasInitialCvReviewSeven && snapshot.latestResult ? (
+              {hasInitialCvReviewExtractData && snapshot.latestResult ? (
                 <InitialCvReviewExtractCard
                   latestResult={snapshot.latestResult}
                 />
               ) : null}
 
-              {hasInitialCvReviewSeven ? (
+              {hasInitialCvReviewExtractData ? (
                 <InitialCvReviewDeterminationCard snapshot={snapshot} />
               ) : null}
 
               {snapshot.latestResult?.reasonText &&
               snapshot.applicationStatus !== "INELIGIBLE" &&
-              !hasInitialCvReviewSeven ? (
+              !hasInitialCvReviewExtractData ? (
                 <SectionCard
                   title="CV review summary"
                   description={snapshot.latestResult.reasonText}
                 />
               ) : null}
 
+              {!isReadOnlyReview &&
+              (snapshot.applicationStatus === "ELIGIBLE" ||
+                snapshot.applicationStatus === "SECONDARY_REVIEW") &&
+              !showUploadState &&
+              !isAnalyzingStage ? (
+                <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
+                  <ActionButton
+                    type="button"
+                    onClick={() => router.push("/apply/materials")}
+                    className="w-full sm:w-auto"
+                  >
+                    Continue to Additional Information
+                  </ActionButton>
+                </div>
+              ) : null}
+
               {showSupplementalFields ? (
                 <SectionCard
-                  title="Additional information requested"
-                  description="Suggested-from-CV entries are shaded softly. Only blank fields need your input before you submit again."
+                  title={
+                    isEligibleContactCompletion
+                      ? "Complete your contact details"
+                      : "Additional information requested"
+                  }
+                  description={
+                    isEligibleContactCompletion
+                      ? "We already have enough information to pass the CV review. Please fill the missing contact fields below before continuing to supporting materials."
+                      : hasMixedContactAndCriticalGaps
+                        ? "Suggested-from-CV entries are shaded softly. Fill the missing eligibility and contact fields below before submitting again."
+                        : "Suggested-from-CV entries are shaded softly. Only blank fields need your input before you submit again."
+                  }
                 >
                   <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
                     <MetaStrip
@@ -1247,7 +1364,9 @@ export function CvReviewExperience() {
                         },
                         {
                           label: "After submit",
-                          value: "CV review runs again immediately",
+                          value: isEligibleContactCompletion
+                            ? "Continue straight to supporting materials"
+                            : "CV review runs again immediately",
                         },
                       ]}
                     />
@@ -1267,8 +1386,12 @@ export function CvReviewExperience() {
                       className="w-full sm:w-auto"
                     >
                       {isSubmittingSupplemental
-                        ? "Submitting and Reanalyzing..."
-                        : "Submit Additional Information"}
+                        ? isEligibleContactCompletion
+                          ? "Saving Contact Details..."
+                          : "Submitting and Reanalyzing..."
+                        : isEligibleContactCompletion
+                          ? "Save Contact Details"
+                          : "Submit Additional Information"}
                     </ActionButton>
                   </form>
                 </SectionCard>

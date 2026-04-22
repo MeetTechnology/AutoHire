@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { supplementalFieldsSchema } from "@/features/application/schemas";
-import { submitSupplementalFields } from "@/lib/application/service";
+import {
+  ApplicationServiceError,
+  submitSupplementalFields,
+} from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError, parseJsonBody } from "@/lib/http";
 import { getResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
@@ -39,6 +42,12 @@ export async function POST(request: NextRequest, { params }: Params) {
       fields: parsed.data.fields,
     });
   } catch (error) {
+    if (error instanceof ApplicationServiceError) {
+      return jsonError(error.message, error.status, {
+        code: error.code,
+      });
+    }
+
     return jsonError(getResumeAnalysisErrorMessage(error), 502, {
       code: "REANALYSIS_START_FAILED",
     });
@@ -59,6 +68,6 @@ export async function POST(request: NextRequest, { params }: Params) {
   return NextResponse.json({
     applicationId,
     analysisJobId: job.id,
-    applicationStatus: "REANALYZING",
+    applicationStatus: job.applicationStatus,
   });
 }

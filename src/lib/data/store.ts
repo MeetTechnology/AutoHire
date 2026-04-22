@@ -7,6 +7,10 @@ import type {
   EligibilityResult,
   MaterialCategory,
 } from "@/features/application/types";
+import {
+  mergeMissingFieldsWithScreeningContactRequirements,
+  mergeStoredScreeningContactValuesIntoExtractedFields,
+} from "@/lib/application/screening-contact";
 import { enrichMissingFieldsWithRegistry } from "@/lib/resume-analysis/missing-field-registry";
 import { getRuntimeMode } from "@/lib/env";
 import { getSampleInvitationSeeds } from "@/lib/data/sample-data";
@@ -69,6 +73,7 @@ type ApplicationRecord = {
   submittedAt: Date | null;
   screeningPassportFullName: string | null;
   screeningContactEmail: string | null;
+  screeningPhoneNumber: string | null;
   productInnovationDescription: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -287,6 +292,7 @@ function buildSampleStore(): PersistedStore {
         submittedAt: null,
         screeningPassportFullName: null,
         screeningContactEmail: null,
+        screeningPhoneNumber: null,
         productInnovationDescription: null,
         createdAt: now,
         updatedAt: now,
@@ -308,8 +314,9 @@ function buildSampleStore(): PersistedStore {
         analysisCompletedAt: now,
         materialsEnteredAt: null,
         submittedAt: null,
-        screeningPassportFullName: null,
-        screeningContactEmail: null,
+        screeningPassportFullName: "Progress Expert",
+        screeningContactEmail: "progress.expert@example.com",
+        screeningPhoneNumber: "+1 555 010 1000",
         productInnovationDescription: null,
         createdAt: now,
         updatedAt: now,
@@ -331,8 +338,9 @@ function buildSampleStore(): PersistedStore {
         analysisCompletedAt: now,
         materialsEnteredAt: now,
         submittedAt: now,
-        screeningPassportFullName: null,
-        screeningContactEmail: null,
+        screeningPassportFullName: "Submitted Expert",
+        screeningContactEmail: "submitted.expert@example.com",
+        screeningPhoneNumber: "+1 555 010 3000",
         productInnovationDescription: null,
         createdAt: now,
         updatedAt: now,
@@ -354,8 +362,9 @@ function buildSampleStore(): PersistedStore {
         analysisCompletedAt: now,
         materialsEnteredAt: null,
         submittedAt: null,
-        screeningPassportFullName: null,
-        screeningContactEmail: null,
+        screeningPassportFullName: "Secondary Expert",
+        screeningContactEmail: "secondary.expert@example.com",
+        screeningPhoneNumber: "+1 555 010 4000",
         productInnovationDescription: null,
         createdAt: now,
         updatedAt: now,
@@ -609,6 +618,7 @@ export async function createApplication(input: {
       submittedAt: null,
       screeningPassportFullName: null,
       screeningContactEmail: null,
+      screeningPhoneNumber: null,
       productInnovationDescription: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -659,6 +669,7 @@ export async function updateApplication(
     submittedAt?: Date | null;
     screeningPassportFullName?: string | null;
     screeningContactEmail?: string | null;
+    screeningPhoneNumber?: string | null;
     productInnovationDescription?: string | null;
   },
 ) {
@@ -1603,6 +1614,20 @@ function toSnapshotFromMemory(
   const materials = store.materials.filter(
     (item) => item.applicationId === application.id && !item.isDeleted,
   );
+  const mergedExtractedFields = latestResult
+    ? mergeStoredScreeningContactValuesIntoExtractedFields(
+        latestResult.extractedFields,
+        application,
+      )
+    : null;
+  const mergedMissingFields = latestResult
+    ? mergeMissingFieldsWithScreeningContactRequirements(
+        latestResult.missingFields,
+        application.eligibilityResult,
+        mergedExtractedFields ?? latestResult.extractedFields,
+        application,
+      )
+    : [];
 
   return {
     applicationId: application.id,
@@ -1614,6 +1639,7 @@ function toSnapshotFromMemory(
     latestAnalysisJobId: application.latestAnalysisJobId,
     screeningPassportFullName: application.screeningPassportFullName,
     screeningContactEmail: application.screeningContactEmail,
+    screeningPhoneNumber: application.screeningPhoneNumber,
     productInnovationDescription:
       application.productInnovationDescription ?? null,
     resumeAnalysisStatus: latestAnalysisJob?.jobStatus ?? null,
@@ -1630,8 +1656,8 @@ function toSnapshotFromMemory(
       ? {
           displaySummary: latestResult.displaySummary,
           reasonText: latestResult.reasonText,
-          missingFields: enrichMissingFieldsWithRegistry(latestResult.missingFields),
-          extractedFields: latestResult.extractedFields,
+          missingFields: enrichMissingFieldsWithRegistry(mergedMissingFields),
+          extractedFields: mergedExtractedFields ?? latestResult.extractedFields,
         }
       : null,
     uploadedMaterialsSummary: {
@@ -1684,6 +1710,20 @@ export async function buildApplicationSnapshot(
     ]);
 
   const applicationRow = application as ApplicationRecord;
+  const latestResultMissingFields =
+    (latestResult?.missingFields as MissingField[] | null) ?? [];
+  const latestResultExtractedFields =
+    (latestResult?.extractedFields as Record<string, unknown> | null) ?? {};
+  const mergedExtractedFields = mergeStoredScreeningContactValuesIntoExtractedFields(
+    latestResultExtractedFields,
+    applicationRow,
+  );
+  const mergedMissingFields = mergeMissingFieldsWithScreeningContactRequirements(
+    latestResultMissingFields,
+    application.eligibilityResult,
+    mergedExtractedFields,
+    applicationRow,
+  );
 
   return {
     applicationId: application.id,
@@ -1696,6 +1736,7 @@ export async function buildApplicationSnapshot(
     screeningPassportFullName:
       applicationRow.screeningPassportFullName ?? null,
     screeningContactEmail: applicationRow.screeningContactEmail ?? null,
+    screeningPhoneNumber: applicationRow.screeningPhoneNumber ?? null,
     productInnovationDescription:
       applicationRow.productInnovationDescription ?? null,
     resumeAnalysisStatus: latestAnalysisJob?.jobStatus ?? null,
@@ -1712,12 +1753,8 @@ export async function buildApplicationSnapshot(
       ? {
           displaySummary: latestResult.displaySummary,
           reasonText: latestResult.reasonText,
-          missingFields: enrichMissingFieldsWithRegistry(
-            (latestResult.missingFields as MissingField[] | null) ?? [],
-          ),
-          extractedFields:
-            (latestResult.extractedFields as Record<string, unknown> | null) ??
-            {},
+          missingFields: enrichMissingFieldsWithRegistry(mergedMissingFields),
+          extractedFields: mergedExtractedFields,
         }
       : null,
     uploadedMaterialsSummary: {

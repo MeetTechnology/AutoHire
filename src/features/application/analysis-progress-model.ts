@@ -13,7 +13,7 @@ const RATIO_AT_32S = 0.78;
 /** Generic wait lines (initial / re-analysis)—no staged eligibility narration. */
 export const PRIMARY_STAGE_MESSAGES = [
   "Reviewing your CV. This page will update when there is an outcome.",
-  "CV Review is still in progress. You can keep this page open.",
+  "Your CV submission is still in progress. You can keep this page open.",
 ] as const;
 
 /** Generic wait lines for the detailed review step. */
