@@ -43,7 +43,7 @@ test("eligible resume flow can reach materials and submit", async ({
 
   await expect(
     page.getByRole("heading", {
-      name: /Upload and track your CV Submission/i,
+      name: /CV Upload & Preliminary Assessment/i,
     }),
   ).toBeVisible();
   await expect(page.getByLabel("Passport Full Name")).toHaveCount(0);

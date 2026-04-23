@@ -95,16 +95,13 @@ const INTRO_SECTION_ITEMS = [
   },
   {
     id: "about",
-    title: "About the Service Provider",
+    title: "About Our Service",
     summary:
-      "Learn the role of Meet Technology (Wuhan) Co., Ltd. in this process.",
+      "As the professional service partner for China's national-level talent programs, here is our role and commitment.",
   },
 ] as const;
 
 type IntroSectionId = (typeof INTRO_SECTION_ITEMS)[number]["id"];
-
-const ABOUT_US =
-  "Meet Technology (Wuhan) Co., Ltd. is a professional talent intermediary company specializing in assisting overseas high-level talents in applying for talent programs in China. We have served more than 100 cities and regions nationwide, organized over 200 meetings, forums, competitions, training sessions, and project investigation activities, connected more than 5,000 overseas high-level talents with local governments and enterprises, and successfully introduced more than 200 overseas high-level talents. More than 20 of those candidates were selected into national and provincial talent programs. We are one of multiple professional service providers participating in the GESF ecosystem.";
 
 export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const router = useRouter();
@@ -300,9 +297,99 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
         );
       case "about":
         return (
-          <p className="text-sm leading-7 text-[color:var(--foreground-soft)]">
-            {ABOUT_US}
-          </p>
+          <div className="flex flex-col gap-4 text-sm leading-7 text-[color:var(--foreground-soft)]">
+            <p>
+              Meet Tech. is an{" "}
+              <span className="line-through">official </span>
+              authorized professional service organization for China&apos;s
+              national talent programs (not the organizer). Our core role is to
+              provide{" "}
+              <strong className="font-semibold text-[color:var(--foreground)]">
+                full end-to-end application support
+              </strong>{" "}
+              for overseas high-level talents. If you apply through us, we
+              deliver three pillars:
+            </p>
+            <ol className="list-decimal space-y-3 pl-5 marker:font-semibold">
+              <li className="pl-1">
+                <span className="font-semibold text-[color:var(--foreground)]">
+                  Document preparation:
+                </span>{" "}
+                specialists help you organize your CV, evidence of achievements,
+                letters of recommendation, and other required materials,
+                producing a submission that meets national requirements and
+                stays competitive.
+              </li>
+              <li className="pl-1">
+                <span className="font-semibold text-[color:var(--foreground)]">
+                  Platform matching:
+                </span>{" "}
+                we connect you with competitive universities, research institutes,
+                or enterprises in China as your joint-declaration host (talent
+                programs require candidates to apply together with such a
+                platform).
+              </li>
+              <li className="pl-1">
+                <span className="font-semibold text-[color:var(--foreground)]">
+                  Onboarding support:
+                </span>{" "}
+                if you are selected, we coordinate with local governments and
+                your host platform to complete onboarding, access incentive
+                funding, and obtain the national talent honor title.
+              </li>
+            </ol>
+            <p>
+              <strong className="font-semibold text-[color:var(--foreground)]">
+                Beyond the talent programs, we also offer the following extended
+                services
+              </strong>
+            </p>
+            <ol className="list-decimal space-y-3 pl-5 marker:font-semibold">
+              <li className="pl-1">
+                <span className="font-semibold text-[color:var(--foreground)]">
+                  Academic exchange:
+                </span>{" "}
+                online and offline seminars and lectures with Chinese
+                universities and enterprises to build lasting collaboration.
+              </li>
+              <li className="pl-1">
+                <span className="font-semibold text-[color:var(--foreground)]">
+                  Conferences and forums:
+                </span>{" "}
+                join our international academic conferences and industry summits
+                to showcase your work and grow your network.
+              </li>
+              <li className="pl-1">
+                <span className="font-semibold text-[color:var(--foreground)]">
+                  Technology transfer:
+                </span>{" "}
+                support for licensing or transferring your technologies to
+                Chinese companies.
+              </li>
+              <li className="pl-1">
+                <span className="font-semibold text-[color:var(--foreground)]">
+                  Venture building, financing, and customer development:
+                </span>{" "}
+                help launching a business in China and moving research from the
+                lab to the market.
+              </li>
+            </ol>
+            <div>
+              <p className="font-semibold text-[color:var(--foreground)]">
+                Our track record and industry recognition
+              </p>
+              <p className="mt-2">
+                We operate across 200+ cities and regions nationwide and have
+                hosted 500+ talent matchmaking events, industry forums, project
+                roadshows, and study tours; we have connected 5,000+ overseas
+                high-level talents with local governments and enterprises,
+                including 500+ candidates who entered national, provincial, or
+                municipal talent programs with our support; as a core service
+                provider in the GESF ecosystem, our professionalism and
+                integration capabilities are widely recognized.
+              </p>
+            </div>
+          </div>
         );
       default:
         return null;
@@ -335,8 +422,8 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
           {isReadOnlyReview ? (
             <StatusBanner
               tone="neutral"
-              title="Reference-only access"
-              description="This invitation has already moved beyond the introduction stage. You may review this page, but the active workflow continues from a later step."
+              title="Review Mode"
+              description="This step is complete. You may review the details here, but no further action is required."
             />
           ) : null}
 

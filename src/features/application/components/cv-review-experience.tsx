@@ -466,27 +466,11 @@ function InitialCvReviewExtractCard({
 }) {
   return (
     <SectionCard
-      title="Initial CV review extract"
-      description="Fields extracted from your CV for the latest initial CV review pass."
+      title="Key Profile Information"
+      description="Verify the key details extracted from your CV. Update any missing or incorrect fields to ensure an accurate eligibility assessment."
     >
       <div className="overflow-x-auto rounded-xl border border-[color:var(--border)] bg-white">
         <table className="min-w-full border-collapse">
-          <thead>
-            <tr className="border-b border-[color:var(--border)] bg-slate-50">
-              <th
-                scope="col"
-                className="w-1/3 px-4 py-3 text-left text-xs font-semibold tracking-wide text-[color:var(--primary)] uppercase"
-              >
-                Field
-              </th>
-              <th
-                scope="col"
-                className="px-4 py-3 text-left text-xs font-semibold tracking-wide text-[color:var(--primary)] uppercase"
-              >
-                Value
-              </th>
-            </tr>
-          </thead>
           <tbody>
             {INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => {
               const value = getInitialCvReviewFieldValue(
@@ -1095,7 +1079,7 @@ export function CvReviewExperience() {
   }, [requestedResultView]);
   const headerSummary = useMemo(() => {
     if (!snapshot) {
-      return "This page shows your CV review status, any recognized information from your CV, and the next step you should take.";
+      return "Upload your CV to start the application. You will receive eligibility feedback based on our initial assessment.";
     }
 
     switch (snapshot.applicationStatus) {
@@ -1132,7 +1116,7 @@ export function CvReviewExperience() {
       case "CV_UPLOADED":
         return "Upload your latest CV and keep this page open while the review runs.";
       default:
-        return "This page shows your CV review status, any recognized information from your CV, and the next step you should take.";
+        return "Upload your CV to start the application. You will receive eligibility feedback based on our initial assessment.";
     }
   }, [currentResultStep, hasMixedContactAndCriticalGaps, isEligibleContactCompletion, snapshot]);
   const flowStepLinks = useMemo(
@@ -1150,7 +1134,7 @@ export function CvReviewExperience() {
       <PageShell
         title={
           currentResultStep === 1
-            ? "Upload and track your CV Submission."
+            ? "CV Upload & Preliminary Assessment"
             : isEligibleContactCompletion
               ? "Complete your contact details to continue."
               : "Provide the remaining information needed to finish CV review."
@@ -1173,8 +1157,8 @@ export function CvReviewExperience() {
           {isReadOnlyReview ? (
             <StatusBanner
               tone="neutral"
-              title="Reference-only review mode"
-              description="You are viewing a previous stage. Field edits and status-changing actions are disabled."
+              title="Review Mode"
+              description="This step is complete. You may review the details here, but no further action is required."
             />
           ) : null}
           {isLoading ? (
