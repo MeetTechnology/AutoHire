@@ -97,7 +97,7 @@ const INTRO_SECTION_ITEMS = [
     id: "about",
     title: "About Our Service",
     summary:
-      "As the professional service partner for China's national-level talent programs, here is our role and commitment.",
+      "Officially authorized application support for national-level talent programs, with document preparation, platform matching, and post-selection coordination.",
   },
 ] as const;
 
@@ -299,94 +299,101 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
         return (
           <div className="flex flex-col gap-4 text-sm leading-7 text-[color:var(--foreground-soft)]">
             <p>
-              Meet Tech. is an{" "}
-              <span className="line-through">official </span>
-              authorized professional service organization for China&apos;s
-              national talent programs (not the organizer). Our core role is to
-              provide{" "}
+              Meet Tech is an officially authorized professional service
+              institution for national-level talent programs (not the organizer).
+              Its core responsibility is to provide a{" "}
               <strong className="font-semibold text-[color:var(--foreground)]">
-                full end-to-end application support
+                full-process application service
               </strong>{" "}
-              for overseas high-level talents. If you apply through us, we
-              deliver three pillars:
+              for high-level overseas talents. Should you choose to submit your
+              application through us, we will offer you three core services.
             </p>
             <ol className="list-decimal space-y-3 pl-5 marker:font-semibold">
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
-                  Document preparation:
+                  Material Preparation:
                 </span>{" "}
-                specialists help you organize your CV, evidence of achievements,
-                letters of recommendation, and other required materials,
-                producing a submission that meets national requirements and
-                stays competitive.
+                A professional team will assist you in collating application
+                materials including resumes, achievement certificates, and
+                recommendation letters. We ensure that the application documents
+                we prepare for you meet national requirements and are highly
+                competitive.
               </li>
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
-                  Platform matching:
+                  Platform Matching:
                 </span>{" "}
-                we connect you with competitive universities, research institutes,
-                or enterprises in China as your joint-declaration host (talent
-                programs require candidates to apply together with such a
-                platform).
+                We will match you with competitive Chinese universities, research
+                institutions and enterprises as your application platform. (The
+                talent program requires candidates to apply jointly with a
+                platform.)
               </li>
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
-                  Onboarding support:
+                  Post-selection Support:
                 </span>{" "}
-                if you are selected, we coordinate with local governments and
-                your host platform to complete onboarding, access incentive
-                funding, and obtain the national talent honor title.
+                Upon your successful selection in the talent program, we will
+                assist you in coordinating with local governments and affiliated
+                platforms, facilitate the onboarding procedure, secure the
+                incentive and subsidy funds, and obtain the national-level
+                talent honor title.
               </li>
             </ol>
             <p>
               <strong className="font-semibold text-[color:var(--foreground)]">
-                Beyond the talent programs, we also offer the following extended
-                services
+                Beyond the talent program, we provide the following value-added
+                services.
               </strong>
             </p>
             <ol className="list-decimal space-y-3 pl-5 marker:font-semibold">
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
-                  Academic exchange:
+                  Academic Exchange:
                 </span>{" "}
-                online and offline seminars and lectures with Chinese
-                universities and enterprises to build lasting collaboration.
+                We organize online and offline seminars and special lectures for
+                overseas scholars, domestic universities and enterprises, so as to
+                build long-term cooperation bridges.
               </li>
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
-                  Conferences and forums:
+                  Conferences &amp; Forums:
                 </span>{" "}
-                join our international academic conferences and industry summits
-                to showcase your work and grow your network.
+                You may participate in international academic conferences and
+                industry summits organized by us. We assist you in presenting
+                research achievements and expanding industrial resources.
               </li>
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
-                  Technology transfer:
+                  Technology Transfer:
                 </span>{" "}
-                support for licensing or transferring your technologies to
-                Chinese companies.
+                We assist in commercializing your technological achievements with
+                Chinese enterprises.
               </li>
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
-                  Venture building, financing, and customer development:
+                  Entrepreneurial Financing &amp; Client Development:
                 </span>{" "}
-                help launching a business in China and moving research from the
-                lab to the market.
+                We assist you in establishing enterprises in China, and support
+                the commercialization of scientific research achievements from
+                laboratories to the market.
               </li>
             </ol>
             <div>
               <p className="font-semibold text-[color:var(--foreground)]">
-                Our track record and industry recognition
+                Our Service Outcomes and Industry Accreditation
               </p>
               <p className="mt-2">
-                We operate across 200+ cities and regions nationwide and have
-                hosted 500+ talent matchmaking events, industry forums, project
-                roadshows, and study tours; we have connected 5,000+ overseas
-                high-level talents with local governments and enterprises,
-                including 500+ candidates who entered national, provincial, or
-                municipal talent programs with our support; as a core service
-                provider in the GESF ecosystem, our professionalism and
-                integration capabilities are widely recognized.
+                Our services span over 200 cities and regions nationwide. To
+                date, we have organized more than 500 talent matching events,
+                industry forums, project roadshows and field inspection visits.
+                We have successfully matched over 5,000 high-level overseas
+                talents with domestic local governments, universities and
+                enterprises. With our professional support, more than 500
+                candidates have been admitted to national, provincial and
+                municipal talent programs. As a core service partner of the GESF
+                ecosystem, our professionalism and comprehensive resource
+                integration capabilities have earned widespread recognition from
+                all sectors.
               </p>
             </div>
           </div>

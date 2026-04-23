@@ -3,6 +3,7 @@
 import {
   Suspense,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -136,6 +137,24 @@ function translateChoiceLabel(option: string) {
   };
 
   return translations[option] ?? option;
+}
+
+function formatAnalysisStatusLabel(jobStatus: string | undefined) {
+  const normalized = jobStatus?.trim().toUpperCase();
+
+  if (normalized === "QUEUED") {
+    return "Queued";
+  }
+
+  if (normalized === "PROCESSING") {
+    return "Processing";
+  }
+
+  if (normalized === "RETRYING") {
+    return "Retrying";
+  }
+
+  return "Processing";
 }
 
 function renderSupplementalField(
@@ -311,6 +330,7 @@ function AnalysisProgressPanel({
   secondaryMessage,
   progressRatio,
   ariaValueText,
+  statusLabel,
 }: {
   title: string;
   description: string;
@@ -318,27 +338,54 @@ function AnalysisProgressPanel({
   secondaryMessage?: string | null;
   progressRatio: number;
   ariaValueText: string;
+  statusLabel: string;
 }) {
+  const titleId = useId();
+  const progressLabelId = useId();
+  const primaryMessageId = useId();
+  const secondaryMessageId = useId();
   const clamped = Math.min(1, Math.max(0, progressRatio));
   const widthPercent = `${Math.round(clamped * 1000) / 10}%`;
+  const describedBy = secondaryMessage
+    ? `${primaryMessageId} ${secondaryMessageId}`
+    : primaryMessageId;
 
   return (
     <SectionCard className="overflow-hidden">
-      <div className="mx-auto max-w-2xl text-center">
-        <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-[color:var(--border)] bg-[color:var(--muted)]/60">
-          <div className="h-14 w-14 animate-spin rounded-full border-[3px] border-[color:var(--primary)] border-t-[color:var(--accent-soft)] motion-reduce:animate-none" />
+      <div className="mx-auto max-w-2xl text-center" aria-labelledby={titleId}>
+        <div className="mx-auto inline-flex min-h-9 items-center rounded-full border border-[color:var(--border)] bg-[color:var(--muted)]/70 px-3 text-xs font-semibold text-[color:var(--primary)]">
+          {statusLabel}
         </div>
-        <h2 className="mt-5 text-xl font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
+        <h2
+          id={titleId}
+          className="mt-4 text-xl font-semibold text-[color:var(--primary)]"
+        >
           {title}
         </h2>
         <p className="mt-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
           {description}
         </p>
-        <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 px-4 py-4">
+        <div
+          className="mx-auto mt-5 max-w-xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 px-4 py-4"
+          aria-busy="true"
+        >
+          <div className="mb-2 flex items-center justify-between gap-3 text-left">
+            <p
+              id={progressLabelId}
+              className="text-xs font-semibold text-[color:var(--primary)]"
+            >
+              Estimated wait progress
+            </p>
+            <p className="text-xs text-[color:var(--foreground-soft)]">
+              Outcome will appear automatically
+            </p>
+          </div>
           {/* Unmount this panel when analysis ends—no brief 100% flash before result content. */}
           <div
             className="h-2 overflow-hidden rounded-full bg-white"
             role="progressbar"
+            aria-labelledby={progressLabelId}
+            aria-describedby={describedBy}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(clamped * 100)}
@@ -349,15 +396,26 @@ function AnalysisProgressPanel({
               style={{ width: widthPercent }}
             />
           </div>
-          <p className="mt-3 text-sm font-medium text-[color:var(--primary)]">
+          <p
+            id={primaryMessageId}
+            className="mt-3 text-sm font-medium text-[color:var(--primary)]"
+          >
             {primaryMessage}
           </p>
           {secondaryMessage ? (
-            <p className="mt-2 text-xs leading-5 text-[color:var(--foreground-soft)]">
+            <p
+              id={secondaryMessageId}
+              className="mt-2 text-xs leading-5 text-[color:var(--foreground-soft)]"
+            >
               {secondaryMessage}
             </p>
           ) : null}
         </div>
+        <p className="sr-only" aria-live="polite" aria-atomic="true">
+          {`${title}. ${primaryMessage}${
+            secondaryMessage ? ` ${secondaryMessage}` : ""
+          }`}
+        </p>
       </div>
     </SectionCard>
   );
@@ -939,7 +997,10 @@ export function CvReviewExperience() {
     startSupplementalTransition(async () => {
       try {
         setError(null);
-        const result = await submitSupplementalFields(snapshot.applicationId, values);
+        const result = await submitSupplementalFields(
+          snapshot.applicationId,
+          values,
+        );
         clearDraft(`autohire:supplemental:${snapshot.applicationId}`);
 
         if (result.applicationStatus === "REANALYZING") {
@@ -980,29 +1041,34 @@ export function CvReviewExperience() {
     [snapshot?.latestResult?.missingFields],
   );
   const missingContactFields = useMemo(
-    () => missingFields.filter((field) => isScreeningContactFieldKey(field.fieldKey)),
+    () =>
+      missingFields.filter((field) =>
+        isScreeningContactFieldKey(field.fieldKey),
+      ),
     [missingFields],
   );
   const missingCriticalFields = useMemo(
     () =>
-      missingFields.filter((field) => !isScreeningContactFieldKey(field.fieldKey)),
+      missingFields.filter(
+        (field) => !isScreeningContactFieldKey(field.fieldKey),
+      ),
     [missingFields],
   );
   const hasMissingFields = missingFields.length > 0;
   const showSupplementalFields = hasMissingFields && currentResultStep === 2;
   const isEligibleContactCompletion = Boolean(
     snapshot &&
-      snapshot.applicationStatus === "INFO_REQUIRED" &&
-      snapshot.eligibilityResult === "ELIGIBLE" &&
-      missingContactFields.length > 0 &&
-      missingCriticalFields.length === 0,
+    snapshot.applicationStatus === "INFO_REQUIRED" &&
+    snapshot.eligibilityResult === "ELIGIBLE" &&
+    missingContactFields.length > 0 &&
+    missingCriticalFields.length === 0,
   );
   const hasMixedContactAndCriticalGaps = Boolean(
     snapshot &&
-      snapshot.applicationStatus === "INFO_REQUIRED" &&
-      snapshot.eligibilityResult === "INSUFFICIENT_INFO" &&
-      missingContactFields.length > 0 &&
-      missingCriticalFields.length > 0,
+    snapshot.applicationStatus === "INFO_REQUIRED" &&
+    snapshot.eligibilityResult === "INSUFFICIENT_INFO" &&
+    missingContactFields.length > 0 &&
+    missingCriticalFields.length > 0,
   );
   const showUploadState = Boolean(
     snapshot &&
@@ -1060,13 +1126,14 @@ export function CvReviewExperience() {
     const secondaryMessage =
       showApiSecondary && sanitizedApi.length > 0 ? sanitizedApi : null;
 
-    const ariaValueText = `CV review in progress; about ${Math.round(progressRatio * 100)} percent along the expected wait.`;
+    const ariaValueText = `Estimated wait progress is about ${Math.round(progressRatio * 100)} percent. Actual completion depends on the CV review status.`;
 
     return {
       progressRatio,
       primaryMessage,
       secondaryMessage,
       ariaValueText,
+      statusLabel: formatAnalysisStatusLabel(analysisJobStatus),
     };
   }, [
     snapshot,
@@ -1124,7 +1191,12 @@ export function CvReviewExperience() {
       default:
         return "Upload your CV to start the application. You will receive eligibility feedback based on our initial assessment.";
     }
-  }, [currentResultStep, hasMixedContactAndCriticalGaps, isEligibleContactCompletion, snapshot]);
+  }, [
+    currentResultStep,
+    hasMixedContactAndCriticalGaps,
+    isEligibleContactCompletion,
+    snapshot,
+  ]);
   const flowStepLinks = useMemo(
     () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
     [snapshot?.applicationStatus],
@@ -1251,9 +1323,7 @@ export function CvReviewExperience() {
                         }
                         className="w-full sm:w-auto"
                       >
-                        {isUploadingResume
-                          ? "Submitting CV..."
-                          : "Submit CV"}
+                        {isUploadingResume ? "Submitting CV..." : "Submit CV"}
                       </ActionButton>
                     </div>
                   </div>
@@ -1283,6 +1353,10 @@ export function CvReviewExperience() {
                   ariaValueText={
                     analysisProgressView?.ariaValueText ??
                     "CV review in progress."
+                  }
+                  statusLabel={
+                    analysisProgressView?.statusLabel ??
+                    formatAnalysisStatusLabel(analysisJobStatus)
                   }
                 />
               ) : (

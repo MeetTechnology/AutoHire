@@ -22,8 +22,10 @@ describe("resolveRouteFromStatus", () => {
     expect(resolveRouteFromStatus("SECONDARY_FAILED")).toBe("/apply/resume");
   });
 
-  it("routes submitted state to materials page", () => {
-    expect(resolveRouteFromStatus("SUBMITTED")).toBe("/apply/materials");
+  it("routes submitted state to the submission-complete page", () => {
+    expect(resolveRouteFromStatus("SUBMITTED")).toBe(
+      "/apply/submission-complete",
+    );
   });
 
   it("maps later review states to the additional-information step", () => {
@@ -38,7 +40,7 @@ describe("resolveRouteFromStatus", () => {
 });
 
 describe("buildApplyFlowStepLinks", () => {
-  it("sends Additional Information to materials except during INFO_REQUIRED", () => {
+  it("sends Additional Information to the correct editable or review surface", () => {
     expect(buildApplyFlowStepLinks("INFO_REQUIRED")[2]).toBe(
       "/apply/resume?view=additional",
     );
@@ -49,6 +51,9 @@ describe("buildApplyFlowStepLinks", () => {
     expect(buildApplyFlowStepLinks("MATERIALS_IN_PROGRESS")[2]).toBe(
       "/apply/materials",
     );
+    expect(buildApplyFlowStepLinks("SUBMITTED")[2]).toBe(
+      "/apply/materials?view=review",
+    );
     expect(buildApplyFlowStepLinks(null)[2]).toBe("/apply/materials");
   });
 
@@ -58,7 +63,9 @@ describe("buildApplyFlowStepLinks", () => {
     );
   });
 
-  it("keeps Submission Complete on the materials route", () => {
-    expect(buildApplyFlowStepLinks("ELIGIBLE")[3]).toBe("/apply/materials");
+  it("keeps Submission Complete on the submission-complete route", () => {
+    expect(buildApplyFlowStepLinks("ELIGIBLE")[3]).toBe(
+      "/apply/submission-complete",
+    );
   });
 });

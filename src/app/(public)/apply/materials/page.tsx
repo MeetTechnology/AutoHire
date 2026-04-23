@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { CheckCircle2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import {
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import {
   ActionButton,
   DisclosureSection,
-  MetaStrip,
   MobileSupportCard,
   PageFrame,
   PageShell,
@@ -32,6 +37,7 @@ import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/consta
 import {
   buildApplyFlowStepLinks,
   getReachableFlowStep,
+  isFlowStepReadOnly,
   resolveRouteFromStatus,
 } from "@/features/application/route";
 import type {
@@ -60,12 +66,12 @@ function getMailtoHref() {
   return `mailto:?subject=${encodeURIComponent("Continue my GESF application")}&body=${encodeURIComponent(window.location.href)}`;
 }
 
-export default function MaterialsPage() {
+function MaterialsPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [materials, setMaterials] = useState<MaterialsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [mailtoHref, setMailtoHref] = useState<string | undefined>(undefined);
@@ -77,6 +83,10 @@ export default function MaterialsPage() {
     useState<string | null>(null);
   const productDescriptionServerKey = useRef<string>("");
   const hasTrackedPageView = useRef(false);
+  const snapshotApplicationId = snapshot?.applicationId;
+  const serverProductDescription = snapshot?.productInnovationDescription ?? "";
+  const requestedView = searchParams.get("view");
+  const isReviewRequest = requestedView === "review";
 
   useEffect(() => {
     let active = true;
@@ -102,9 +112,16 @@ export default function MaterialsPage() {
         }
 
         if (
-          !["MATERIALS_IN_PROGRESS", "SUBMITTED"].includes(
-            nextSnapshot.applicationStatus,
-          )
+          nextSnapshot.applicationStatus === "SUBMITTED" &&
+          !isReviewRequest
+        ) {
+          router.replace(resolveRouteFromStatus(nextSnapshot.applicationStatus));
+          return;
+        }
+
+        if (
+          nextSnapshot.applicationStatus !== "MATERIALS_IN_PROGRESS" &&
+          nextSnapshot.applicationStatus !== "SUBMITTED"
         ) {
           router.replace(
             resolveRouteFromStatus(nextSnapshot.applicationStatus),
@@ -134,7 +151,7 @@ export default function MaterialsPage() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [isReviewRequest, router]);
 
   useEffect(() => {
     setMailtoHref(getMailtoHref());
@@ -154,22 +171,25 @@ export default function MaterialsPage() {
   }, [snapshot]);
 
   useEffect(() => {
-    if (!snapshot) {
+    if (!snapshotApplicationId) {
       return;
     }
 
-    const server = snapshot.productInnovationDescription ?? "";
-    const key = `${snapshot.applicationId}:${server}`;
+    const key = `${snapshotApplicationId}:${serverProductDescription}`;
     if (productDescriptionServerKey.current === key) {
       return;
     }
 
     productDescriptionServerKey.current = key;
-    setProductDescriptionDraft(server);
-  }, [snapshot?.applicationId, snapshot?.productInnovationDescription]);
+    setProductDescriptionDraft(serverProductDescription);
+  }, [snapshotApplicationId, serverProductDescription]);
+
+  const isReadOnlyReview = snapshot
+    ? isFlowStepReadOnly(snapshot.applicationStatus, 2)
+    : false;
 
   function handleSaveProductDescription() {
-    if (!snapshot) {
+    if (!snapshot || isReadOnlyReview) {
       return;
     }
 
@@ -194,7 +214,7 @@ export default function MaterialsPage() {
   }
 
   function handleUpload(category: MaterialCategory, files: FileList | null) {
-    if (!snapshot || !files?.length) {
+    if (!snapshot || isReadOnlyReview || !files?.length) {
       return;
     }
 
@@ -203,7 +223,6 @@ export default function MaterialsPage() {
     startTransition(async () => {
       try {
         setError(null);
-        setNotice(null);
 
         for (const file of nextFiles) {
           const uploadId = createUploadId();
@@ -241,7 +260,7 @@ export default function MaterialsPage() {
   }
 
   function handleDelete(fileId: string) {
-    if (!snapshot) {
+    if (!snapshot || isReadOnlyReview) {
       return;
     }
 
@@ -259,7 +278,7 @@ export default function MaterialsPage() {
   }
 
   function handleSubmit() {
-    if (!snapshot) {
+    if (!snapshot || isReadOnlyReview) {
       return;
     }
 
@@ -271,10 +290,8 @@ export default function MaterialsPage() {
           stepName: "submit",
           applicationId: snapshot.applicationId,
         });
-        const response = await submitApplicationRequest(snapshot.applicationId);
-        setSnapshot(await fetchSession());
-        setNotice(response.message);
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        await submitApplicationRequest(snapshot.applicationId);
+        router.push("/apply/submission-complete");
       } catch (nextError) {
         setError(
           nextError instanceof Error ? nextError.message : "Submission failed.",
@@ -287,43 +304,27 @@ export default function MaterialsPage() {
     (category) => (materials?.[category.key]?.length ?? 0) < 1,
   );
   const minimumRequirementsMet = missingRequiredCategories.length === 0;
-  const isSubmitted = snapshot?.applicationStatus === "SUBMITTED";
-  const materialsFlowStepIndex = isSubmitted ? 3 : 2;
   const flowStepLinks = useMemo(
     () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
     [snapshot?.applicationStatus],
-  );
-  const uploadedCount = useMemo(
-    () =>
-      materials
-        ? Object.values(materials).reduce(
-            (count, records) => count + records.length,
-            0,
-          )
-        : 0,
-    [materials],
   );
 
   return (
     <PageFrame>
       <PageShell
-        title={isSubmitted ? "Submission complete" : "Required Documents"}
-        description={
-          isSubmitted
-            ? "Your application package has been received. The page below keeps your application number, expected review timing, and an evidence summary for reference."
-            : "Please upload the required supporting documents by category. Ensure that all uploaded documents meet the requirements before submitting."
-        }
+        title="Required Documents"
+        description="Please upload the required supporting documents by category. Ensure that all uploaded documents meet the requirements before submitting."
         headerVariant="centered"
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
-        currentStep={materialsFlowStepIndex}
+        currentStep={2}
         stepIndexing="zero"
         stepLinks={flowStepLinks}
         maxAccessibleStep={
-          snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 3
+          snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 2
         }
       >
         <div className="mx-auto max-w-4xl space-y-4">
-          {!isSubmitted ? <MobileSupportCard href={mailtoHref} /> : null}
+          <MobileSupportCard href={mailtoHref} />
 
           {error ? (
             <StatusBanner
@@ -341,54 +342,19 @@ export default function MaterialsPage() {
             />
           ) : null}
 
-          {isSubmitted ? (
-            <SectionCard
-              title="Submission complete"
-              description={
-                notice ??
-                "We have received your materials and will respond within 1 to 3 business days."
-              }
-            >
-              <div className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-                <CheckCircle2
-                  className="h-10 w-10 text-[color:var(--accent)]"
-                  aria-hidden
-                />
-                <div>
-                  <h2 className="text-xl font-semibold tracking-[-0.02em] text-[color:var(--primary)]">
-                    Congratulations on completing your application
-                  </h2>
-                  <p className="mt-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                    Your application has entered the asynchronous review stage.
-                    Keep this page for reference if you need the application
-                    number or a snapshot of the submitted evidence package.
-                  </p>
-                </div>
-                <MetaStrip
-                  items={[
-                    {
-                      label: "Application Number",
-                      value: snapshot?.applicationId ?? "Unavailable",
-                    },
-                    {
-                      label: "Estimated Review Time",
-                      value: "1-3 business days",
-                    },
-                    {
-                      label: "Evidence Summary",
-                      value: `${uploadedCount} uploaded files`,
-                    },
-                  ]}
-                />
-              </div>
-            </SectionCard>
+          {isReadOnlyReview ? (
+            <StatusBanner
+              tone="review"
+              title="Review Mode"
+              description="This step is complete. You may review the uploaded materials here, but no further action is required."
+            />
           ) : null}
 
           <SectionCard
             title="Upload by category"
             description={
-              isSubmitted
-                ? "The submitted package remains grouped by category for easy review."
+              isReadOnlyReview
+                ? "The submitted package remains grouped by category for reference."
                 : "Attach one or more files per category. Identity documents, doctoral education evidence, and latest employment evidence are mandatory before final confirmation."
             }
           >
@@ -407,12 +373,12 @@ export default function MaterialsPage() {
                     key={category.key}
                     title={category.label}
                     summary={
-                      isSubmitted
+                      isReadOnlyReview
                         ? "Read-only uploaded evidence for this category."
                         : "Expand to review guidance, upload files, and manage the current list."
                     }
                     defaultOpen={
-                      isRequiredCategory && !requirementMet && !isSubmitted
+                      isRequiredCategory && !requirementMet && !isReadOnlyReview
                     }
                     meta={
                       <div className="flex flex-wrap items-center gap-2">
@@ -438,7 +404,13 @@ export default function MaterialsPage() {
                             describe the product name, innovation aspects, and
                             the actual economic benefits generated.
                           </p>
-                          {!isSubmitted ? (
+                          {isReadOnlyReview ? (
+                            <p className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm whitespace-pre-wrap text-[color:var(--foreground)]">
+                              {snapshot?.productInnovationDescription?.trim()
+                                ? snapshot.productInnovationDescription
+                                : "No product description was provided."}
+                            </p>
+                          ) : (
                             <div className="space-y-2">
                               <textarea
                                 value={productDescriptionDraft}
@@ -473,12 +445,6 @@ export default function MaterialsPage() {
                                 </ActionButton>
                               </div>
                             </div>
-                          ) : (
-                            <p className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm whitespace-pre-wrap text-[color:var(--foreground)]">
-                              {snapshot?.productInnovationDescription?.trim()
-                                ? snapshot.productInnovationDescription
-                                : "No product description was provided."}
-                            </p>
                           )}
                           <p className="pt-1 font-medium text-[color:var(--foreground)]">
                             Please upload your Product Introduction Documents
@@ -493,14 +459,14 @@ export default function MaterialsPage() {
                         <MaterialCategoryGuidance category={category.key} />
                       </div>
 
-                      {isRequiredCategory && !requirementMet && !isSubmitted ? (
+                      {isRequiredCategory && !requirementMet && !isReadOnlyReview ? (
                         <div className="rounded-xl border border-[color:var(--border-strong)] bg-white px-4 py-3 text-sm text-[color:var(--foreground-soft)]">
                           Upload at least one file in this category to unlock
                           final confirmation.
                         </div>
                       ) : null}
 
-                      {!isSubmitted ? (
+                      {!isReadOnlyReview ? (
                         <label className="block">
                           <input
                             type="file"
@@ -532,7 +498,7 @@ export default function MaterialsPage() {
                               <span className="truncate">
                                 {record.fileName}
                               </span>
-                              {!isSubmitted ? (
+                              {!isReadOnlyReview ? (
                                 <button
                                   type="button"
                                   onClick={() => handleDelete(record.id)}
@@ -557,7 +523,7 @@ export default function MaterialsPage() {
             </div>
           </SectionCard>
 
-          {!isSubmitted ? (
+          {!isReadOnlyReview ? (
             <SectionCard
               title="Final submission"
               description="Confirm only when the evidence package is complete enough for review."
@@ -597,5 +563,19 @@ export default function MaterialsPage() {
         </div>
       </PageShell>
     </PageFrame>
+  );
+}
+
+export default function MaterialsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center px-4 text-sm text-slate-600">
+          Loading uploaded materials...
+        </div>
+      }
+    >
+      <MaterialsPageContent />
+    </Suspense>
   );
 }

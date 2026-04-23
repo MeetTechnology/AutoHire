@@ -25,8 +25,12 @@ export function resolveRouteFromStatus(status: ApplicationStatus) {
     return "/apply/resume";
   }
 
-  if (status === "MATERIALS_IN_PROGRESS" || status === "SUBMITTED") {
+  if (status === "MATERIALS_IN_PROGRESS") {
     return "/apply/materials";
+  }
+
+  if (status === "SUBMITTED") {
+    return "/apply/submission-complete";
   }
 
   return "/apply";
@@ -92,8 +96,8 @@ export function isFlowStepReadOnly(
  * Stepper destinations for the four-step journey (with intro).
  * Step 2 ("Additional Information") opens materials upload except while
  * supplemental fields are required (`INFO_REQUIRED`), when it stays on the
- * unified CV Review route. Step 3 is always the materials route
- * (submission / read-only).
+ * unified CV Review route. After final submission, Step 2 opens materials in
+ * review mode. Step 3 is always the submission-complete route.
  */
 export function buildApplyFlowStepLinks(
   applicationStatus?: ApplicationStatus | null,
@@ -101,12 +105,14 @@ export function buildApplyFlowStepLinks(
   const additionalInformationHref =
     applicationStatus === "INFO_REQUIRED"
       ? "/apply/resume?view=additional"
+      : applicationStatus === "SUBMITTED"
+        ? "/apply/materials?view=review"
       : "/apply/materials";
 
   return [
     "/apply",
     "/apply/resume?view=review",
     additionalInformationHref,
-    "/apply/materials",
+    "/apply/submission-complete",
   ];
 }
