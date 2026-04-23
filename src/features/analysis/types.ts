@@ -18,6 +18,7 @@ export type MissingField = {
   type: "text" | "textarea" | "number" | "date" | "select" | "radio";
   required: boolean;
   helpText?: string;
+  placeholder?: string;
   options?: string[];
   defaultValue?: string;
   selectOtherDetails?: SelectOtherDetails;

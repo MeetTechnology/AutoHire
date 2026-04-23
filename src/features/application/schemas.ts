@@ -42,6 +42,7 @@ export const uploadIntentSchema = z.object({
 export const resumeConfirmSchema = uploadConfirmFileFields.extend({
   screeningPassportFullName: trimmedNonEmpty.optional(),
   screeningContactEmail: normalizedEmail.optional(),
+  screeningWorkEmail: normalizedEmail.optional(),
   screeningPhoneNumber: trimmedNonEmpty.optional(),
 });
 
@@ -49,6 +50,7 @@ export const resumeConfirmSchema = uploadConfirmFileFields.extend({
 export const resumeScreeningIdentityOnlySchema = z.object({
   screeningPassportFullName: trimmedNonEmpty,
   screeningContactEmail: normalizedEmail,
+  screeningWorkEmail: normalizedEmail.optional(),
   screeningPhoneNumber: trimmedNonEmpty.optional(),
 });
 

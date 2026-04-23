@@ -147,6 +147,8 @@ function renderSupplementalField(
   const currentValue = watch(field.fieldKey) ?? field.defaultValue ?? "";
   const isPrefilled = Boolean(field.defaultValue && currentValue);
   const needsAttention = field.required && !String(currentValue).trim();
+  const shouldShowRequirementBadge =
+    field.required || !["work_email", "phone_number"].includes(field.fieldKey);
   const inputClassName = getInputClassName(
     cn(
       isPrefilled && "bg-[color:var(--muted)]/75",
@@ -169,9 +171,11 @@ function renderSupplementalField(
         {field.label}
       </span>
       <div className="mt-1 flex flex-wrap gap-2">
-        <span className="text-xs tracking-[0.12em] text-slate-500 uppercase">
-          {field.required ? "Required field" : "Optional field"}
-        </span>
+        {shouldShowRequirementBadge ? (
+          <span className="text-xs tracking-[0.12em] text-slate-500 uppercase">
+            {field.required ? "Required field" : "Optional field"}
+          </span>
+        ) : null}
         {isPrefilled ? (
           <span className="inline-flex rounded-full border border-[color:var(--border)] bg-white px-2 py-0.5 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-500 uppercase">
             Suggested from CV
@@ -233,6 +237,7 @@ function renderSupplementalField(
               required: field.required,
             })}
             className={getInputClassName("min-h-32")}
+            placeholder={field.placeholder}
           />
         ) : field.type === "radio" ? (
           <div className="flex flex-wrap gap-3">
@@ -279,6 +284,7 @@ function renderSupplementalField(
             })}
             type={field.type === "number" ? "number" : "text"}
             className={inputClassName}
+            placeholder={field.placeholder}
           />
         )}
       </div>
@@ -515,7 +521,7 @@ function InitialCvReviewDeterminationCard({
   if (eligibilityResult === "INELIGIBLE") {
     return (
       <SectionCard
-        title="CV review outcome"
+        title="Preliminary Assessment Result"
         description={displaySummary ?? undefined}
       >
         {reasonText ? (
@@ -535,7 +541,7 @@ function InitialCvReviewDeterminationCard({
       "The model could not finalize eligibility. Please complete the missing fields below.";
 
     return (
-      <SectionCard title="CV review outcome">
+      <SectionCard title="Preliminary Assessment Result">
         <p className="text-sm leading-6 text-slate-700">{primary}</p>
       </SectionCard>
     );
@@ -554,7 +560,7 @@ function InitialCvReviewDeterminationCard({
         : null;
 
     return (
-      <SectionCard title="CV review outcome" description={primary}>
+      <SectionCard title="Preliminary Assessment Result" description={primary}>
         {secondary ? (
           <p className="mt-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
             {secondary}
@@ -566,7 +572,7 @@ function InitialCvReviewDeterminationCard({
 
   return (
     <SectionCard
-      title="CV review outcome"
+      title="Preliminary Assessment Result"
       description={
         displaySummary ??
         "Initial CV review returned an outcome. Review the extract and any messages above."
@@ -1156,7 +1162,7 @@ export function CvReviewExperience() {
 
           {isReadOnlyReview ? (
             <StatusBanner
-              tone="neutral"
+              tone="review"
               title="Review Mode"
               description="This step is complete. You may review the details here, but no further action is required."
             />

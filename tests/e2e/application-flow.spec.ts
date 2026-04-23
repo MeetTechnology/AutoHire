@@ -20,7 +20,7 @@ async function initializeBrowserSession(page: Page, token: string) {
 async function waitForMaterialsPageSession(page: Page) {
   await expect(
     page.getByRole("heading", {
-      name: /Supporting materials/,
+      name: /Required Documents/,
     }),
   ).toBeVisible();
   await expect(page.getByText("Application number")).toBeVisible();

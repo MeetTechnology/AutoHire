@@ -17,6 +17,7 @@ export function enrichMissingFieldWithRegistry(field: MissingField): MissingFiel
     type: config.type,
     required: config.required,
     helpText: config.helpText,
+    placeholder: config.placeholder,
     options: config.options,
     defaultValue: config.defaultValue ?? field.defaultValue,
     selectOtherDetails: config.selectOtherDetails ?? field.selectOtherDetails,
@@ -134,6 +135,7 @@ const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
       "来源地",
       "Country Where Current Full-Time Job Is Located",
       "Country of Current Full-Time Job",
+      "Current Country of Employment",
       "Current Job Country",
     ],
   },
@@ -157,6 +159,7 @@ const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
     label: "Personal Email",
     type: "text",
     required: true,
+    placeholder: "建议留下您的gmail或者yahoo等，我们将优先通过个人邮箱联系您",
     aliases: ["个人邮箱", "个人邮箱（唯一）", "Personal Email", "Personal Email (Unique)"],
   },
   work_email: {
@@ -164,13 +167,15 @@ const MISSING_FIELD_REGISTRY: Record<string, MissingFieldConfig> = {
     label: "Work Email",
     type: "text",
     required: false,
-    aliases: ["工作邮箱", "工作邮箱（唯一）"],
+    placeholder: "请留下您的工作邮箱",
+    aliases: ["工作邮箱", "工作邮箱（唯一）", "Work Email", "Work Email (Unique)"],
   },
   phone_number: {
     fieldKey: "phone_number",
     label: "Phone Number",
     type: "text",
-    required: true,
+    required: false,
+    placeholder: "请留下您的手机号",
     aliases: [
       "手机号",
       "手机号（唯一）",
@@ -243,9 +248,10 @@ export function resolveMissingField(sourceItemName: string): MissingField {
         .replace(/^_+|_+$/g, "") || "additional_info",
       label: normalized,
       type: "text",
-      required: true,
-      helpText: "Please provide the requested information.",
-      sourceItemName: normalized,
+    required: true,
+    helpText: "Please provide the requested information.",
+    placeholder: undefined,
+    sourceItemName: normalized,
     };
   }
 
@@ -257,6 +263,7 @@ export function resolveMissingField(sourceItemName: string): MissingField {
     type: config.type,
     required: config.required,
     helpText: config.helpText,
+    placeholder: config.placeholder,
     options: config.options,
     defaultValue: config.defaultValue,
     selectOtherDetails: config.selectOtherDetails,

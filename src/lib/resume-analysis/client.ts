@@ -177,12 +177,13 @@ function buildMockRawText(scenario: string) {
     return `### 1. Extracted Information
 - Name: Jane Doe
 - Personal Email: !!!null!!!
+- Work Email: !!!null!!!
 - Phone Number: !!!null!!!
 - Year of Birth: 1988
 - Doctoral Degree Status: Doctorate completed
 - Doctoral Graduation Time: 2018
 - Current Title Equivalence: Associate Professor
-- Current Job Country: United States
+- Current Country of Employment: United States
 - Work Experience (2020-Present): 2020-2022, United States, Example University, Research Scientist; 2022-Present, United States, Example University, Associate Professor
 - Research Area: Semiconductor materials
 
@@ -197,12 +198,13 @@ function buildMockRawText(scenario: string) {
     return `### 1. Extracted Information
 - Name: Jane Doe
 - Personal Email: jane.doe@example.com
+- Work Email: jane.doe@university.edu
 - Phone Number: +1 555 010 2000
 - Year of Birth: 1988
 - Doctoral Degree Status: Doctorate completed
 - Doctoral Graduation Time: 2018
 - Current Title Equivalence: Associate Professor
-- Current Job Country: United States
+- Current Country of Employment: United States
 - Work Experience (2020-Present): 2020-2022, United States, Example University, Research Scientist; 2022-Present, United States, Example University, Associate Professor
 - Research Area: Semiconductor materials
 
@@ -217,12 +219,13 @@ function buildMockRawText(scenario: string) {
     return `### 1. Extracted Information
 - Name: Jane Doe
 - Personal Email: jane.doe@example.com
+- Work Email: jane.doe@college.edu
 - Phone Number: +1 555 010 2000
 - Year of Birth: 1988
 - Doctoral Degree Status: Master's only
 - Doctoral Graduation Time: !!!null!!!
 - Current Title Equivalence: Lecturer/Teaching/Research Assistant
-- Current Job Country: United States
+- Current Country of Employment: United States
 - Work Experience (2020-Present): 2020-Present, United States, Example College, Lecturer
 - Research Area: Pure humanities
 
@@ -236,12 +239,13 @@ function buildMockRawText(scenario: string) {
   return `### 1. Extracted Information
 - Name: Jane Doe
 - Personal Email: jane.doe@example.com
+- Work Email: jane.doe@university.edu
 - Phone Number: +1 555 010 2000
 - Year of Birth: !!!null!!!
 - Doctoral Degree Status: !!!null!!!
 - Doctoral Graduation Time: !!!null!!!
 - Current Title Equivalence: !!!null!!!
-- Current Job Country: United States
+- Current Country of Employment: United States
 - Work Experience (2020-Present): !!!null!!!
 - Research Area: Semiconductor materials
 
@@ -257,12 +261,13 @@ function buildMockExtractedFields(scenario: string) {
     return {
       name: "Jane Doe",
       personal_email: "",
+      work_email: "",
       phone_number: "",
       year_of_birth: "1988",
       doctoral_degree_status: "Doctorate completed",
       doctoral_graduation_time: "2018",
       current_title_equivalence: "Associate Professor",
-      current_job_country: "United States",
+      current_country_of_employment: "United States",
       work_experience_2020_present:
         "2020-2022, United States, Example University, Research Scientist; 2022-Present, United States, Example University, Associate Professor",
       research_area: "Semiconductor materials",
@@ -273,12 +278,13 @@ function buildMockExtractedFields(scenario: string) {
     return {
       name: "Jane Doe",
       personal_email: "jane.doe@example.com",
+      work_email: "jane.doe@university.edu",
       phone_number: "+1 555 010 2000",
       year_of_birth: "1988",
       doctoral_degree_status: "Doctorate completed",
       doctoral_graduation_time: "2018",
       current_title_equivalence: "Associate Professor",
-      current_job_country: "United States",
+      current_country_of_employment: "United States",
       work_experience_2020_present:
         "2020-2022, United States, Example University, Research Scientist; 2022-Present, United States, Example University, Associate Professor",
       research_area: "Semiconductor materials",
@@ -289,11 +295,12 @@ function buildMockExtractedFields(scenario: string) {
     return {
       name: "Jane Doe",
       personal_email: "jane.doe@example.com",
+      work_email: "jane.doe@college.edu",
       phone_number: "+1 555 010 2000",
       year_of_birth: "1988",
       doctoral_degree_status: "Master's only",
       current_title_equivalence: "Lecturer/Teaching/Research Assistant",
-      current_job_country: "United States",
+      current_country_of_employment: "United States",
       research_area: "Pure humanities",
     };
   }
@@ -301,10 +308,11 @@ function buildMockExtractedFields(scenario: string) {
   return {
     name: "Jane Doe",
     personal_email: "jane.doe@example.com",
+    work_email: "jane.doe@university.edu",
     phone_number: "+1 555 010 2000",
     year_of_birth: "",
     doctoral_degree_status: "",
-    current_job_country: "United States",
+    current_country_of_employment: "United States",
     research_area: "Semiconductor materials",
   };
 }

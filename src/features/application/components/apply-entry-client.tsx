@@ -421,7 +421,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
         <div className="mx-auto max-w-4xl space-y-4">
           {isReadOnlyReview ? (
             <StatusBanner
-              tone="neutral"
+              tone="review"
               title="Review Mode"
               description="This step is complete. You may review the details here, but no further action is required."
             />

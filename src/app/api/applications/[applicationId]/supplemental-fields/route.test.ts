@@ -46,6 +46,7 @@ describe("POST /api/applications/[applicationId]/supplemental-fields", () => {
       applicationStatus: "INFO_REQUIRED",
       screeningPassportFullName: null,
       screeningContactEmail: null,
+      screeningWorkEmail: null,
       screeningPhoneNumber: null,
     });
 
@@ -63,7 +64,7 @@ describe("POST /api/applications/[applicationId]/supplemental-fields", () => {
             fields: {
               name: "Route Expert",
               personal_email: "route.expert@example.com",
-              phone_number: "+1 555 010 6000",
+              work_email: "route.expert@university.edu",
             },
           }),
         },
@@ -79,7 +80,8 @@ describe("POST /api/applications/[applicationId]/supplemental-fields", () => {
     });
 
     const snapshot = await buildApplicationSnapshot("app_secondary");
-    expect(snapshot?.screeningPhoneNumber).toBe("+1 555 010 6000");
+    expect(snapshot?.screeningWorkEmail).toBe("route.expert@university.edu");
+    expect(snapshot?.screeningPhoneNumber).toBeNull();
   });
 
   it("returns reanalyzing for insufficient-info submissions", async () => {

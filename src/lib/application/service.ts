@@ -99,6 +99,7 @@ function resolvePostReviewApplicationStatus(input: {
   application: {
     screeningPassportFullName?: string | null;
     screeningContactEmail?: string | null;
+    screeningWorkEmail?: string | null;
     screeningPhoneNumber?: string | null;
   };
 }) {
@@ -180,6 +181,7 @@ export async function createResumeUploadRecord(input: {
   objectKey: string;
   screeningPassportFullName?: string;
   screeningContactEmail?: string;
+  screeningWorkEmail?: string;
   screeningPhoneNumber?: string;
 }) {
   const versionNo = (await getLatestResumeVersion(input.applicationId)) + 1;
@@ -200,6 +202,9 @@ export async function createResumeUploadRecord(input: {
       : {}),
     ...(typeof input.screeningContactEmail === "string"
       ? { screeningContactEmail: input.screeningContactEmail }
+      : {}),
+    ...(typeof input.screeningWorkEmail === "string"
+      ? { screeningWorkEmail: input.screeningWorkEmail }
       : {}),
     ...(typeof input.screeningPhoneNumber === "string"
       ? { screeningPhoneNumber: input.screeningPhoneNumber }
@@ -511,6 +516,7 @@ export async function refreshAnalysisState(applicationId: string) {
         | {
             screeningPassportFullName?: string | null;
             screeningContactEmail?: string | null;
+            screeningWorkEmail?: string | null;
             screeningPhoneNumber?: string | null;
           }
         | null;
@@ -525,6 +531,10 @@ export async function refreshAnalysisState(applicationId: string) {
         screeningContactEmail:
           screeningContactPatch.screeningContactEmail ??
           currentApplicationContactState?.screeningContactEmail ??
+          null,
+        screeningWorkEmail:
+          screeningContactPatch.screeningWorkEmail ??
+          currentApplicationContactState?.screeningWorkEmail ??
           null,
         screeningPhoneNumber:
           screeningContactPatch.screeningPhoneNumber ??
@@ -644,6 +654,47 @@ export async function submitSupplementalFields(input: {
   }
 
   if (!hasNonContactMissingFields && application.eligibilityResult === "ELIGIBLE") {
+    const nextApplicationContactState = {
+      screeningPassportFullName:
+        Object.prototype.hasOwnProperty.call(
+          screeningContactPatch,
+          "screeningPassportFullName",
+        )
+          ? screeningContactPatch.screeningPassportFullName
+          : application.screeningPassportFullName,
+      screeningContactEmail: Object.prototype.hasOwnProperty.call(
+        screeningContactPatch,
+        "screeningContactEmail",
+      )
+        ? screeningContactPatch.screeningContactEmail
+        : application.screeningContactEmail,
+      screeningWorkEmail: Object.prototype.hasOwnProperty.call(
+        screeningContactPatch,
+        "screeningWorkEmail",
+      )
+        ? screeningContactPatch.screeningWorkEmail
+        : application.screeningWorkEmail,
+      screeningPhoneNumber: Object.prototype.hasOwnProperty.call(
+        screeningContactPatch,
+        "screeningPhoneNumber",
+      )
+        ? screeningContactPatch.screeningPhoneNumber
+        : application.screeningPhoneNumber,
+    };
+
+    if (
+      hasMissingScreeningContactFields(
+        snapshot?.latestResult?.extractedFields ?? {},
+        nextApplicationContactState,
+      )
+    ) {
+      throw new ApplicationServiceError(
+        "Please complete the required contact fields before continuing.",
+        400,
+        "SCREENING_REQUIRED_CONTACT_FIELDS_MISSING",
+      );
+    }
+
     await updateApplication(input.applicationId, {
       applicationStatus: "ELIGIBLE",
       currentStep: "result",

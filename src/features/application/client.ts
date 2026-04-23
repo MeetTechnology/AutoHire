@@ -110,7 +110,12 @@ export async function confirmResumeUpload(
   file: File,
   objectKey: string,
   uploadId: string,
-  screening?: { passportFullName: string; email: string; phoneNumber?: string },
+  screening?: {
+    passportFullName: string;
+    email: string;
+    workEmail?: string;
+    phoneNumber?: string;
+  },
 ) {
   const response = await fetch(
     `/api/applications/${applicationId}/resume`,
@@ -130,9 +135,12 @@ export async function confirmResumeUpload(
           ? {
               screeningPassportFullName: screening.passportFullName,
               screeningContactEmail: screening.email,
-                ...(screening.phoneNumber
-                  ? { screeningPhoneNumber: screening.phoneNumber }
-                  : {}),
+              ...(screening.workEmail
+                ? { screeningWorkEmail: screening.workEmail }
+                : {}),
+              ...(screening.phoneNumber
+                ? { screeningPhoneNumber: screening.phoneNumber }
+                : {}),
             }
           : {}),
       }),
@@ -263,6 +271,7 @@ export async function fetchAnalysisResult(applicationId: string) {
       type: "text" | "textarea" | "number" | "date" | "select" | "radio";
       required: boolean;
       helpText?: string;
+      placeholder?: string;
       options?: string[];
       defaultValue?: string;
       selectOtherDetails?: {

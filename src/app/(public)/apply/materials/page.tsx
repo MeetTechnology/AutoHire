@@ -307,11 +307,11 @@ export default function MaterialsPage() {
   return (
     <PageFrame>
       <PageShell
-        title={isSubmitted ? "Submission complete" : "Supporting materials"}
+        title={isSubmitted ? "Submission complete" : "Required Documents"}
         description={
           isSubmitted
             ? "Your application package has been received. The page below keeps your application number, expected review timing, and an evidence summary for reference."
-            : "Upload supporting materials by category, satisfy the minimum requirements, and confirm submission. After you submit, this page moves to the Submission complete step on the same screen."
+            : "Please upload the required supporting documents by category. Ensure that all uploaded documents meet the requirements before submitting."
         }
         headerVariant="centered"
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
@@ -582,11 +582,11 @@ export default function MaterialsPage() {
                     </p>
                   </div>
                 ) : null}
-                <div className="flex justify-end">
+                <div className="flex justify-center">
                   <ActionButton
                     onClick={handleSubmit}
                     disabled={isPending || isLoading || !minimumRequirementsMet}
-                    className="w-full sm:w-auto"
+                    className="min-w-[12rem]"
                   >
                     Confirm Submission
                   </ActionButton>

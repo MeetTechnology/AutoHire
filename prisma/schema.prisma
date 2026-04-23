@@ -127,6 +127,7 @@ model Application {
   submittedAt                 DateTime?
   screeningPassportFullName   String?
   screeningContactEmail       String?
+  screeningWorkEmail          String?
   screeningPhoneNumber        String?
   productInnovationDescription String?          @db.Text
   createdAt                   DateTime           @default(now())

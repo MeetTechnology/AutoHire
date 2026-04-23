@@ -39,7 +39,7 @@ type PageShellProps = {
 };
 
 type StatusBannerProps = {
-  tone?: "neutral" | "loading" | "success" | "danger";
+  tone?: "neutral" | "loading" | "success" | "danger" | "review";
   title: string;
   description?: string | null;
   children?: ReactNode;
@@ -123,6 +123,10 @@ const STATUS_STYLES: Record<
   danger: {
     shell: "border-rose-200 bg-rose-50 text-rose-950",
     accent: "bg-rose-700",
+  },
+  review: {
+    shell: "border-rose-200 bg-rose-50 text-rose-950",
+    accent: "bg-rose-600",
   },
 };
 
@@ -455,7 +459,7 @@ export function SectionCard({
               </h2>
             ) : null}
             {description ? (
-              <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
+              <p className="whitespace-pre-line text-sm leading-6 text-[color:var(--foreground-soft)]">
                 {description}
               </p>
             ) : null}

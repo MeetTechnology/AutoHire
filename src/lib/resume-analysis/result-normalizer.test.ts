@@ -15,7 +15,10 @@ describe("normalizeAnalysisResultPayload", () => {
     });
 
     expect(result.eligibilityResult).toBe("ELIGIBLE");
-    expect(result.displaySummary).toContain("Please continue with the detailed analysis");
+    expect(result.displaySummary).toContain(
+      "Congratulations, you are eligible to apply. We have saved your current progress.",
+    );
+    expect(result.displaySummary).toContain("certification documents");
     expect(result.reasonText).toBeNull();
     expect(result.rawReasoning).toContain("meets threshold");
   });
@@ -44,7 +47,10 @@ describe("normalizeAnalysisResultPayload", () => {
     });
 
     expect(result.eligibilityResult).toBe("ELIGIBLE");
-    expect(result.displaySummary).toContain("Please continue with the detailed analysis");
+    expect(result.displaySummary).toContain(
+      "Congratulations, you are eligible to apply. We have saved your current progress.",
+    );
+    expect(result.displaySummary).toContain("certification documents");
     expect(result.reasonText).toBeNull();
     expect(result.rawReasoning).toContain("姓名：Jane Doe");
   });
@@ -113,12 +119,13 @@ describe("normalizeAnalysisResultPayload", () => {
     const raw = `### 1. Extracted Information
 - Name: Jane Doe
 - Personal Email: !!!null!!!
+- Work Email: !!!null!!!
 - Phone Number: !!!null!!!
 - Year of Birth: !!!null!!!
 - Doctoral Degree Status: Doctorate completed
 - Doctoral Graduation Time: 2019
 - Current Title Equivalence: Professor
-- Current Job Country: United States
+- Current Country of Employment: United States
 - Work Experience (2020-Present): Industry R&D
 - Research Area: !!!null!!!
 
@@ -136,6 +143,7 @@ describe("normalizeAnalysisResultPayload", () => {
     );
     expect(result.extractedFields.name).toBe("Jane Doe");
     expect(result.extractedFields.personal_email).toBe("");
+    expect(result.extractedFields.work_email).toBe("");
     expect(result.extractedFields.phone_number).toBe("");
     expect(result.extractedFields.year_of_birth).toBe("");
     expect(result.extractedFields.research_area).toBe("");
@@ -146,12 +154,13 @@ describe("normalizeAnalysisResultPayload", () => {
     const base = `### 1. Extracted Information
 - Name: Jane Doe
 - Personal Email: jane.doe@example.com
+- Work Email: jane.doe@university.edu
 - Phone Number: +1 555 010 2000
 - Year of Birth: 1990
 - Doctoral Degree Status: PhD
 - Doctoral Graduation Time: 2018
 - Current Title Equivalence: AP
-- Current Job Country: UK
+- Current Country of Employment: UK
 - Work Experience (2020-Present): Lab
 - Research Area: AI
 
@@ -167,6 +176,8 @@ describe("normalizeAnalysisResultPayload", () => {
     expect(eligible.eligibilityResult).toBe("ELIGIBLE");
     expect(eligible.reasonText).toBeNull();
     expect(eligible.extractedFields.personal_email).toBe("jane.doe@example.com");
+    expect(eligible.extractedFields.work_email).toBe("jane.doe@university.edu");
+    expect(eligible.extractedFields.current_country_of_employment).toBe("UK");
 
     const ineligible = normalizeAnalysisResultPayload({
       raw_response: `${base}{{{We regret to inform you that your qualifications do not meet the basic application requirements of this talent program. The specific reasons are: Area mismatch. If you have any questions, please feel free to contact us at any time by email, WeChat, phone, or WhatsApp}}}`,
@@ -191,12 +202,13 @@ describe("normalizeAnalysisResultPayload", () => {
     const raw = `### 1. Extracted Information
 - Name: !!!null!!!
 - Personal Email: !!!null!!!
+- Work Email: !!!null!!!
 - Phone Number: !!!null!!!
 - Year of Birth: 1990
 - Doctoral Degree Status: !!!null!!!
 - Doctoral Graduation Time: !!!null!!!
 - Current Title Equivalence: Associate Professor
-- Current Job Country: United States
+- Current Country of Employment: United States
 - Work Experience (2020-Present): 2020-Present, United States, Example University, Associate Professor
 - Research Area: AI
 
@@ -212,5 +224,33 @@ describe("normalizeAnalysisResultPayload", () => {
     expect(result.missingFields.map((field) => field.fieldKey)).toEqual([
       "doctoral_degree_status",
     ]);
+  });
+
+  it("maps legacy Current Job Country to the new employment country key", () => {
+    const result = normalizeAnalysisResultPayload({
+      raw_response: `### 1. Extracted Information
+- Name: Jane Doe
+- Personal Email: jane.doe@example.com
+- Work Email: !!!null!!!
+- Phone Number: !!!null!!!
+- Year of Birth: 1990
+- Doctoral Degree Status: PhD
+- Doctoral Graduation Time: 2018
+- Current Title Equivalence: Associate Professor
+- Current Job Country: United States
+- Work Experience (2020-Present): Lab
+- Research Area: AI
+
+### 2. Analysis Process
+[[[ok]]]
+
+### 3. Determination Result
+{{{After evaluation, your qualifications meet the basic application requirements of this talent program}}}`,
+    });
+
+    expect(result.extractedFields.current_country_of_employment).toBe(
+      "United States",
+    );
+    expect(result.extractedFields.current_job_country).toBeUndefined();
   });
 });

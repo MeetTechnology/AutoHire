@@ -73,6 +73,7 @@ type ApplicationRecord = {
   submittedAt: Date | null;
   screeningPassportFullName: string | null;
   screeningContactEmail: string | null;
+  screeningWorkEmail: string | null;
   screeningPhoneNumber: string | null;
   productInnovationDescription: string | null;
   createdAt: Date;
@@ -292,6 +293,7 @@ function buildSampleStore(): PersistedStore {
         submittedAt: null,
         screeningPassportFullName: null,
         screeningContactEmail: null,
+        screeningWorkEmail: null,
         screeningPhoneNumber: null,
         productInnovationDescription: null,
         createdAt: now,
@@ -316,6 +318,7 @@ function buildSampleStore(): PersistedStore {
         submittedAt: null,
         screeningPassportFullName: "Progress Expert",
         screeningContactEmail: "progress.expert@example.com",
+        screeningWorkEmail: "progress.expert@university.edu",
         screeningPhoneNumber: "+1 555 010 1000",
         productInnovationDescription: null,
         createdAt: now,
@@ -340,6 +343,7 @@ function buildSampleStore(): PersistedStore {
         submittedAt: now,
         screeningPassportFullName: "Submitted Expert",
         screeningContactEmail: "submitted.expert@example.com",
+        screeningWorkEmail: "submitted.expert@university.edu",
         screeningPhoneNumber: "+1 555 010 3000",
         productInnovationDescription: null,
         createdAt: now,
@@ -364,6 +368,7 @@ function buildSampleStore(): PersistedStore {
         submittedAt: null,
         screeningPassportFullName: "Secondary Expert",
         screeningContactEmail: "secondary.expert@example.com",
+        screeningWorkEmail: "secondary.expert@university.edu",
         screeningPhoneNumber: "+1 555 010 4000",
         productInnovationDescription: null,
         createdAt: now,
@@ -618,6 +623,7 @@ export async function createApplication(input: {
       submittedAt: null,
       screeningPassportFullName: null,
       screeningContactEmail: null,
+      screeningWorkEmail: null,
       screeningPhoneNumber: null,
       productInnovationDescription: null,
       createdAt: new Date(),
@@ -669,6 +675,7 @@ export async function updateApplication(
     submittedAt?: Date | null;
     screeningPassportFullName?: string | null;
     screeningContactEmail?: string | null;
+    screeningWorkEmail?: string | null;
     screeningPhoneNumber?: string | null;
     productInnovationDescription?: string | null;
   },
@@ -1639,6 +1646,7 @@ function toSnapshotFromMemory(
     latestAnalysisJobId: application.latestAnalysisJobId,
     screeningPassportFullName: application.screeningPassportFullName,
     screeningContactEmail: application.screeningContactEmail,
+    screeningWorkEmail: application.screeningWorkEmail,
     screeningPhoneNumber: application.screeningPhoneNumber,
     productInnovationDescription:
       application.productInnovationDescription ?? null,
@@ -1736,6 +1744,7 @@ export async function buildApplicationSnapshot(
     screeningPassportFullName:
       applicationRow.screeningPassportFullName ?? null,
     screeningContactEmail: applicationRow.screeningContactEmail ?? null,
+    screeningWorkEmail: applicationRow.screeningWorkEmail ?? null,
     screeningPhoneNumber: applicationRow.screeningPhoneNumber ?? null,
     productInnovationDescription:
       applicationRow.productInnovationDescription ?? null,

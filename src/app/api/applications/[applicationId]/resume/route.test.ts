@@ -64,6 +64,7 @@ describe("POST /api/applications/[applicationId]/resume", () => {
     const snapshot = await buildApplicationSnapshot("app_intro");
     expect(snapshot?.screeningPassportFullName).toBeNull();
     expect(snapshot?.screeningContactEmail).toBeNull();
+    expect(snapshot?.screeningWorkEmail).toBeNull();
     expect(snapshot?.screeningPhoneNumber).toBeNull();
     expect(snapshot?.applicationStatus).toBe("CV_ANALYZING");
   });
@@ -83,6 +84,7 @@ describe("POST /api/applications/[applicationId]/resume", () => {
             objectKey: "applications/app_intro/resume/cv.pdf",
             screeningPassportFullName: "  Passport User  ",
             screeningContactEmail: "  Passport.User@Example.COM ",
+            screeningWorkEmail: "  Passport.User@University.EDU ",
             screeningPhoneNumber: "  +1 555 010 9999  ",
           }),
         },
@@ -96,6 +98,7 @@ describe("POST /api/applications/[applicationId]/resume", () => {
     expect(snapshot).not.toBeNull();
     expect(snapshot?.screeningPassportFullName).toBe("Passport User");
     expect(snapshot?.screeningContactEmail).toBe("passport.user@example.com");
+    expect(snapshot?.screeningWorkEmail).toBe("passport.user@university.edu");
     expect(snapshot?.screeningPhoneNumber).toBe("+1 555 010 9999");
     expect(snapshot?.applicationStatus).toBe("CV_ANALYZING");
 

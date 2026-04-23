@@ -1,7 +1,13 @@
 export const INITIAL_CV_REVIEW_CONTACT_FIELD_KEYS = [
   "name",
   "personal_email",
+  "work_email",
   "phone_number",
+] as const;
+
+export const REQUIRED_SCREENING_CONTACT_FIELD_KEYS = [
+  "name",
+  "personal_email",
 ] as const;
 
 export const INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS = [
@@ -9,7 +15,7 @@ export const INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS = [
   "doctoral_degree_status",
   "doctoral_graduation_time",
   "current_title_equivalence",
-  "current_job_country",
+  "current_country_of_employment",
   "work_experience_2020_present",
   "research_area",
 ] as const;
@@ -17,12 +23,16 @@ export const INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS = [
 export const INITIAL_CV_REVIEW_FIELD_ROWS = [
   { key: "name", label: "Name" },
   { key: "personal_email", label: "Personal Email" },
+  { key: "work_email", label: "Work Email" },
   { key: "phone_number", label: "Phone Number" },
   { key: "year_of_birth", label: "Year of Birth" },
   { key: "doctoral_degree_status", label: "Doctoral Degree Status" },
   { key: "doctoral_graduation_time", label: "Doctoral Graduation Time" },
   { key: "current_title_equivalence", label: "Current Title Equivalence" },
-  { key: "current_job_country", label: "Current Job Country" },
+  {
+    key: "current_country_of_employment",
+    label: "Current Country of Employment",
+  },
   {
     key: "work_experience_2020_present",
     label: "Work Experience (2020–present)",

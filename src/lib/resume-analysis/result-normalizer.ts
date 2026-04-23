@@ -33,7 +33,7 @@ const INELIGIBLE_SENTENCE_CN =
   "很遗憾，您的资历不符合本次人才项目的基本申请要求";
 
 const ELIGIBLE_SUMMARY_EN =
-  "Your profile meets the basic application requirements for this talent program. Please continue with the detailed analysis.";
+  "Congratulations, you are eligible to apply. We have saved your current progress.\n\nNext, please upload the necessary certification documents. Please prepare these files in advance to ensure a smooth submission process.";
 const INELIGIBLE_SUMMARY_EN =
   "Your profile does not currently meet the basic application requirements for this talent program.";
 const INSUFFICIENT_INFO_SUMMARY_EN =
@@ -106,6 +106,7 @@ function parseExtractedInformationSection(text: string): Record<string, string> 
   const patterns: Array<{ key: string; re: RegExp }> = [
     { key: "name", re: /^-\s*Name:\s*(.+)$/gim },
     { key: "personal_email", re: /^-\s*Personal Email:\s*(.+)$/gim },
+    { key: "work_email", re: /^-\s*Work Email:\s*(.+)$/gim },
     { key: "phone_number", re: /^-\s*Phone Number:\s*(.+)$/gim },
     { key: "year_of_birth", re: /^-\s*Year of Birth:\s*(.+)$/gim },
     {
@@ -120,7 +121,14 @@ function parseExtractedInformationSection(text: string): Record<string, string> 
       key: "current_title_equivalence",
       re: /^-\s*Current Title Equivalence:\s*(.+)$/gim,
     },
-    { key: "current_job_country", re: /^-\s*Current Job Country:\s*(.+)$/gim },
+    {
+      key: "current_country_of_employment",
+      re: /^-\s*Current Country of Employment:\s*(.+)$/gim,
+    },
+    {
+      key: "current_country_of_employment",
+      re: /^-\s*Current Job Country:\s*(.+)$/gim,
+    },
     {
       key: "work_experience_2020_present",
       re: /^-\s*Work Experience \(2020-Present\):\s*(.+)$/gim,
@@ -138,7 +146,7 @@ function parseExtractedInformationSection(text: string): Record<string, string> 
     re.lastIndex = 0;
     const match = re.exec(body);
 
-    if (match?.[1]) {
+    if (match?.[1] && !out[key]) {
       out[key] = normalizeInitialCvReviewRawValue(match[1]);
     }
   }
@@ -170,7 +178,7 @@ function criticalFieldLabelsForInference(): Record<string, string> {
     doctoral_degree_status: "Doctoral Degree Status",
     doctoral_graduation_time: "Doctoral Graduation Time",
     current_title_equivalence: "Current Title Equivalence",
-    current_job_country: "Current Job Country",
+    current_country_of_employment: "Current Country of Employment",
     work_experience_2020_present: "Work Experience (2020-Present)",
     research_area: "Research Area",
   } satisfies Record<(typeof INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS)[number], string>;
@@ -389,22 +397,40 @@ function filterExtractedFields(record: Record<string, unknown>) {
   );
 }
 
+function normalizeExtractedFieldKeys(record: Record<string, unknown>) {
+  const normalized = { ...record };
+
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      normalized,
+      "current_country_of_employment",
+    ) &&
+    Object.prototype.hasOwnProperty.call(normalized, "current_job_country")
+  ) {
+    normalized.current_country_of_employment = normalized.current_job_country;
+  }
+
+  delete normalized.current_job_country;
+
+  return normalized;
+}
+
 function coerceExtractedFields(payload: Record<string, unknown>) {
   if (isRecord(payload.extracted_fields)) {
-    return payload.extracted_fields;
+    return normalizeExtractedFieldKeys(payload.extracted_fields);
   }
 
   if (isRecord(payload.extractedFields)) {
-    return payload.extractedFields;
+    return normalizeExtractedFieldKeys(payload.extractedFields);
   }
 
   if (isRecord(payload.fields)) {
-    return payload.fields;
+    return normalizeExtractedFieldKeys(payload.fields);
   }
 
   const filtered = filterExtractedFields(payload);
 
-  return Object.keys(filtered).length > 0 ? filtered : {};
+  return Object.keys(filtered).length > 0 ? normalizeExtractedFieldKeys(filtered) : {};
 }
 
 function buildDecisionFromText(
@@ -538,7 +564,7 @@ export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision
       reasonText: typeof payload.reasonText === "string" ? payload.reasonText : null,
       missingFields: normalizedMissingFields,
       extractedFields: isRecord(payload.extractedFields)
-        ? payload.extractedFields
+        ? normalizeExtractedFieldKeys(payload.extractedFields)
         : {},
       rawReasoning:
         typeof payload.rawReasoning === "string" ? payload.rawReasoning : null,

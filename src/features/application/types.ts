@@ -99,6 +99,7 @@ export type ApplicationSnapshot = {
   latestAnalysisJobId: string | null;
   screeningPassportFullName: string | null;
   screeningContactEmail: string | null;
+  screeningWorkEmail: string | null;
   screeningPhoneNumber: string | null;
   resumeAnalysisStatus: AnalysisJobStatus | null;
   latestResumeFile: UploadedFileSummary | null;

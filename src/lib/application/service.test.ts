@@ -132,6 +132,7 @@ describe("secondary analysis editable service flow", () => {
     await updateApplication("app_secondary", {
       screeningPassportFullName: null,
       screeningContactEmail: null,
+      screeningWorkEmail: null,
       screeningPhoneNumber: null,
     });
 
@@ -139,6 +140,16 @@ describe("secondary analysis editable service flow", () => {
       status: 409,
       code: "SCREENING_CONTACT_FIELDS_REQUIRED",
     } satisfies Partial<ApplicationServiceError>);
+  });
+
+  it("allows entering materials when optional contact fields are missing", async () => {
+    await updateApplication("app_secondary", {
+      screeningWorkEmail: null,
+      screeningPhoneNumber: null,
+    });
+
+    const entered = await enterMaterialsStage("app_secondary");
+    expect(entered?.applicationStatus).toBe("MATERIALS_IN_PROGRESS");
   });
 
   it("still allows entering materials from completed legacy detailed review", async () => {
@@ -199,6 +210,7 @@ describe("secondary analysis editable service flow", () => {
       applicationStatus: "INFO_REQUIRED",
       screeningPassportFullName: null,
       screeningContactEmail: null,
+      screeningWorkEmail: null,
       screeningPhoneNumber: null,
     });
 
@@ -207,7 +219,7 @@ describe("secondary analysis editable service flow", () => {
       fields: {
         name: "  Contact Expert  ",
         personal_email: "  Contact.Expert@Example.COM  ",
-        phone_number: "  +1 555 010 5000  ",
+        work_email: "  Contact.Expert@University.EDU  ",
       },
     });
 
@@ -220,14 +232,16 @@ describe("secondary analysis editable service flow", () => {
     expect(snapshot?.applicationStatus).toBe("ELIGIBLE");
     expect(snapshot?.screeningPassportFullName).toBe("Contact Expert");
     expect(snapshot?.screeningContactEmail).toBe("contact.expert@example.com");
-    expect(snapshot?.screeningPhoneNumber).toBe("+1 555 010 5000");
+    expect(snapshot?.screeningWorkEmail).toBe("contact.expert@university.edu");
+    expect(snapshot?.screeningPhoneNumber).toBeNull();
     expect(snapshot?.latestResult?.extractedFields.name).toBe("Contact Expert");
     expect(snapshot?.latestResult?.extractedFields.personal_email).toBe(
       "contact.expert@example.com",
     );
-    expect(snapshot?.latestResult?.extractedFields.phone_number).toBe(
-      "+1 555 010 5000",
+    expect(snapshot?.latestResult?.extractedFields.work_email).toBe(
+      "contact.expert@university.edu",
     );
+    expect(snapshot?.latestResult?.extractedFields.phone_number).toBeUndefined();
   });
 
   it("returns all ten material buckets after entering the materials stage", async () => {
