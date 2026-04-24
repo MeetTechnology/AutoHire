@@ -16,10 +16,10 @@ export const PRIMARY_STAGE_MESSAGES = [
   "Your CV submission is still in progress. You can keep this page open.",
 ] as const;
 
-/** Generic wait lines for the detailed review step. */
+/** Generic wait lines when a secondary analysis segment is running. */
 export const SECONDARY_STAGE_MESSAGES = [
-  "Preparing your detailed review. This page will update when it is ready.",
-  "The detailed review step is still in progress.",
+  "Preparing an additional review. This page will update when it is ready.",
+  "The additional review is still in progress.",
 ] as const;
 
 export const LONG_WAIT_PRIMARY_SUFFIX =

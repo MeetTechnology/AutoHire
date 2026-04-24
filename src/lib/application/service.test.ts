@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  addMaterialRecord,
   ApplicationServiceError,
   enterMaterialsStage,
   filterSecondaryFieldsForPromptProgress,
@@ -8,8 +9,10 @@ import {
   getEditableSecondaryAnalysisSnapshot,
   getMaterialsByCategory,
   getSnapshot,
+  removeMaterialRecord,
   saveApplicationFeedbackDraft,
   saveEditableSecondaryAnalysisFields,
+  saveProductInnovationDescription,
   shouldShowFullSecondaryFieldSet,
   startSecondaryAnalysis,
   submitApplicationFeedback,
@@ -283,6 +286,40 @@ describe("secondary analysis editable service flow", () => {
       status: 409,
       code: "MATERIALS_MINIMUM_REQUIREMENTS_NOT_MET",
     } satisfies Partial<ApplicationServiceError>);
+  });
+
+  it("keeps submitted status while allowing materials edits and product description updates", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "SUBMITTED",
+    });
+
+    await saveProductInnovationDescription({
+      applicationId: "app_secondary",
+      description: "Refined product positioning after submission.",
+    });
+
+    await addMaterialRecord({
+      applicationId: "app_secondary",
+      category: "IDENTITY",
+      fileName: "passport-final.pdf",
+      fileType: "application/pdf",
+      fileSize: 1024,
+      objectKey: "applications/app_secondary/materials/identity/passport-final.pdf",
+    });
+
+    const afterAdd = await getMaterialsByCategory("app_secondary");
+    expect(afterAdd.identity).toHaveLength(1);
+
+    await removeMaterialRecord("app_secondary", afterAdd.identity[0].id);
+
+    const afterDelete = await getMaterialsByCategory("app_secondary");
+    expect(afterDelete.identity).toHaveLength(0);
+
+    const snapshot = await getSnapshot("app_secondary");
+    expect(snapshot?.applicationStatus).toBe("SUBMITTED");
+    expect(snapshot?.productInnovationDescription).toBe(
+      "Refined product positioning after submission.",
+    );
   });
 });
 

@@ -22,9 +22,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
   }
 
-  if (access.application.applicationStatus !== "MATERIALS_IN_PROGRESS") {
+  if (
+    access.application.applicationStatus !== "MATERIALS_IN_PROGRESS" &&
+    access.application.applicationStatus !== "SUBMITTED"
+  ) {
     return jsonError(
-      "Supporting materials can only be uploaded after the detailed analysis is complete.",
+      "Supporting materials can only be uploaded once your application is in the materials stage.",
       409,
       {
         code: "MATERIALS_STAGE_NOT_READY",

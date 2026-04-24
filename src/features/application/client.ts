@@ -149,9 +149,51 @@ export async function confirmResumeUpload(
     }),
   );
 
+  return parseResponse<{
+    applicationStatus: string;
+    latestResumeFile: {
+      id: string;
+      fileName: string;
+      fileType: string;
+      fileSize: number;
+      uploadedAt: string;
+    };
+  }>(response);
+}
+
+export async function startResumeAnalysis(applicationId: string) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/resume/analyze`,
+    buildFetchOptions({
+      method: "POST",
+      credentials: "include",
+    }),
+  );
+
   return parseResponse<{ analysisJobId: string; applicationStatus: string }>(
     response,
   );
+}
+
+export async function deleteUploadedResume(applicationId: string) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/resume`,
+    buildFetchOptions({
+      method: "DELETE",
+      credentials: "include",
+    }),
+  );
+
+  return parseResponse<{
+    applicationStatus: string;
+    latestResumeFile: {
+      id: string;
+      fileName: string;
+      fileType: string;
+      fileSize: number;
+      uploadedAt: string;
+    } | null;
+  }>(response);
 }
 
 export async function uploadBinary(

@@ -35,6 +35,7 @@ import {
   createEvent,
   createMaterial,
   createResumeFile,
+  deleteResumeFileById,
   createSupplementalFieldSubmission,
   findInvitationById,
   findInvitationByTokenHash,
@@ -220,6 +221,14 @@ export async function createResumeUploadRecord(input: {
   screeningWorkEmail?: string;
   screeningPhoneNumber?: string;
 }) {
+  await requireApplicationStage({
+    applicationId: input.applicationId,
+    allowedStatuses: ["INTRO_VIEWED", "CV_UPLOADED"],
+    message:
+      "A CV can only be uploaded after confirming the introduction and before analysis starts.",
+    code: "RESUME_UPLOAD_NOT_ALLOWED",
+  });
+
   const versionNo = (await getLatestResumeVersion(input.applicationId)) + 1;
   const record = await createResumeFile({
     applicationId: input.applicationId,
@@ -407,6 +416,69 @@ export async function startInitialAnalysis(input: {
   });
 
   return job;
+}
+
+export async function startInitialAnalysisFromLatestResume(
+  applicationId: string,
+) {
+  await requireApplicationStage({
+    applicationId,
+    allowedStatuses: ["CV_UPLOADED"],
+    message:
+      "CV analysis can only start after a CV is uploaded and before review begins.",
+    code: "ANALYSIS_START_NOT_ALLOWED",
+  });
+
+  const latestResumeFile = await getLatestResumeFile(applicationId);
+
+  if (!latestResumeFile) {
+    throw new ApplicationServiceError(
+      "Please upload a CV before starting the analysis.",
+      409,
+      "RESUME_FILE_REQUIRED",
+    );
+  }
+
+  return startInitialAnalysis({
+    applicationId,
+    fileName: latestResumeFile.fileName,
+    resumeFileId: latestResumeFile.id,
+  });
+}
+
+export async function removeLatestResumeUpload(applicationId: string) {
+  await requireApplicationStage({
+    applicationId,
+    allowedStatuses: ["INTRO_VIEWED", "CV_UPLOADED"],
+    message:
+      "Uploaded CV files can only be deleted before analysis starts.",
+    code: "RESUME_DELETE_NOT_ALLOWED",
+  });
+
+  const latestResumeFile = await getLatestResumeFile(applicationId);
+
+  if (!latestResumeFile) {
+    throw new ApplicationServiceError(
+      "There is no uploaded CV to delete.",
+      404,
+      "RESUME_FILE_NOT_FOUND",
+    );
+  }
+
+  await deleteResumeFileById(latestResumeFile.id);
+  const nextLatestResumeFile = await getLatestResumeFile(applicationId);
+  const nextStatus = nextLatestResumeFile ? "CV_UPLOADED" : "INTRO_VIEWED";
+
+  await updateApplication(applicationId, {
+    applicationStatus: nextStatus,
+    currentStep: "resume",
+  });
+
+  await createEvent(applicationId, "RESUME_UPLOAD_DELETED", {
+    resumeFileId: latestResumeFile.id,
+  });
+
+  return nextLatestResumeFile;
 }
 
 export async function refreshAnalysisState(applicationId: string) {
@@ -798,7 +870,7 @@ export async function startSecondaryAnalysis(applicationId: string) {
     applicationId,
     allowedStatuses: ["ELIGIBLE"],
     message:
-      "Detailed analysis can only be started after the initial eligibility review has passed.",
+      "Additional review can only be started after the initial eligibility review has passed.",
     code: "SECONDARY_ANALYSIS_NOT_READY",
   });
   const latestJob = await getLatestAnalysisJob(applicationId);
@@ -1426,9 +1498,9 @@ export async function addMaterialRecord(input: {
 }) {
   await requireApplicationStage({
     applicationId: input.applicationId,
-    allowedStatuses: ["MATERIALS_IN_PROGRESS"],
+    allowedStatuses: ["MATERIALS_IN_PROGRESS", "SUBMITTED"],
     message:
-      "Supporting materials can only be uploaded after the detailed analysis is complete.",
+      "Supporting materials can only be uploaded once your application is in the materials stage.",
     code: "MATERIALS_STAGE_NOT_READY",
   });
 
@@ -1443,7 +1515,7 @@ export async function removeMaterialRecord(
 ) {
   await requireApplicationStage({
     applicationId,
-    allowedStatuses: ["MATERIALS_IN_PROGRESS"],
+    allowedStatuses: ["MATERIALS_IN_PROGRESS", "SUBMITTED"],
     message:
       "Supporting materials can only be edited while the materials stage is active.",
     code: "MATERIALS_STAGE_NOT_EDITABLE",
@@ -1464,7 +1536,7 @@ export async function saveProductInnovationDescription(input: {
 }) {
   await requireApplicationStage({
     applicationId: input.applicationId,
-    allowedStatuses: ["MATERIALS_IN_PROGRESS"],
+    allowedStatuses: ["MATERIALS_IN_PROGRESS", "SUBMITTED"],
     message:
       "Product description can only be edited while the materials stage is active.",
     code: "MATERIALS_STAGE_NOT_EDITABLE",
@@ -1480,7 +1552,7 @@ export async function getMaterialsByCategory(applicationId: string) {
     applicationId,
     allowedStatuses: ["MATERIALS_IN_PROGRESS", "SUBMITTED"],
     message:
-      "Supporting materials are only available after the detailed analysis review is complete.",
+      "Supporting materials are only available once your application is in the materials stage.",
     code: "MATERIALS_STAGE_NOT_READY",
   });
 

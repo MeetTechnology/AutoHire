@@ -31,6 +31,9 @@ export const APPLICATION_STATUSES = [
 /** Placeholder inbox for expert feedback; replace with the operations-provided address. */
 export const EXPERT_PROGRAM_CONTACT_EMAIL = "review-contact@example.com";
 export const SUBMISSION_COMPLETE_CONTACT_EMAIL = "lishijing@1000help.com";
+/** Official WeChat add-contact / profile link (encoded in QR on submission-complete). */
+export const SUBMISSION_COMPLETE_WECHAT_URL =
+  "https://u.wechat.com/MAPOu5JpI2RJTwPM2s_uy50?s=4";
 export const SUBMISSION_COMPLETE_WHATSAPP_URL = "https://wa.me/qr/E75L2UF5M255N1";
 export const APPLICATION_FEEDBACK_COMMENT_MAX_LENGTH = 2000;
 

@@ -531,7 +531,7 @@ function buildSampleStore(): PersistedStore {
         eligibilityResult: "ELIGIBLE",
         reasonText: "The profile meets the basic application requirements.",
         displaySummary:
-          "You passed the initial eligibility review. Please continue with the detailed analysis.",
+          "Your profile meets the basic application requirements for this talent program. Please proceed to the next step to provide the required documents.",
         extractedFields: {
           "*姓名": "Submitted Expert",
           "最高学位": "Doctorate",
@@ -548,7 +548,7 @@ function buildSampleStore(): PersistedStore {
         eligibilityResult: "ELIGIBLE",
         reasonText: "The profile meets the basic application requirements.",
         displaySummary:
-          "You passed the initial eligibility review. Please continue with the detailed analysis.",
+          "Your profile meets the basic application requirements for this talent program. Please proceed to the next step to provide the required documents.",
         extractedFields: {
           "*姓名": "Secondary Expert",
           "最高学位": "Doctorate",
@@ -1145,6 +1145,25 @@ export async function getLatestResumeFile(applicationId: string) {
   return prisma.resumeFile.findFirst({
     where: { applicationId },
     orderBy: [{ versionNo: "desc" }, { uploadedAt: "desc" }],
+  });
+}
+
+export async function deleteResumeFileById(fileId: string) {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const index = store.resumeFiles.findIndex((item) => item.id === fileId);
+
+    if (index < 0) {
+      return null;
+    }
+
+    const [removed] = store.resumeFiles.splice(index, 1);
+    return removed ?? null;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.resumeFile.delete({
+    where: { id: fileId },
   });
 }
 

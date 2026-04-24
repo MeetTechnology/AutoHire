@@ -49,7 +49,10 @@ test("eligible resume flow can reach materials and submit", async ({
   await expect(page.getByLabel("Passport Full Name")).toHaveCount(0);
   await expect(page.getByText("Draft saves automatically")).toHaveCount(0);
   await uploadVirtualFile(page, "candidate-eligible.pdf");
-  await page.getByRole("button", { name: "Submit CV" }).click();
+  await expect(page.getByText("candidate-eligible.pdf")).toBeVisible({
+    timeout: 15000,
+  });
+  await page.getByRole("button", { name: "Start CV Analysis" }).click();
 
   await expect(
     page.getByText("Initial CV review passed", {
@@ -119,7 +122,10 @@ test("eligible review with missing contact fields requires completion before mat
   await page.goto("/apply/resume?t=sample-init-token");
 
   await uploadVirtualFile(page, "candidate-contact-missing.pdf");
-  await page.getByRole("button", { name: "Submit CV" }).click();
+  await expect(page.getByText("candidate-contact-missing.pdf")).toBeVisible({
+    timeout: 15000,
+  });
+  await page.getByRole("button", { name: "Start CV Analysis" }).click();
 
   await expect(
     page.getByRole("heading", {

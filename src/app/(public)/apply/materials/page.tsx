@@ -29,7 +29,6 @@ import {
   fetchMaterials,
   fetchSession,
   type MaterialsResponse,
-  saveProductInnovationDescription,
   submitApplicationRequest,
   uploadBinary,
 } from "@/features/application/client";
@@ -75,16 +74,7 @@ function MaterialsPageContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [mailtoHref, setMailtoHref] = useState<string | undefined>(undefined);
-  const [productDescriptionDraft, setProductDescriptionDraft] = useState("");
-  const [productDescriptionError, setProductDescriptionError] = useState<
-    string | null
-  >(null);
-  const [productDescriptionSavedHint, setProductDescriptionSavedHint] =
-    useState<string | null>(null);
-  const productDescriptionServerKey = useRef<string>("");
   const hasTrackedPageView = useRef(false);
-  const snapshotApplicationId = snapshot?.applicationId;
-  const serverProductDescription = snapshot?.productInnovationDescription ?? "";
   const requestedView = searchParams.get("view");
   const isReviewRequest = requestedView === "review";
 
@@ -170,48 +160,13 @@ function MaterialsPageContent() {
     });
   }, [snapshot]);
 
-  useEffect(() => {
-    if (!snapshotApplicationId) {
-      return;
-    }
-
-    const key = `${snapshotApplicationId}:${serverProductDescription}`;
-    if (productDescriptionServerKey.current === key) {
-      return;
-    }
-
-    productDescriptionServerKey.current = key;
-    setProductDescriptionDraft(serverProductDescription);
-  }, [snapshotApplicationId, serverProductDescription]);
-
-  const isReadOnlyReview = snapshot
+  const isFlowReadOnlyReview = snapshot
     ? isFlowStepReadOnly(snapshot.applicationStatus, 2)
     : false;
-
-  function handleSaveProductDescription() {
-    if (!snapshot || isReadOnlyReview) {
-      return;
-    }
-
-    startTransition(async () => {
-      try {
-        setProductDescriptionError(null);
-        setProductDescriptionSavedHint(null);
-        await saveProductInnovationDescription(
-          snapshot.applicationId,
-          productDescriptionDraft,
-        );
-        setProductDescriptionSavedHint("Saved.");
-        setSnapshot(await fetchSession());
-      } catch (nextError) {
-        setProductDescriptionError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Unable to save the product description.",
-        );
-      }
-    });
-  }
+  const canEditSubmittedReview = Boolean(
+    snapshot?.applicationStatus === "SUBMITTED" && isReviewRequest,
+  );
+  const isReadOnlyReview = isFlowReadOnlyReview && !canEditSubmittedReview;
 
   function handleUpload(category: MaterialCategory, files: FileList | null) {
     if (!snapshot || isReadOnlyReview || !files?.length) {
@@ -342,20 +297,12 @@ function MaterialsPageContent() {
             />
           ) : null}
 
-          {isReadOnlyReview ? (
-            <StatusBanner
-              tone="review"
-              title="Review Mode"
-              description="This step is complete. You may review the uploaded materials here, but no further action is required."
-            />
-          ) : null}
-
           <SectionCard
             title="Upload by category"
             description={
               isReadOnlyReview
                 ? "The submitted package remains grouped by category for reference."
-                : "Attach one or more files per category. Identity documents, doctoral education evidence, and latest employment evidence are mandatory before final confirmation."
+                : "Please upload files by category. Categories marked with an asterisk (*) are mandatory."
             }
           >
             <div className="space-y-3">
@@ -367,94 +314,42 @@ function MaterialsPageContent() {
                   (item) => item.key === categoryKey,
                 );
                 const requirementMet = records.length > 0;
+                const fileCountLabel =
+                  records.length === 1
+                    ? "1 File Uploaded"
+                    : `${records.length} Files Uploaded`;
 
                 return (
                   <DisclosureSection
                     key={category.key}
-                    title={category.label}
+                    title={
+                      isRequiredCategory ? `${category.label} *` : category.label
+                    }
                     summary={
                       isReadOnlyReview
-                        ? "Read-only uploaded evidence for this category."
-                        : "Expand to review guidance, upload files, and manage the current list."
+                        ? "Submitted files are available for review."
+                        : "Expand to review guidance and manage uploaded files."
                     }
                     defaultOpen={
                       isRequiredCategory && !requirementMet && !isReadOnlyReview
                     }
                     meta={
-                      <div className="flex flex-wrap items-center gap-2">
-                        {isRequiredCategory ? (
-                          <span className="inline-flex rounded-full border border-[color:var(--accent)] bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.12em] text-[color:var(--accent)] uppercase">
-                            Required
-                          </span>
-                        ) : null}
-                        <span className="inline-flex rounded-full border border-[color:var(--border)] bg-white px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.12em] text-[color:var(--primary)] uppercase">
-                          {records.length} file{records.length === 1 ? "" : "s"}
-                        </span>
-                        <span className="inline-flex rounded-full border border-[color:var(--border)] bg-white px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-600 uppercase">
-                          {requirementMet ? "Ready" : "Pending"}
+                      <div className="flex items-center">
+                        <span
+                          className={
+                            requirementMet
+                              ? "inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.06em] text-emerald-700"
+                              : "inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.06em] text-amber-700"
+                          }
+                        >
+                          {requirementMet
+                            ? fileCountLabel
+                            : "⚠ Missing"}
                         </span>
                       </div>
                     }
                   >
                     <div className="space-y-4">
-                      {category.key === "PRODUCT" ? (
-                        <div className="space-y-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                          <p>
-                            If you have an innovative product, please briefly
-                            describe the product name, innovation aspects, and
-                            the actual economic benefits generated.
-                          </p>
-                          {isReadOnlyReview ? (
-                            <p className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm whitespace-pre-wrap text-[color:var(--foreground)]">
-                              {snapshot?.productInnovationDescription?.trim()
-                                ? snapshot.productInnovationDescription
-                                : "No product description was provided."}
-                            </p>
-                          ) : (
-                            <div className="space-y-2">
-                              <textarea
-                                value={productDescriptionDraft}
-                                onChange={(event) => {
-                                  setProductDescriptionDraft(
-                                    event.target.value,
-                                  );
-                                  setProductDescriptionSavedHint(null);
-                                }}
-                                disabled={isPending}
-                                rows={5}
-                                className="w-full rounded-xl border border-[color:var(--border-strong)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground)] ring-[color:var(--accent)] outline-none focus-visible:ring-2"
-                              />
-                              {productDescriptionError ? (
-                                <p className="text-xs font-medium text-red-600">
-                                  {productDescriptionError}
-                                </p>
-                              ) : null}
-                              {productDescriptionSavedHint ? (
-                                <p className="text-xs font-medium text-emerald-700">
-                                  {productDescriptionSavedHint}
-                                </p>
-                              ) : null}
-                              <div className="flex justify-end">
-                                <ActionButton
-                                  type="button"
-                                  onClick={handleSaveProductDescription}
-                                  disabled={isPending}
-                                  className="w-full sm:w-auto"
-                                >
-                                  Save description
-                                </ActionButton>
-                              </div>
-                            </div>
-                          )}
-                          <p className="pt-1 font-medium text-[color:var(--foreground)]">
-                            Please upload your Product Introduction Documents
-                          </p>
-                          <p className="text-xs tracking-[0.06em] text-slate-600">
-                            The size of a single image or file cannot exceed
-                            300M
-                          </p>
-                        </div>
-                      ) : null}
                       <div className="text-sm leading-6 text-[color:var(--foreground-soft)]">
                         <MaterialCategoryGuidance category={category.key} />
                       </div>
@@ -478,11 +373,22 @@ function MaterialsPageContent() {
                             className="sr-only"
                           />
                           <div className="rounded-xl border border-dashed border-[color:var(--border-strong)] bg-white px-4 py-4 text-center transition hover:border-[color:var(--primary)] hover:bg-slate-50">
-                            <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                              Add files
-                            </p>
-                            <p className="mt-1 text-sm font-medium text-[color:var(--primary)]">
-                              Select one or more files
+                            <p className="text-sm font-medium text-[color:var(--primary)]">
+                              {records.length > 0 ? (
+                                <>
+                                  <span className="mr-1 font-semibold" aria-hidden>
+                                    +
+                                  </span>
+                                  Click to add file(s)
+                                </>
+                              ) : (
+                                <>
+                                  <span className="mr-1 font-semibold" aria-hidden>
+                                    +
+                                  </span>
+                                  Click to upload file(s)
+                                </>
+                              )}
                             </p>
                           </div>
                         </label>
@@ -495,14 +401,14 @@ function MaterialsPageContent() {
                             className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground-soft)]"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <span className="truncate">
+                              <span className="truncate" title={record.fileName}>
                                 {record.fileName}
                               </span>
                               {!isReadOnlyReview ? (
                                 <button
                                   type="button"
                                   onClick={() => handleDelete(record.id)}
-                                  className="text-xs font-medium text-[color:var(--accent)] transition hover:text-[#14532d]"
+                                  className="shrink-0 text-xs font-medium text-[color:var(--accent)] transition hover:text-[#14532d]"
                                 >
                                   Delete
                                 </button>
@@ -523,7 +429,7 @@ function MaterialsPageContent() {
             </div>
           </SectionCard>
 
-          {!isReadOnlyReview ? (
+          {!isReadOnlyReview && snapshot?.applicationStatus !== "SUBMITTED" ? (
             <SectionCard
               title="Final submission"
               description="Confirm only when the evidence package is complete enough for review."

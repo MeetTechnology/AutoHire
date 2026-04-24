@@ -7,7 +7,6 @@ import {
   MessageCircle,
   PencilLine,
   Send,
-  Star,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
@@ -25,6 +24,7 @@ import {
   APPLICATION_FEEDBACK_COMMENT_MAX_LENGTH,
   APPLICATION_FLOW_STEPS_WITH_INTRO,
   SUBMISSION_COMPLETE_CONTACT_EMAIL,
+  SUBMISSION_COMPLETE_WECHAT_URL,
   SUBMISSION_COMPLETE_WHATSAPP_URL,
 } from "@/features/application/constants";
 import {
@@ -46,16 +46,21 @@ import type {
 import { trackPageView } from "@/lib/tracking/client";
 import { cn } from "@/lib/utils";
 
-const SUBMISSION_MESSAGE =
+const SUBMISSION_HEADLINE =
   "Application Received! We will review your package and contact you within 1 week.";
 const NEXT_STEP_MESSAGE =
   "Next Step: Connect with your dedicated Talent Consultant.";
 
-const FEEDBACK_TITLE = "How was your submission experience?";
-const FEEDBACK_SUBTITLE =
-  "Optional, takes about 30 seconds. Please don't include passwords or sensitive information.";
+/** Primary: 给我们留言 · Secondary: 如果您有任何想说的，请在这里告诉我们 */
+const FEEDBACK_HEADING_PRIMARY = "Leave us a message";
+const FEEDBACK_HEADING_SECONDARY =
+  "If you have anything you'd like to say, please tell us here.";
 
-const RATING_VALUES = [1, 2, 3, 4, 5] as const;
+/** Mid-size (“s”) success links under QR codes: between compact and full default height. */
+const QR_CONTACT_OPEN_LINK_CLASS_NAME = cn(
+  getButtonClassName("success"),
+  "min-h-10 gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold w-auto",
+);
 
 function serializeFeedbackDraft(input: {
   rating: number | null;
@@ -82,46 +87,6 @@ function formatTimestamp(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
-}
-
-function formatRelativeDraftSaved(value: string | null) {
-  if (!value) {
-    return "Draft saved automatically.";
-  }
-
-  const savedAt = new Date(value);
-
-  if (Number.isNaN(savedAt.getTime())) {
-    return "Draft saved automatically.";
-  }
-
-  const diffMs = Date.now() - savedAt.getTime();
-  const diffSeconds = Math.max(0, Math.round(diffMs / 1000));
-
-  if (diffSeconds < 10) {
-    return "Draft saved just now.";
-  }
-
-  const relativeTime = new Intl.RelativeTimeFormat("en", {
-    numeric: "auto",
-  });
-
-  if (diffSeconds < 60) {
-    return `Draft saved ${relativeTime.format(-diffSeconds, "second")}.`;
-  }
-
-  const diffMinutes = Math.round(diffSeconds / 60);
-  if (diffMinutes < 60) {
-    return `Draft saved ${relativeTime.format(-diffMinutes, "minute")}.`;
-  }
-
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) {
-    return `Draft saved ${relativeTime.format(-diffHours, "hour")}.`;
-  }
-
-  const diffDays = Math.round(diffHours / 24);
-  return `Draft saved ${relativeTime.format(-diffDays, "day")}.`;
 }
 
 function detectDeviceType(width: number): FeedbackDeviceType {
@@ -190,7 +155,6 @@ export default function SubmissionCompletePage() {
     serializeFeedbackDraft({ rating: null, comment: "" }),
   );
   const hasTrackedViewRef = useRef(false);
-  const ratingOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     let active = true;
@@ -285,7 +249,7 @@ export default function SubmissionCompletePage() {
 
   const trimmedComment = feedback.comment.trim();
   const hasComment = trimmedComment.length > 0;
-  const hasFeedbackContent = feedback.rating !== null || hasComment;
+  const hasFeedbackContent = hasComment;
   const commentTooLong =
     feedback.comment.length > APPLICATION_FEEDBACK_COMMENT_MAX_LENGTH;
 
@@ -368,9 +332,6 @@ export default function SubmissionCompletePage() {
     [snapshot?.applicationStatus],
   );
 
-  const remainingCharacters =
-    APPLICATION_FEEDBACK_COMMENT_MAX_LENGTH - feedback.comment.length;
-  const displayRemainingCharacters = Math.max(remainingCharacters, 0);
   const isSubmitted = feedback.status === "SUBMITTED";
   const canSendFeedback =
     isFeedbackReady &&
@@ -382,17 +343,6 @@ export default function SubmissionCompletePage() {
     : submitError
       ? "Try again"
       : "Send feedback";
-  const showStatusRow = hasComment || commentTooLong || saveState === "error";
-  const statusMessage = commentTooLong
-    ? "Please shorten your comment to 2,000 characters or fewer."
-    : saveState === "saving"
-      ? "Saving draft..."
-      : saveState === "error"
-        ? "Draft couldn't be saved, but you can still send your feedback."
-        : hasComment
-          ? formatRelativeDraftSaved(feedback.draftSavedAt)
-          : null;
-  const statusTone = commentTooLong || saveState === "error" ? "danger" : "neutral";
   const liveMessage =
     isSubmitted
       ? "Thanks - your feedback was sent."
@@ -400,53 +350,9 @@ export default function SubmissionCompletePage() {
         ? "Feedback couldn't be sent. Please try again."
         : commentTooLong
           ? "Please shorten your comment to 2,000 characters or fewer."
-          : saveState === "saving"
-            ? "Saving draft."
-            : saveState === "saved"
-              ? formatRelativeDraftSaved(feedback.draftSavedAt)
-              : draftError && !isFeedbackReady
-                ? "Feedback is temporarily unavailable."
-                : null;
-
-  function handleRatingSelect(value: number) {
-    setSubmitError(null);
-    setFeedback((current) => ({
-      ...current,
-      rating: current.rating === value ? null : value,
-    }));
-  }
-
-  function handleRatingKeyDown(
-    event: React.KeyboardEvent<HTMLButtonElement>,
-    index: number,
-  ) {
-    const lastIndex = RATING_VALUES.length - 1;
-    let nextIndex: number | null = null;
-
-    switch (event.key) {
-      case "ArrowRight":
-      case "ArrowDown":
-        nextIndex = index === lastIndex ? 0 : index + 1;
-        break;
-      case "ArrowLeft":
-      case "ArrowUp":
-        nextIndex = index === 0 ? lastIndex : index - 1;
-        break;
-      case "Home":
-        nextIndex = 0;
-        break;
-      case "End":
-        nextIndex = lastIndex;
-        break;
-      default:
-        return;
-    }
-
-    event.preventDefault();
-    const nextValue = RATING_VALUES[nextIndex];
-    handleRatingSelect(nextValue);
-    ratingOptionRefs.current[nextIndex]?.focus();
-  }
+          : draftError && !isFeedbackReady
+            ? "Feedback is temporarily unavailable."
+            : null;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -509,10 +415,7 @@ export default function SubmissionCompletePage() {
           ) : null}
 
           {!isLoading && !error && snapshot ? (
-            <SectionCard
-              title="Application Received!"
-              description={SUBMISSION_MESSAGE}
-            >
+            <SectionCard title={SUBMISSION_HEADLINE}>
               <div className="flex flex-col gap-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
                 <div className="flex items-start gap-3">
                   <CheckCircle2
@@ -524,35 +427,60 @@ export default function SubmissionCompletePage() {
                       {NEXT_STEP_MESSAGE}
                     </p>
                     <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
-                      Use the QR code to connect with your consultant and
-                      continue the follow-up process.
+                      Scan a QR code or use the open link for WeChat or WhatsApp
+                      to connect with your consultant and continue follow-up.
                     </p>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-[color:var(--border)] bg-white p-5 sm:p-6">
-                  <div className="flex flex-col items-center gap-4 text-center">
-                    <div className="rounded-2xl border border-[color:var(--border)] bg-white p-3 shadow-[var(--shadow-card)]">
-                      <QRCodeSVG
-                        value={SUBMISSION_COMPLETE_WHATSAPP_URL}
-                        size={248}
-                        level="M"
-                        marginSize={4}
-                        title="WhatsApp QR code for contacting the overseas talent consultant"
-                      />
+                  <div className="grid gap-8 sm:grid-cols-2 sm:gap-6">
+                    <div className="flex flex-col items-center gap-3 text-center">
+                      <p className="text-sm font-semibold text-[color:var(--primary)]">
+                        WeChat
+                      </p>
+                      <div className="rounded-2xl border border-[color:var(--border)] bg-white p-3 shadow-[var(--shadow-card)]">
+                        <QRCodeSVG
+                          value={SUBMISSION_COMPLETE_WECHAT_URL}
+                          size={200}
+                          level="M"
+                          marginSize={4}
+                          title="WeChat QR code for adding the talent consultant"
+                        />
+                      </div>
+                      <a
+                        href={SUBMISSION_COMPLETE_WECHAT_URL}
+                        className={QR_CONTACT_OPEN_LINK_CLASS_NAME}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <MessageCircle className="size-5 shrink-0" aria-hidden />
+                        Open WeChat
+                      </a>
                     </div>
-                    <p className="text-sm font-medium text-[color:var(--foreground-soft)]">
-                      Scan to add on WeChat or WhatsApp
-                    </p>
-                    <a
-                      href={SUBMISSION_COMPLETE_WHATSAPP_URL}
-                      className={`${getButtonClassName("success")} min-h-14 w-full text-base sm:w-auto sm:min-w-80`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <MessageCircle className="h-5 w-5" aria-hidden />
-                      Open WhatsApp Chat
-                    </a>
+                    <div className="flex flex-col items-center gap-3 text-center">
+                      <p className="text-sm font-semibold text-[color:var(--primary)]">
+                        WhatsApp
+                      </p>
+                      <div className="rounded-2xl border border-[color:var(--border)] bg-white p-3 shadow-[var(--shadow-card)]">
+                        <QRCodeSVG
+                          value={SUBMISSION_COMPLETE_WHATSAPP_URL}
+                          size={200}
+                          level="M"
+                          marginSize={4}
+                          title="WhatsApp QR code for contacting the overseas talent consultant"
+                        />
+                      </div>
+                      <a
+                        href={SUBMISSION_COMPLETE_WHATSAPP_URL}
+                        className={QR_CONTACT_OPEN_LINK_CLASS_NAME}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <MessageCircle className="size-5 shrink-0" aria-hidden />
+                        Open WhatsApp Chat
+                      </a>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -562,11 +490,15 @@ export default function SubmissionCompletePage() {
           {!isLoading && !error && snapshot ? (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
               <SectionCard
-                title={isSubmitted ? "Thanks for your feedback." : FEEDBACK_TITLE}
+                title={
+                  isSubmitted
+                    ? "Thanks for your feedback."
+                    : FEEDBACK_HEADING_PRIMARY
+                }
                 description={
                   isSubmitted
                     ? "Your feedback was sent and will help us improve this experience."
-                    : FEEDBACK_SUBTITLE
+                    : FEEDBACK_HEADING_SECONDARY
                 }
                 className="mx-auto max-w-[48rem] border-[color:var(--border)] bg-white shadow-none"
               >
@@ -616,48 +548,25 @@ export default function SubmissionCompletePage() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
-                      className="space-y-4"
+                      className="flex flex-col gap-4"
                     >
                       <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-950">
                         Thanks - your feedback was sent.
                       </div>
-                      <div className="space-y-3">
-                        {typeof feedback.rating === "number" ? (
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-1" aria-label={`${feedback.rating} out of 5`}>
-                              {RATING_VALUES.map((value) => (
-                                <Star
-                                  key={value}
-                                  className={cn(
-                                    "size-5",
-                                    value <= (feedback.rating ?? 0)
-                                      ? "fill-amber-400 text-amber-400"
-                                      : "fill-transparent text-[color:var(--border-strong)]",
-                                  )}
-                                  aria-hidden
-                                />
-                              ))}
-                            </div>
-                            <p className="text-base font-semibold text-[color:var(--primary)]">
-                              {feedback.rating}/5
-                            </p>
-                          </div>
-                        ) : null}
-                        <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/20 p-4">
-                          <div className="flex items-center gap-2">
-                            <Clock3
-                              className="h-4 w-4 text-[color:var(--primary)]"
-                              aria-hidden
-                            />
-                            <p className="text-sm font-semibold text-[color:var(--primary)]">
-                              Sent
-                            </p>
-                          </div>
-                          <p className="mt-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                            {formatTimestamp(feedback.submittedAt) ??
-                              "Your feedback was submitted successfully."}
+                      <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/20 p-4">
+                        <div className="flex items-center gap-2">
+                          <Clock3
+                            className="h-4 w-4 text-[color:var(--primary)]"
+                            aria-hidden
+                          />
+                          <p className="text-sm font-semibold text-[color:var(--primary)]">
+                            Sent
                           </p>
                         </div>
+                        <p className="mt-3 text-sm leading-6 text-[color:var(--foreground-soft)]">
+                          {formatTimestamp(feedback.submittedAt) ??
+                            "Your feedback was submitted successfully."}
+                        </p>
                       </div>
                       {hasComment ? (
                         <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/20 p-4">
@@ -682,7 +591,7 @@ export default function SubmissionCompletePage() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
-                      className="space-y-5"
+                      className="flex flex-col gap-5"
                       onSubmit={handleSubmit}
                     >
                       {submitError ? (
@@ -701,74 +610,9 @@ export default function SubmissionCompletePage() {
                         />
                       ) : null}
 
-                      <fieldset className="space-y-3">
-                        <legend className="sr-only">Overall rating</legend>
-                        <div
-                          role="radiogroup"
-                          aria-label="Overall rating"
-                          className="flex items-center gap-2"
-                        >
-                          {RATING_VALUES.map((value, index) => {
-                            const checked = feedback.rating === value;
-                            const tabIndex =
-                              feedback.rating === null
-                                ? index === 0
-                                  ? 0
-                                  : -1
-                                : checked
-                                  ? 0
-                                  : -1;
-
-                            return (
-                              <motion.button
-                                key={value}
-                                ref={(element) => {
-                                  ratingOptionRefs.current[index] = element;
-                                }}
-                                type="button"
-                                role="radio"
-                                aria-checked={checked}
-                                aria-label={`${value} out of 5`}
-                                disabled={isSubmitting}
-                                tabIndex={tabIndex}
-                                whileHover={isSubmitting ? undefined : { y: -1 }}
-                                whileTap={isSubmitting ? undefined : { scale: 0.98 }}
-                                onClick={() => handleRatingSelect(value)}
-                                onKeyDown={(event) => handleRatingKeyDown(event, index)}
-                                className={cn(
-                                  "rounded-md p-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
-                                  checked
-                                    ? "bg-amber-50"
-                                    : "hover:bg-[color:var(--muted)]/40",
-                                )}
-                              >
-                                <Star
-                                  className={cn(
-                                    "size-7",
-                                    value <= (feedback.rating ?? 0)
-                                      ? "fill-amber-400 text-amber-400"
-                                      : "fill-transparent text-[color:var(--border-strong)]",
-                                  )}
-                                  aria-hidden
-                                />
-                              </motion.button>
-                            );
-                          })}
-                          <p className="ml-1 text-sm font-semibold text-[color:var(--primary)]">
-                            {feedback.rating ?? 0}/5
-                          </p>
-                        </div>
-                      </fieldset>
-
-                      <div className="space-y-2">
-                        <label
-                          className="text-sm font-semibold text-[color:var(--primary)]"
-                          htmlFor="feedback-comment"
-                        >
-                          What worked well, or what could we improve?{" "}
-                          <span className="text-[color:var(--foreground-soft)]">
-                            · optional
-                          </span>
+                      <div className="flex flex-col gap-2">
+                        <label className="sr-only" htmlFor="feedback-comment">
+                          Message
                         </label>
                         <textarea
                           id="feedback-comment"
@@ -789,50 +633,27 @@ export default function SubmissionCompletePage() {
                             }));
                           }}
                           aria-invalid={commentTooLong}
-                          aria-describedby="feedback-comment-help feedback-status"
+                          aria-describedby={
+                            commentTooLong ? "feedback-comment-too-long" : undefined
+                          }
                           disabled={isSubmitting}
                         />
-                        <p
-                          id="feedback-comment-help"
-                          className="text-sm leading-6 text-[color:var(--foreground-soft)]"
-                        >
-                          Please don&apos;t include passwords, payment details, or
-                          other sensitive information.
-                        </p>
-                      </div>
-
-                      {showStatusRow ? (
-                        <div
-                          id="feedback-status"
-                          className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between"
-                        >
+                        {commentTooLong ? (
                           <p
-                            className={cn(
-                              statusTone === "danger"
-                                ? "text-rose-700"
-                                : "text-[color:var(--foreground-soft)]",
-                            )}
+                            id="feedback-comment-too-long"
+                            className="text-sm font-medium text-rose-700"
                           >
-                            {statusMessage}
+                            Please shorten your comment to 2,000 characters or fewer.
                           </p>
-                          {hasComment ? (
-                            <p
-                              className={cn(
-                                "text-[color:var(--foreground-soft)]",
-                                remainingCharacters < 200 && "font-medium text-amber-700",
-                                commentTooLong && "font-medium text-rose-700",
-                              )}
-                            >
-                              {displayRemainingCharacters.toLocaleString("en-US")} characters left
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : null}
+                        ) : null}
+                      </div>
 
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
                         <button
                           type="submit"
-                          className={`${getButtonClassName("secondary")} w-full sm:w-auto`}
+                          className={cn(
+                            "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-zinc-950 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto",
+                          )}
                           disabled={!canSendFeedback}
                         >
                           <Send className="h-4 w-4" aria-hidden />
@@ -840,7 +661,7 @@ export default function SubmissionCompletePage() {
                         </button>
                         {!hasFeedbackContent ? (
                           <p className="pt-1 text-sm leading-6 text-[color:var(--foreground-soft)]">
-                            Choose a rating or write a comment to send feedback.
+                            Write a comment to send feedback.
                           </p>
                         ) : null}
                       </div>

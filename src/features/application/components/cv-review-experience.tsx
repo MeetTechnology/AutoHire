@@ -9,6 +9,7 @@ import {
   useState,
   useTransition,
   type ChangeEvent,
+  type ReactNode,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -32,9 +33,11 @@ import {
 import {
   confirmResumeUpload,
   createResumeUploadIntent,
+  deleteUploadedResume,
   fetchAnalysisResult,
   fetchAnalysisStatus,
   fetchSession,
+  startResumeAnalysis as startResumeAnalysisRequest,
   submitSupplementalFields,
   uploadBinary,
 } from "@/features/application/client";
@@ -62,6 +65,7 @@ import type { ApplicationFlowStep } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
 import { isScreeningContactFieldKey } from "@/lib/application/screening-contact";
 import { createUploadId, trackPageView } from "@/lib/tracking/client";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 type SupplementalFormValues = Record<string, string>;
@@ -475,8 +479,8 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="loading"
-        title="Detailed review in progress"
-        description="When this legacy review step finishes, you can continue to supporting materials."
+        title="Additional review in progress"
+        description="When this step finishes, you can continue to Additional Information to upload supporting materials."
       />
     );
   }
@@ -485,7 +489,7 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="success"
-        title="Detailed review is ready"
+        title="Additional review is ready"
         description="Continue to Additional Information to upload supporting materials."
       />
     );
@@ -495,7 +499,7 @@ function getInitialBanner(
     return (
       <StatusBanner
         tone="danger"
-        title="The detailed review step could not be completed"
+        title="The additional review step could not be completed"
         description="Please contact the program team if you need help continuing to supporting materials."
       />
     );
@@ -566,6 +570,80 @@ function InitialCvReviewExtractCard({
   );
 }
 
+function PreliminaryAssessmentResultBody({
+  statusBadge,
+  description,
+  extraNote,
+  appearance = "default",
+}: {
+  statusBadge: ReactNode;
+  description: string;
+  extraNote?: string | null;
+  /** `success` matches Submission Complete: emerald panel typography. */
+  appearance?: "default" | "success";
+}) {
+  const isSuccessPanel = appearance === "success";
+
+  return (
+    <div
+      className={cn(
+        "border-l-2 pl-4",
+        isSuccessPanel ? "border-emerald-300" : "border-[color:var(--border)]",
+      )}
+    >
+      <div className="flex flex-col gap-3">
+        <h2
+          className={cn(
+            "text-base font-semibold tracking-[-0.02em]",
+            isSuccessPanel
+              ? "text-emerald-950"
+              : "text-[color:var(--primary)]",
+          )}
+        >
+          Preliminary Assessment Result
+        </h2>
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className={cn(
+              "text-sm",
+              isSuccessPanel
+                ? "text-emerald-800"
+                : "text-[color:var(--foreground-soft)]",
+            )}
+          >
+            Status:
+          </span>
+          {statusBadge}
+        </div>
+        <p
+          className={cn(
+            "text-sm leading-6",
+            isSuccessPanel
+              ? "text-emerald-950/90"
+              : "text-[color:var(--foreground-soft)]",
+          )}
+        >
+          {description}
+        </p>
+        {extraNote ? (
+          <p
+            className={cn(
+              "text-sm leading-6",
+              isSuccessPanel ? "text-emerald-900/85" : "text-[color:var(--muted-foreground)]",
+            )}
+          >
+            {extraNote}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function InitialCvReviewDeterminationCard({
   snapshot,
 }: {
@@ -577,14 +655,18 @@ function InitialCvReviewDeterminationCard({
   const { eligibilityResult } = snapshot;
 
   if (eligibilityResult === "INELIGIBLE") {
+    const description =
+      displaySummary ??
+      "This submission does not meet the published requirements for the current review stage.";
     return (
-      <SectionCard
-        title="Preliminary Assessment Result"
-        description={displaySummary ?? undefined}
-      >
-        {reasonText ? (
-          <p className="mt-2 text-sm leading-6 text-slate-700">{reasonText}</p>
-        ) : null}
+      <SectionCard>
+        <PreliminaryAssessmentResultBody
+          statusBadge={
+            <Badge variant="destructive">Not eligible</Badge>
+          }
+          description={description}
+          extraNote={reasonText}
+        />
       </SectionCard>
     );
   }
@@ -599,8 +681,13 @@ function InitialCvReviewDeterminationCard({
       "The model could not finalize eligibility. Please complete the missing fields below.";
 
     return (
-      <SectionCard title="Preliminary Assessment Result">
-        <p className="text-sm leading-6 text-slate-700">{primary}</p>
+      <SectionCard>
+        <PreliminaryAssessmentResultBody
+          statusBadge={
+            <Badge variant="secondary">Information required</Badge>
+          }
+          description={primary}
+        />
       </SectionCard>
     );
   }
@@ -609,7 +696,7 @@ function InitialCvReviewDeterminationCard({
     const primary =
       reasonText ??
       displaySummary ??
-      "You meet the basic application requirements for initial CV review.";
+      "Your profile meets the basic application requirements for this talent program. Please proceed to the next step to provide the required documents.";
     const secondary =
       reasonText &&
       displaySummary &&
@@ -618,24 +705,27 @@ function InitialCvReviewDeterminationCard({
         : null;
 
     return (
-      <SectionCard title="Preliminary Assessment Result" description={primary}>
-        {secondary ? (
-          <p className="mt-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
-            {secondary}
-          </p>
-        ) : null}
+      <SectionCard className="border-emerald-200 bg-emerald-50">
+        <PreliminaryAssessmentResultBody
+          appearance="success"
+          statusBadge={<Badge variant="success">Eligible</Badge>}
+          description={primary}
+          extraNote={secondary}
+        />
       </SectionCard>
     );
   }
 
   return (
-    <SectionCard
-      title="Preliminary Assessment Result"
-      description={
-        displaySummary ??
-        "Initial CV review returned an outcome. Review the extract and any messages above."
-      }
-    />
+    <SectionCard>
+      <PreliminaryAssessmentResultBody
+        statusBadge={<Badge variant="outline">Outcome</Badge>}
+        description={
+          displaySummary ??
+          "Initial CV review returned an outcome. Review the extract and any messages above."
+        }
+      />
+    </SectionCard>
   );
 }
 
@@ -643,13 +733,17 @@ export function CvReviewExperience() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const resumeFileInputRef = useRef<HTMLInputElement>(null);
   const [statusText, setStatusText] = useState(
     "Preparing your CV review outcome...",
   );
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploadingResume, startResumeUploadTransition] = useTransition();
+  const [isStartingResumeAnalysis, startResumeAnalysisTransition] =
+    useTransition();
+  const [isDeletingUploadedResume, startDeleteResumeTransition] =
+    useTransition();
   const [isSubmittingSupplemental, startSupplementalTransition] =
     useTransition();
   const [analysisSegment, setAnalysisSegment] = useState<{
@@ -936,10 +1030,9 @@ export function CvReviewExperience() {
     };
   }, [snapshot?.applicationId, snapshot?.applicationStatus, watch]);
 
-  function handleResumeUpload() {
+  function performResumeUpload(file: File) {
     if (
       !snapshot ||
-      !selectedFile ||
       !["INTRO_VIEWED", "CV_UPLOADED"].includes(snapshot.applicationStatus)
     ) {
       return;
@@ -951,20 +1044,48 @@ export function CvReviewExperience() {
         const uploadId = createUploadId();
         const intent = await createResumeUploadIntent(
           snapshot.applicationId,
-          selectedFile,
+          file,
           uploadId,
         );
-        await uploadBinary(intent, selectedFile, {
+        await uploadBinary(intent, file, {
           applicationId: snapshot.applicationId,
           uploadId,
           kind: "resume",
         });
         await confirmResumeUpload(
           snapshot.applicationId,
-          selectedFile,
+          file,
           intent.objectKey,
           uploadId,
         );
+        setSnapshot(await fetchSession());
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error ? nextError.message : "CV upload failed.",
+        );
+      } finally {
+        const input = resumeFileInputRef.current;
+
+        if (input) {
+          input.value = "";
+        }
+      }
+    });
+  }
+
+  function handleStartResumeAnalysis() {
+    if (
+      !snapshot ||
+      snapshot.applicationStatus !== "CV_UPLOADED" ||
+      !snapshot.latestResumeFile
+    ) {
+      return;
+    }
+
+    startResumeAnalysisTransition(async () => {
+      try {
+        setError(null);
+        await startResumeAnalysisRequest(snapshot.applicationId);
         setSnapshot((current) =>
           current
             ? {
@@ -980,7 +1101,33 @@ export function CvReviewExperience() {
         await syncAnalysisProgress(snapshot.applicationId);
       } catch (nextError) {
         setError(
-          nextError instanceof Error ? nextError.message : "CV upload failed.",
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to start CV analysis.",
+        );
+      }
+    });
+  }
+
+  function handleDeleteUploadedResume() {
+    if (
+      !snapshot ||
+      !snapshot.latestResumeFile ||
+      !["INTRO_VIEWED", "CV_UPLOADED"].includes(snapshot.applicationStatus)
+    ) {
+      return;
+    }
+
+    startDeleteResumeTransition(async () => {
+      try {
+        setError(null);
+        await deleteUploadedResume(snapshot.applicationId);
+        setSnapshot(await fetchSession());
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Failed to delete the uploaded CV.",
         );
       }
     });
@@ -1074,6 +1221,7 @@ export function CvReviewExperience() {
     snapshot &&
     ["INTRO_VIEWED", "CV_UPLOADED"].includes(snapshot.applicationStatus),
   );
+  const uploadedResumeFile = snapshot?.latestResumeFile ?? null;
   const isReadOnlyReview = snapshot
     ? (() => {
         const stepReadOnly = isFlowStepReadOnly(
@@ -1178,16 +1326,17 @@ export function CvReviewExperience() {
       case "ELIGIBLE":
         return "Initial CV review is complete. Continue to Additional Information to upload supporting materials.";
       case "SECONDARY_ANALYZING":
-        return "A legacy detailed review is running. This page will refresh automatically until it is ready.";
+        return "An additional review is running. This page will refresh automatically until it is ready.";
       case "SECONDARY_REVIEW":
         return "Continue to Additional Information to upload supporting materials.";
       case "SECONDARY_FAILED":
-        return "The legacy detailed review step did not finish successfully. Please contact the program team if you need help continuing.";
+        return "The additional review step did not finish successfully. Please contact the program team if you need help continuing.";
       case "INELIGIBLE":
         return "This submission does not meet the published requirements. See the summary below for the reasons provided.";
       case "INTRO_VIEWED":
-      case "CV_UPLOADED":
         return "Upload your latest CV and keep this page open while the review runs.";
+      case "CV_UPLOADED":
+        return "Your CV has been saved. Start CV analysis when you are ready.";
       default:
         return "Upload your CV to start the application. You will receive eligibility feedback based on our initial assessment.";
     }
@@ -1232,13 +1381,6 @@ export function CvReviewExperience() {
             <MobileSupportCard href={mailtoHref} />
           ) : null}
 
-          {isReadOnlyReview ? (
-            <StatusBanner
-              tone="review"
-              title="Review Mode"
-              description="This step is complete. You may review the details here, but no further action is required."
-            />
-          ) : null}
           {isLoading ? (
             <StatusBanner
               tone="loading"
@@ -1260,26 +1402,48 @@ export function CvReviewExperience() {
               {showUploadState ? (
                 <SectionCard
                   title="Applicant CV"
-                  description="Choose one current CV file. The review starts as soon as the upload finishes."
+                  description="Choosing a file saves it automatically. Start CV analysis when you are ready. You can replace or delete the file before analysis starts."
                 >
                   <div className="flex flex-col gap-5">
                     <label className="block">
                       <input
+                        ref={resumeFileInputRef}
                         type="file"
-                        disabled={isLoading || isUploadingResume}
+                        disabled={
+                          isLoading ||
+                          isUploadingResume ||
+                          isStartingResumeAnalysis ||
+                          isDeletingUploadedResume
+                        }
                         onChange={(event) => {
                           const nextFile = event.target.files?.[0] ?? null;
-                          setSelectedFile(nextFile);
+
+                          if (!nextFile) {
+                            return;
+                          }
+
+                          performResumeUpload(nextFile);
                         }}
                         className="sr-only"
                         accept=".pdf,.doc,.docx,.zip"
                       />
-                      <div className="rounded-2xl border border-dashed border-[color:var(--border-strong)] bg-[color:var(--muted)]/70 px-5 py-8 text-center transition hover:border-[color:var(--primary)] hover:bg-white">
+                      <div
+                        className={cn(
+                          "rounded-2xl border border-dashed border-[color:var(--border-strong)] bg-[color:var(--muted)]/70 px-5 py-8 text-center transition hover:border-[color:var(--primary)] hover:bg-white",
+                          (isLoading ||
+                            isUploadingResume ||
+                            isStartingResumeAnalysis ||
+                            isDeletingUploadedResume) &&
+                            "pointer-events-none opacity-60",
+                        )}
+                      >
                         <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                          Select file
+                          {isUploadingResume ? "Uploading" : "Select file"}
                         </p>
                         <p className="mt-2 text-xl font-semibold text-[color:var(--primary)]">
-                          Upload your latest CV
+                          {isUploadingResume
+                            ? "Saving your CV…"
+                            : "Upload your latest CV"}
                         </p>
                         <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-[color:var(--foreground-soft)]">
                           PDF or Word is preferred. ZIP archives are accepted
@@ -1289,41 +1453,61 @@ export function CvReviewExperience() {
                       </div>
                     </label>
 
-                    {selectedFile ? (
-                      <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 px-4 py-3">
-                        <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
-                          Selected file
-                        </p>
-                        <p className="mt-1.5 text-sm font-semibold text-[color:var(--primary)]">
-                          {selectedFile.name}
-                        </p>
-                        <p className="mt-1 text-xs text-[color:var(--foreground-soft)]">
-                          {Math.ceil(selectedFile.size / 1024)} KB
-                        </p>
+                    {uploadedResumeFile ? (
+                      <div className="flex flex-row items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-emerald-700 uppercase">
+                            Saved CV
+                          </p>
+                          <p
+                            className="mt-1.5 truncate text-sm font-semibold text-[color:var(--primary)]"
+                            title={uploadedResumeFile.fileName}
+                          >
+                            {uploadedResumeFile.fileName}
+                          </p>
+                          <p className="mt-1 text-xs text-[color:var(--foreground-soft)]">
+                            Uploaded{" "}
+                            {new Date(
+                              uploadedResumeFile.uploadedAt,
+                            ).toLocaleString("en-US", {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}{" "}
+                            - {Math.ceil(uploadedResumeFile.fileSize / 1024)}{" "}
+                            KB
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDeleteUploadedResume}
+                          disabled={
+                            isLoading ||
+                            isUploadingResume ||
+                            isStartingResumeAnalysis ||
+                            isDeletingUploadedResume
+                          }
+                          className="shrink-0 rounded-lg border border-[color:var(--border-strong)] bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isDeletingUploadedResume ? "Deleting…" : "Delete"}
+                        </button>
                       </div>
-                    ) : (
-                      <input
-                        value=""
-                        readOnly
-                        placeholder="No file selected yet"
-                        className={getInputClassName(
-                          "pointer-events-none bg-[color:var(--muted)]/40",
-                        )}
-                      />
-                    )}
+                    ) : null}
 
-                    <div className="flex justify-center">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
                       <ActionButton
-                        onClick={handleResumeUpload}
+                        onClick={handleStartResumeAnalysis}
                         disabled={
-                          !selectedFile ||
-                          isUploadingResume ||
+                          !uploadedResumeFile ||
                           isLoading ||
-                          !snapshot
+                          isUploadingResume ||
+                          isStartingResumeAnalysis ||
+                          isDeletingUploadedResume
                         }
                         className="w-full sm:w-auto"
                       >
-                        {isUploadingResume ? "Submitting CV..." : "Submit CV"}
+                        {isStartingResumeAnalysis
+                          ? "Starting Analysis..."
+                          : "Start CV Analysis"}
                       </ActionButton>
                     </div>
                   </div>
@@ -1332,12 +1516,12 @@ export function CvReviewExperience() {
                 <AnalysisProgressPanel
                   title={
                     snapshot.applicationStatus === "SECONDARY_ANALYZING"
-                      ? "Detailed review in progress"
+                      ? "Additional review in progress"
                       : "CV submission is running"
                   }
                   description={
                     snapshot.applicationStatus === "SECONDARY_ANALYZING"
-                      ? "When this step finishes, you can continue to supporting materials."
+                      ? "When this step finishes, you can continue to Additional Information to upload supporting materials."
                       : "Your CV is being evaluated against the published requirements. This may take a little time."
                   }
                   progressRatio={analysisProgressView?.progressRatio ?? 0}

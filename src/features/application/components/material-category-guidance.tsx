@@ -10,7 +10,7 @@ const GUIDANCE: Record<MaterialCategory, readonly GuidanceBlock[]> = {
   IDENTITY: [
     {
       items: [
-        "Foreign nationals: passport identity page together with the facing endorsements or observations page (full spread).",
+        "Foreign nationals: Passport Bio-data page + Additional info page (a spread of 2 pages); International passport for Russian citizens (also a spread of 2 pages).",
         "Mainland China: national ID card, front and back.",
         "Hong Kong: Hong Kong identity card.",
         "Macau: Macau identity card.",
@@ -21,45 +21,45 @@ const GUIDANCE: Record<MaterialCategory, readonly GuidanceBlock[]> = {
   EDUCATION: [
     {
       items: [
-        "Doctoral degree evidence is required (at least one file in this category).",
-        "Degree certificate scan (original document strongly preferred).",
-        "Official transcript when available (optional).",
-        "Certified translation or a signed verification letter if you cannot provide the original.",
+        "Doctoral degree certificate is required (at least one file in this category).",
+        "Degree certificate scans/photo (original documents strongly preferred).",
+        "Official transcripts (if available; optional).",
+        "Certified translation or a signed verification letter (only when original certificates are missing).",
       ],
     },
   ],
   EMPLOYMENT: [
     {
       items: [
-        "Latest employment evidence is required (at least one file in this category).",
-        "Employment contract, employer reference letter, or HR attestation.",
-        "Work booklet where customary (for example in some post-Soviet jurisdictions).",
-        "Resignation or release letter, promotion notices, or comparable employment milestones.",
+        "Official employment document for the current position is required (at least one file in this category).",
+        "Employment contract, Employer Reference Letter, HR certifies employment attestation.",
+        "Employment record booklet where customary (e.g., in post-Soviet jurisdictions).",
+        "Resignation letter, promotion letters, or other comparable employment milestone documents.",
       ],
     },
   ],
   PROJECT: [
     {
       items: [
-        "Project proposal or charter that states funding sources (required when applicable).",
-        "Progress or final reports, grant award letters, and official confirmation notices.",
-        "Certificates of project awards and authoritative screenshots (funder site, university, or national academic body).",
+        "Project proposal or charter specifying funding sources (required where applicable).",
+        "Progress or final reports, grant award letters, and official confirmation letters.",
+        "Project award certificates, and official screenshots (from funder websites, universities or national academic authorities).",
       ],
     },
   ],
   PAPER: [
     {
       items: [
-        "Upload full-text copies of published papers (preferred source files).",
-        "Include DOI, journal information, or publication metadata in the file when available.",
+        "Upload full-text versions of published papers (source files preferred).",
+        "Include DOI, journal information and publication metadata in the file where available.",
       ],
     },
   ],
   BOOK: [
     {
       items: [
-        "Provide publisher website screenshots or scans of the book cover and key metadata pages.",
-        "Ensure title, your name, publisher, publication date, and location are clearly visible.",
+        "Provide publisher website screenshots, or scans of book covers and key metadata pages.",
+        "Make sure that the title, your name, publisher, publication date and place of publication are clearly visible.",
       ],
     },
   ],
@@ -75,23 +75,23 @@ const GUIDANCE: Record<MaterialCategory, readonly GuidanceBlock[]> = {
     {
       items: [
         "Patent certificate or official gazette extract (strongly preferred).",
-        "Official registry screenshots and filed application forms when originals are not yet available.",
+        "Official registry screenshots and filing application forms (where original documents are unavailable).",
       ],
     },
   ],
   HONOR: [
     {
       items: [
-        "Official website screenshots, honor certificates, thank-you letters, membership or title certificates.",
-        "Peer-review or editorial-board letters, trophies or medals that clearly show the honor title and your name.",
+        "Official website screenshots, honor certificates, thank-you letters, membership credentials and academic title certificates.",
+        "Peer review or editorial board letters, trophies or medals clearly displaying the honor title and the recipient’s full name.",
       ],
     },
   ],
   PRODUCT: [
     {
       items: [
-        "Summarize the product name, innovation aspects, and measurable economic benefits in the text field above.",
-        "Attach brochures, one-pagers, deck PDFs, or images that support your product introduction.",
+        "Summarize the product name, innovative features and measurable economic benefits in the text field above.",
+        "Attach brochures, one-pagers, deck PDFs or images to support your product introduction.",
       ],
     },
   ],

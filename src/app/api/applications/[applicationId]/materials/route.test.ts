@@ -6,6 +6,7 @@ import {
   getEditableSecondaryAnalysisSnapshot,
   startSecondaryAnalysis,
 } from "@/lib/application/service";
+import { updateApplication } from "@/lib/data/store";
 import { GET as getMaterialsRoute } from "@/app/api/applications/[applicationId]/materials/route";
 import { POST as enterMaterialsRoute } from "@/app/api/applications/[applicationId]/materials/enter/route";
 import { POST as saveProductDescriptionRoute } from "@/app/api/applications/[applicationId]/materials/product-description/route";
@@ -42,7 +43,7 @@ describe("materials stage routes", () => {
     resetMemoryStore();
   });
 
-  it("blocks materials access before detailed analysis review is complete", async () => {
+  it("blocks materials access before the materials stage is active", async () => {
     const response = await getMaterialsRoute(
       buildAuthorizedRequest("http://localhost/api/applications/app_secondary/materials"),
       {
@@ -55,7 +56,7 @@ describe("materials stage routes", () => {
     expect(payload.code).toBe("MATERIALS_STAGE_NOT_READY");
   });
 
-  it("enters the materials stage after detailed analysis review is ready", async () => {
+  it("enters the materials stage when CV review allows materials entry", async () => {
     const started = await startSecondaryAnalysis("app_secondary");
     await getEditableSecondaryAnalysisSnapshot({
       applicationId: "app_secondary",
@@ -151,6 +152,32 @@ describe("materials stage routes", () => {
 
     expect(response.status).toBe(200);
     expect(payload.productInnovationDescription).toContain("aquatic drone");
+  });
+
+  it("allows product innovation description updates after submission", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "SUBMITTED",
+    });
+
+    const response = await saveProductDescriptionRoute(
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_secondary/materials/product-description",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: "Submitted application with refreshed product summary.",
+          }),
+        },
+      ),
+      {
+        params: Promise.resolve({ applicationId: "app_secondary" }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.productInnovationDescription).toContain("refreshed product");
   });
 
   it("blocks final submission before the materials stage starts", async () => {
