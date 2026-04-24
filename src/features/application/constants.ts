@@ -32,6 +32,7 @@ export const APPLICATION_STATUSES = [
 export const EXPERT_PROGRAM_CONTACT_EMAIL = "review-contact@example.com";
 export const SUBMISSION_COMPLETE_CONTACT_EMAIL = "lishijing@1000help.com";
 export const SUBMISSION_COMPLETE_WHATSAPP_URL = "https://wa.me/qr/E75L2UF5M255N1";
+export const APPLICATION_FEEDBACK_COMMENT_MAX_LENGTH = 2000;
 
 export const APPLICATION_FLOW_STEPS = [
   {

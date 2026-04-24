@@ -4,7 +4,8 @@ export type TrackingPageName =
   | "apply_entry"
   | "apply_resume"
   | "apply_result"
-  | "apply_materials";
+  | "apply_materials"
+  | "apply_submission_complete";
 
 export type TrackingStepName =
   | "invite_access"
@@ -14,7 +15,8 @@ export type TrackingStepName =
   | "supplemental"
   | "secondary_analysis"
   | "materials"
-  | "submit";
+  | "submit"
+  | "feedback";
 
 export type TrackingActionName =
   | "page_view"

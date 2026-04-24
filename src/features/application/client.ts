@@ -1,5 +1,7 @@
 import { readInviteTokenFromSearchParams } from "@/features/application/invite-url-token";
 import type {
+  ApplicationFeedbackContext,
+  ApplicationFeedbackSnapshot,
   ApplicationSnapshot,
   EditableSecondaryAnalysisSnapshot,
   MaterialCategory,
@@ -521,4 +523,62 @@ export async function submitApplicationRequest(applicationId: string) {
   return parseResponse<{ applicationStatus: string; message: string }>(
     response,
   );
+}
+
+export async function fetchApplicationFeedback(applicationId: string) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/feedback`,
+    buildFetchOptions({
+      credentials: "include",
+      cache: "no-store",
+    }),
+  );
+
+  return parseResponse<ApplicationFeedbackSnapshot>(response);
+}
+
+export async function saveApplicationFeedbackDraft(
+  applicationId: string,
+  input: {
+    rating?: number | null;
+    comment?: string;
+    context?: ApplicationFeedbackContext;
+  },
+) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/feedback`,
+    buildFetchOptions({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(input),
+    }),
+  );
+
+  return parseResponse<ApplicationFeedbackSnapshot>(response);
+}
+
+export async function submitApplicationFeedback(
+  applicationId: string,
+  input: {
+    rating?: number | null;
+    comment?: string;
+    context?: ApplicationFeedbackContext;
+  },
+) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/feedback`,
+    buildFetchOptions({
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(input),
+    }),
+  );
+
+  return parseResponse<ApplicationFeedbackSnapshot>(response);
 }

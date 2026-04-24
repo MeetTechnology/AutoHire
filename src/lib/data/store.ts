@@ -2,6 +2,8 @@ import type { MissingField } from "@/features/analysis/types";
 import type { EditableSecondaryField } from "@/features/analysis/types";
 import type {
   AnalysisJobStatus,
+  ApplicationFeedbackContext,
+  ApplicationFeedbackStatus,
   ApplicationSnapshot,
   ApplicationStatus,
   EligibilityResult,
@@ -16,6 +18,7 @@ import { getRuntimeMode } from "@/lib/env";
 import { getSampleInvitationSeeds } from "@/lib/data/sample-data";
 import { Prisma } from "@prisma/client";
 import type {
+  ApplicationFeedbackStatus as PrismaApplicationFeedbackStatus,
   AccessResult as PrismaAccessResult,
   AccessTokenStatusSnapshot as PrismaAccessTokenStatusSnapshot,
   EventStatus as PrismaEventStatus,
@@ -169,6 +172,39 @@ type MaterialRecord = {
   deletedAt: Date | null;
 };
 
+type FeedbackRecord = {
+  id: string;
+  applicationId: string;
+  status: ApplicationFeedbackStatus;
+  rating: number | null;
+  comment: string | null;
+  contextData: Prisma.JsonValue | null;
+  draftSavedAt: Date | null;
+  submittedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type FeedbackDraftWriteResult =
+  | {
+      kind: "saved";
+      feedback: FeedbackRecord;
+    }
+  | {
+      kind: "already_submitted";
+      feedback: FeedbackRecord;
+    };
+
+type FeedbackSubmitWriteResult =
+  | {
+      kind: "submitted";
+      feedback: FeedbackRecord;
+    }
+  | {
+      kind: "already_submitted";
+      feedback: FeedbackRecord;
+    };
+
 type EventRecord = {
   id: string;
   applicationId: string;
@@ -244,6 +280,7 @@ type PersistedStore = {
   secondaryAnalysisFieldValues: SecondaryAnalysisFieldValueRecord[];
   supplementalFields: SupplementalFieldRecord[];
   materials: MaterialRecord[];
+  feedbacks: FeedbackRecord[];
   events: EventRecord[];
   accessLogs: InviteAccessLogRecord[];
   fileUploadAttempts: FileUploadAttemptRecord[];
@@ -539,6 +576,7 @@ function buildSampleStore(): PersistedStore {
         deletedAt: null,
       },
     ],
+    feedbacks: [],
     events: [],
     accessLogs: [],
     fileUploadAttempts: [],
@@ -698,6 +736,284 @@ export async function updateApplication(
     where: { id: applicationId },
     data,
   });
+}
+
+export async function getApplicationFeedbackByApplicationId(
+  applicationId: string,
+) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().feedbacks.find(
+        (item) => item.applicationId === applicationId,
+      ) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.applicationFeedback.findUnique({
+    where: { applicationId },
+  });
+}
+
+export async function upsertApplicationFeedbackDraft(input: {
+  applicationId: string;
+  rating?: number | null;
+  comment?: string;
+  contextData?: Prisma.InputJsonValue | null;
+}): Promise<FeedbackDraftWriteResult> {
+  const nextComment =
+    typeof input.comment === "string" ? input.comment : undefined;
+
+  if (getRuntimeMode() === "memory") {
+    const now = new Date();
+    const store = getMemoryStore();
+    const existing = store.feedbacks.find(
+      (item) => item.applicationId === input.applicationId,
+    );
+
+    if (existing) {
+      if (existing.status === "SUBMITTED") {
+        return { kind: "already_submitted", feedback: existing };
+      }
+
+      existing.status = "DRAFT";
+      existing.rating =
+        input.rating !== undefined ? input.rating : existing.rating;
+      existing.comment = nextComment !== undefined ? nextComment : existing.comment;
+      existing.contextData =
+        input.contextData !== undefined
+          ? ((input.contextData as ApplicationFeedbackContext | null) ?? null)
+          : existing.contextData;
+      existing.draftSavedAt = now;
+      existing.updatedAt = now;
+      return { kind: "saved", feedback: existing };
+    }
+
+    const record: FeedbackRecord = {
+      id: createId("feedback"),
+      applicationId: input.applicationId,
+      status: "DRAFT",
+      rating: input.rating ?? null,
+      comment: nextComment ?? null,
+      contextData: (input.contextData as ApplicationFeedbackContext | null) ?? null,
+      draftSavedAt: now,
+      submittedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.feedbacks.push(record);
+    return { kind: "saved", feedback: record };
+  }
+
+  async function readFeedback() {
+    return prisma.applicationFeedback.findUnique({
+      where: { applicationId: input.applicationId },
+    });
+  }
+
+  const prisma = await getPrisma();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const now = new Date();
+    const updated = await prisma.applicationFeedback.updateMany({
+      where: {
+        applicationId: input.applicationId,
+        status: "DRAFT" as PrismaApplicationFeedbackStatus,
+      },
+      data: {
+        ...(input.rating !== undefined ? { rating: input.rating } : {}),
+        ...(nextComment !== undefined ? { comment: nextComment } : {}),
+        ...(input.contextData !== undefined
+          ? { contextData: input.contextData ?? Prisma.JsonNull }
+          : {}),
+        draftSavedAt: now,
+      },
+    });
+
+    if (updated.count > 0) {
+      const feedback = await readFeedback();
+      if (feedback) {
+        return { kind: "saved", feedback };
+      }
+    }
+
+    try {
+      const feedback = await prisma.applicationFeedback.create({
+        data: {
+          applicationId: input.applicationId,
+          status: "DRAFT" as PrismaApplicationFeedbackStatus,
+          rating: input.rating ?? null,
+          comment: nextComment ?? null,
+          ...(input.contextData !== undefined
+            ? { contextData: input.contextData ?? Prisma.JsonNull }
+            : {}),
+          draftSavedAt: now,
+        },
+      });
+
+      return { kind: "saved", feedback };
+    } catch (error) {
+      if (
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== "P2002"
+      ) {
+        throw error;
+      }
+
+      const feedback = await readFeedback();
+
+      if (feedback?.status === "SUBMITTED") {
+        return { kind: "already_submitted", feedback };
+      }
+
+      if (feedback && attempt === 1) {
+        return { kind: "saved", feedback };
+      }
+    }
+  }
+
+  const feedback = await prisma.applicationFeedback.findUnique({
+    where: { applicationId: input.applicationId },
+  });
+
+  if (feedback?.status === "SUBMITTED") {
+    return { kind: "already_submitted", feedback };
+  }
+
+  if (feedback) {
+    return { kind: "saved", feedback };
+  }
+
+  throw new Error("Unable to persist feedback draft.");
+}
+
+export async function submitApplicationFeedbackRecord(input: {
+  applicationId: string;
+  rating?: number | null;
+  comment?: string;
+  contextData?: Prisma.InputJsonValue | null;
+}): Promise<FeedbackSubmitWriteResult> {
+  const nextComment =
+    typeof input.comment === "string" ? input.comment : undefined;
+
+  if (getRuntimeMode() === "memory") {
+    const now = new Date();
+    const store = getMemoryStore();
+    const existing = store.feedbacks.find(
+      (item) => item.applicationId === input.applicationId,
+    );
+
+    if (existing) {
+      if (existing.status === "SUBMITTED") {
+        return { kind: "already_submitted", feedback: existing };
+      }
+
+      existing.status = "SUBMITTED";
+      existing.rating =
+        input.rating !== undefined ? input.rating : existing.rating;
+      existing.comment = nextComment ?? existing.comment;
+      existing.contextData =
+        input.contextData !== undefined
+          ? ((input.contextData as ApplicationFeedbackContext | null) ?? null)
+          : existing.contextData;
+      existing.draftSavedAt = now;
+      existing.submittedAt = now;
+      existing.updatedAt = now;
+      return { kind: "submitted", feedback: existing };
+    }
+
+    const record: FeedbackRecord = {
+      id: createId("feedback"),
+      applicationId: input.applicationId,
+      status: "SUBMITTED",
+      rating: input.rating ?? null,
+      comment: nextComment ?? null,
+      contextData: (input.contextData as ApplicationFeedbackContext | null) ?? null,
+      draftSavedAt: now,
+      submittedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.feedbacks.push(record);
+    return { kind: "submitted", feedback: record };
+  }
+
+  const prisma = await getPrisma();
+
+  async function readFeedback() {
+    return prisma.applicationFeedback.findUnique({
+      where: { applicationId: input.applicationId },
+    });
+  }
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const now = new Date();
+    const updated = await prisma.applicationFeedback.updateMany({
+      where: {
+        applicationId: input.applicationId,
+        status: "DRAFT" as PrismaApplicationFeedbackStatus,
+      },
+      data: {
+        status: "SUBMITTED" as PrismaApplicationFeedbackStatus,
+        ...(input.rating !== undefined ? { rating: input.rating } : {}),
+        ...(nextComment !== undefined ? { comment: nextComment } : {}),
+        ...(input.contextData !== undefined
+          ? { contextData: input.contextData ?? Prisma.JsonNull }
+          : {}),
+        draftSavedAt: now,
+        submittedAt: now,
+      },
+    });
+
+    if (updated.count > 0) {
+      const feedback = await readFeedback();
+      if (feedback) {
+        return { kind: "submitted", feedback };
+      }
+    }
+
+    try {
+      const feedback = await prisma.applicationFeedback.create({
+        data: {
+          applicationId: input.applicationId,
+          status: "SUBMITTED" as PrismaApplicationFeedbackStatus,
+          rating: input.rating ?? null,
+          comment: nextComment ?? null,
+          ...(input.contextData !== undefined
+            ? { contextData: input.contextData ?? Prisma.JsonNull }
+            : {}),
+          draftSavedAt: now,
+          submittedAt: now,
+        },
+      });
+
+      return { kind: "submitted", feedback };
+    } catch (error) {
+      if (
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== "P2002"
+      ) {
+        throw error;
+      }
+
+      const feedback = await readFeedback();
+
+      if (feedback?.status === "SUBMITTED") {
+        return { kind: "already_submitted", feedback };
+      }
+    }
+  }
+
+  const feedback = await prisma.applicationFeedback.findUnique({
+    where: { applicationId: input.applicationId },
+  });
+
+  if (feedback?.status === "SUBMITTED") {
+    return { kind: "already_submitted", feedback };
+  }
+
+  throw new Error("Unable to submit feedback.");
 }
 
 export async function getLatestResumeVersion(applicationId: string) {

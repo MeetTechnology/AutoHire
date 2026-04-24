@@ -92,6 +92,11 @@ enum UploadFailureStage {
   CONFIRM
 }
 
+enum ApplicationFeedbackStatus {
+  DRAFT
+  SUBMITTED
+}
+
 model ExpertInvitation {
   id          String      @id @default(cuid())
   expertId    String
@@ -141,6 +146,7 @@ model Application {
   secondaryAnalysisFieldValues SecondaryAnalysisFieldValue[]
   supplementalFields          SupplementalFieldSubmission[]
   materials                   ApplicationMaterial[]
+  feedback                    ApplicationFeedback?
   events                      ApplicationEventLog[]
   accessLogs                  InviteAccessLog[]
   fileUploadAttempts          FileUploadAttempt[]
@@ -288,6 +294,24 @@ model ApplicationMaterial {
 
   @@index([applicationId, category])
   @@index([applicationId, isDeleted, category])
+}
+
+model ApplicationFeedback {
+  id            String                    @id @default(cuid())
+  applicationId String                    @unique
+  status        ApplicationFeedbackStatus @default(DRAFT)
+  rating        Int?
+  comment       String?                   @db.Text
+  contextData   Json?
+  draftSavedAt  DateTime?
+  submittedAt   DateTime?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id])
+
+  @@index([status, updatedAt])
+  @@index([submittedAt])
 }
 
 model ApplicationEventLog {

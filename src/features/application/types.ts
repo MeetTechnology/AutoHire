@@ -53,6 +53,24 @@ export type MaterialCategory =
 
 export type MaterialSummary = Record<Lowercase<MaterialCategory>, number>;
 
+export type ApplicationFeedbackStatus = "DRAFT" | "SUBMITTED";
+
+export type FeedbackDeviceType = "desktop" | "tablet" | "mobile" | "unknown";
+
+export type ApplicationFeedbackContext = {
+  currentUrl?: string | null;
+  pageTitle?: string | null;
+  flowName?: string | null;
+  flowStep?: string | null;
+  browserInfo?: string | null;
+  deviceType?: FeedbackDeviceType | null;
+  viewportWidth?: number | null;
+  viewportHeight?: number | null;
+  isLoggedIn?: boolean | null;
+  userId?: string | null;
+  surface?: string | null;
+};
+
 export type UploadedFileSummary = {
   id: string;
   fileName: string;
@@ -111,5 +129,13 @@ export type ApplicationSnapshot = {
   } | null;
   uploadedMaterialsSummary: MaterialSummary;
   productInnovationDescription: string | null;
+  submittedAt: string | null;
+};
+
+export type ApplicationFeedbackSnapshot = {
+  status: ApplicationFeedbackStatus;
+  rating: number | null;
+  comment: string;
+  draftSavedAt: string | null;
   submittedAt: string | null;
 };

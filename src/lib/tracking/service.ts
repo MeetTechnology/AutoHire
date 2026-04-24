@@ -1,6 +1,5 @@
 import type { NextRequest } from "next/server";
 
-import type { MaterialCategory } from "@/features/application/types";
 import { hashInviteToken } from "@/lib/auth/token";
 import type {
   AccessResult,

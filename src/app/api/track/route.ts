@@ -11,7 +11,13 @@ const trackEventSchema = z.object({
     .datetime({ offset: true })
     .optional(),
   page_name: z
-    .enum(["apply_entry", "apply_resume", "apply_result", "apply_materials"])
+    .enum([
+      "apply_entry",
+      "apply_resume",
+      "apply_result",
+      "apply_materials",
+      "apply_submission_complete",
+    ])
     .optional(),
   step_name: z
     .enum([
@@ -23,6 +29,7 @@ const trackEventSchema = z.object({
       "secondary_analysis",
       "materials",
       "submit",
+      "feedback",
     ])
     .optional(),
   action_name: z

@@ -4,12 +4,15 @@ import {
   ApplicationServiceError,
   enterMaterialsStage,
   filterSecondaryFieldsForPromptProgress,
+  getApplicationFeedbackSnapshot,
   getEditableSecondaryAnalysisSnapshot,
   getMaterialsByCategory,
   getSnapshot,
+  saveApplicationFeedbackDraft,
   saveEditableSecondaryAnalysisFields,
   shouldShowFullSecondaryFieldSet,
   startSecondaryAnalysis,
+  submitApplicationFeedback,
   submitApplication,
   submitSupplementalFields,
 } from "@/lib/application/service";
@@ -351,5 +354,121 @@ describe("secondary analysis prompt-progress field visibility", () => {
 
     expect(shouldShowFullSecondaryFieldSet(run)).toBe(true);
     expect(filterSecondaryFieldsForPromptProgress(fields, run)).toEqual(fields);
+  });
+});
+
+describe("submission feedback service flow", () => {
+  beforeEach(() => {
+    resetMemoryStore();
+  });
+
+  it("returns the default empty draft snapshot before feedback is saved", async () => {
+    await expect(getApplicationFeedbackSnapshot("app_secondary")).rejects.toMatchObject({
+      code: "FEEDBACK_NOT_AVAILABLE",
+    } satisfies Partial<ApplicationServiceError>);
+
+    const snapshot = await getApplicationFeedbackSnapshot("app_submitted");
+    expect(snapshot).toEqual({
+      status: "DRAFT",
+      rating: null,
+      comment: "",
+      draftSavedAt: null,
+      submittedAt: null,
+    });
+  });
+
+  it("saves and overwrites feedback drafts while keeping the flow submitted", async () => {
+    const firstDraft = await saveApplicationFeedbackDraft({
+      applicationId: "app_submitted",
+      rating: 4,
+      comment: " Clear steps overall. ",
+      context: {
+        currentUrl: "https://example.com/apply/submission-complete",
+        pageTitle: "Submission complete",
+        flowName: "submission flow",
+        surface: "completion_page",
+      },
+    });
+
+    expect(firstDraft).toMatchObject({
+      status: "DRAFT",
+      rating: 4,
+      comment: "Clear steps overall.",
+    });
+
+    const secondDraft = await saveApplicationFeedbackDraft({
+      applicationId: "app_submitted",
+      comment: "The consultant CTA was helpful.",
+    });
+
+    expect(secondDraft).toMatchObject({
+      status: "DRAFT",
+      rating: 4,
+      comment: "The consultant CTA was helpful.",
+    });
+
+    const application = await getSnapshot("app_submitted");
+    expect(application?.applicationStatus).toBe("SUBMITTED");
+  });
+
+  it("submits feedback and blocks future edits", async () => {
+    const submitted = await submitApplicationFeedback({
+      applicationId: "app_submitted",
+      comment: "Excellent end-to-end flow.",
+      context: {
+        currentUrl: "https://example.com/apply/submission-complete",
+        pageTitle: "Submission complete",
+        flowName: "submission flow",
+        flowStep: "feedback",
+      },
+    });
+
+    expect(submitted).toMatchObject({
+      status: "SUBMITTED",
+      rating: null,
+      comment: "Excellent end-to-end flow.",
+    });
+    expect(submitted.submittedAt).toBeTruthy();
+
+    await expect(
+      saveApplicationFeedbackDraft({
+        applicationId: "app_submitted",
+        rating: 3,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "FEEDBACK_ALREADY_SUBMITTED",
+    } satisfies Partial<ApplicationServiceError>);
+  });
+
+  it("validates rating bounds and comment length", async () => {
+    await expect(
+      submitApplicationFeedback({
+        applicationId: "app_submitted",
+        rating: 0,
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "FEEDBACK_RATING_INVALID",
+    } satisfies Partial<ApplicationServiceError>);
+
+    await expect(
+      saveApplicationFeedbackDraft({
+        applicationId: "app_submitted",
+        comment: "a".repeat(2001),
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "FEEDBACK_COMMENT_TOO_LONG",
+    } satisfies Partial<ApplicationServiceError>);
+
+    await expect(
+      submitApplicationFeedback({
+        applicationId: "app_submitted",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "FEEDBACK_EMPTY_SUBMISSION",
+    } satisfies Partial<ApplicationServiceError>);
   });
 });

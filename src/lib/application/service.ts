@@ -10,6 +10,8 @@ import type {
 } from "@/features/analysis/types";
 import type {
   AnalysisJobStatus,
+  ApplicationFeedbackContext,
+  ApplicationFeedbackSnapshot,
   ApplicationStatus,
   ApplicationSnapshot,
   EditableSecondaryAnalysisSnapshot,
@@ -39,6 +41,7 @@ import {
   findOpenApplicationByInvitationId,
   findSecondaryAnalysisRunByExternalRunId,
   getApplicationById,
+  getApplicationFeedbackByApplicationId,
   getLatestAnalysisJob,
   getLatestAnalysisResult,
   getLatestResumeFile,
@@ -47,8 +50,10 @@ import {
   listMaterials,
   listSecondaryAnalysisFieldValues,
   softDeleteMaterial,
+  submitApplicationFeedbackRecord,
   updateAnalysisJob,
   updateApplication,
+  upsertApplicationFeedbackDraft,
   upsertSecondaryAnalysisFieldValues,
   upsertSecondaryAnalysisRun,
 } from "@/lib/data/store";
@@ -92,6 +97,37 @@ type StoredSecondaryFieldValue = {
   isEdited: boolean;
   savedAt: Date;
 };
+
+const FEEDBACK_COMMENT_MAX_LENGTH = 2000;
+
+function normalizeFeedbackComment(comment?: string) {
+  const trimmed = comment?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : "";
+}
+
+function normalizeFeedbackContext(
+  context?: ApplicationFeedbackContext,
+): ApplicationFeedbackContext | undefined {
+  if (!context) {
+    return undefined;
+  }
+
+  const normalized: ApplicationFeedbackContext = {
+    currentUrl: context.currentUrl ?? null,
+    pageTitle: context.pageTitle?.trim() || null,
+    flowName: context.flowName?.trim() || null,
+    flowStep: context.flowStep?.trim() || null,
+    browserInfo: context.browserInfo?.trim() || null,
+    deviceType: context.deviceType ?? "unknown",
+    viewportWidth: context.viewportWidth ?? null,
+    viewportHeight: context.viewportHeight ?? null,
+    isLoggedIn: context.isLoggedIn ?? false,
+    userId: context.userId?.trim() || null,
+    surface: context.surface?.trim() || null,
+  };
+
+  return normalized;
+}
 
 function resolvePostReviewApplicationStatus(input: {
   eligibilityResult: EligibilityResult;
@@ -1551,6 +1587,151 @@ export async function enterMaterialsStage(applicationId: string) {
   await createEvent(applicationId, "MATERIALS_STAGE_ENTERED", null);
 
   return updated;
+}
+
+function toFeedbackSnapshot(input?: {
+  status: "DRAFT" | "SUBMITTED";
+  rating: number | null;
+  comment: string | null;
+  draftSavedAt: Date | null;
+  submittedAt: Date | null;
+} | null): ApplicationFeedbackSnapshot {
+  return {
+    status: input?.status ?? "DRAFT",
+    rating: input?.rating ?? null,
+    comment: input?.comment ?? "",
+    draftSavedAt: input?.draftSavedAt?.toISOString() ?? null,
+    submittedAt: input?.submittedAt?.toISOString() ?? null,
+  };
+}
+
+export async function getApplicationFeedbackSnapshot(applicationId: string) {
+  await requireApplicationStage({
+    applicationId,
+    allowedStatuses: ["SUBMITTED"],
+    message:
+      "Feedback is only available after the application has been submitted.",
+    code: "FEEDBACK_NOT_AVAILABLE",
+  });
+
+  const feedback = await getApplicationFeedbackByApplicationId(applicationId);
+  return toFeedbackSnapshot(feedback);
+}
+
+export async function saveApplicationFeedbackDraft(input: {
+  applicationId: string;
+  rating?: number | null;
+  comment?: string;
+  context?: ApplicationFeedbackContext;
+}) {
+  await requireApplicationStage({
+    applicationId: input.applicationId,
+    allowedStatuses: ["SUBMITTED"],
+    message:
+      "Feedback drafts are only available after the application has been submitted.",
+    code: "FEEDBACK_NOT_AVAILABLE",
+  });
+
+  const nextComment =
+    typeof input.comment === "string"
+      ? normalizeFeedbackComment(input.comment)
+      : undefined;
+
+  if (
+    nextComment !== undefined &&
+    nextComment.length > FEEDBACK_COMMENT_MAX_LENGTH
+  ) {
+    throw new ApplicationServiceError(
+      "Feedback comments must be 2000 characters or fewer.",
+      400,
+      "FEEDBACK_COMMENT_TOO_LONG",
+    );
+  }
+
+  const result = await upsertApplicationFeedbackDraft({
+    applicationId: input.applicationId,
+    ...(input.rating !== undefined ? { rating: input.rating } : {}),
+    ...(nextComment !== undefined ? { comment: nextComment } : {}),
+    ...(input.context !== undefined
+      ? { contextData: normalizeFeedbackContext(input.context) ?? null }
+      : {}),
+  });
+
+  if (result.kind === "already_submitted") {
+    throw new ApplicationServiceError(
+      "Feedback has already been submitted and can no longer be edited.",
+      409,
+      "FEEDBACK_ALREADY_SUBMITTED",
+    );
+  }
+
+  return toFeedbackSnapshot(result.feedback);
+}
+
+export async function submitApplicationFeedback(input: {
+  applicationId: string;
+  rating?: number | null;
+  comment?: string;
+  context?: ApplicationFeedbackContext;
+}) {
+  await requireApplicationStage({
+    applicationId: input.applicationId,
+    allowedStatuses: ["SUBMITTED"],
+    message:
+      "Feedback can only be submitted after the application has been submitted.",
+    code: "FEEDBACK_NOT_AVAILABLE",
+  });
+
+  if (
+    input.rating !== undefined &&
+    input.rating !== null &&
+    (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)
+  ) {
+    throw new ApplicationServiceError(
+      "Feedback rating must be a whole number between 1 and 5.",
+      400,
+      "FEEDBACK_RATING_INVALID",
+    );
+  }
+
+  const nextComment = normalizeFeedbackComment(input.comment);
+  const hasRating = typeof input.rating === "number";
+  const hasComment = nextComment.length > 0;
+
+  if (!hasRating && !hasComment) {
+    throw new ApplicationServiceError(
+      "Choose a rating or write a comment to send feedback.",
+      400,
+      "FEEDBACK_EMPTY_SUBMISSION",
+    );
+  }
+
+  if (nextComment.length > FEEDBACK_COMMENT_MAX_LENGTH) {
+    throw new ApplicationServiceError(
+      "Feedback comments must be 2000 characters or fewer.",
+      400,
+      "FEEDBACK_COMMENT_TOO_LONG",
+    );
+  }
+
+  const result = await submitApplicationFeedbackRecord({
+    applicationId: input.applicationId,
+    ...(input.rating !== undefined ? { rating: input.rating } : {}),
+    comment: nextComment,
+    ...(input.context !== undefined
+      ? { contextData: normalizeFeedbackContext(input.context) ?? null }
+      : {}),
+  });
+
+  if (result.kind === "already_submitted") {
+    throw new ApplicationServiceError(
+      "Feedback has already been submitted and can no longer be edited.",
+      409,
+      "FEEDBACK_ALREADY_SUBMITTED",
+    );
+  }
+
+  return toFeedbackSnapshot(result.feedback);
 }
 
 export async function validateSessionAccess(input: {

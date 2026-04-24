@@ -97,7 +97,7 @@ const INTRO_SECTION_ITEMS = [
     id: "about",
     title: "About Our Service",
     summary:
-      "Officially authorized application support for national-level talent programs, with document preparation, platform matching, and post-selection coordination.",
+      "Professional Service Provider for National Talent Programs: Our Role and Commitment",
   },
 ] as const;
 
@@ -272,7 +272,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
             </div>
             <div className="space-y-3 text-sm leading-7 text-[color:var(--foreground-soft)]">
               <p>
-                The application process is linear; steps cannot be bypassed.
+                The application process is linear, steps cannot be bypassed.
               </p>
               <p>Progress can be saved at each stage.</p>
               <p>
@@ -299,14 +299,17 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
         return (
           <div className="flex flex-col gap-4 text-sm leading-7 text-[color:var(--foreground-soft)]">
             <p>
-              Meet Tech is an officially authorized professional service
-              institution for national-level talent programs (not the organizer).
-              Its core responsibility is to provide a{" "}
-              <strong className="font-semibold text-[color:var(--foreground)]">
-                full-process application service
+              <strong className="font-bold text-black">
+                Meet Technology (Wuhan) Co., Ltd.
               </strong>{" "}
-              for high-level overseas talents. Should you choose to submit your
-              application through us, we will offer you three core services.
+              is a licensed professional service institution for national-level
+              talent programs. We specialize in{" "}
+              <strong className="font-bold text-black">
+                providing full-process application support for high-level overseas
+                talents
+              </strong>
+              . Should you choose to submit your application through us, we will
+              offer you three core services:
             </p>
             <ol className="list-decimal space-y-3 pl-5 marker:font-semibold">
               <li className="pl-1">
