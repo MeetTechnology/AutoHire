@@ -16,6 +16,8 @@ enum ApplicationStatus {
   INIT
   INTRO_VIEWED
   CV_UPLOADED
+  CV_EXTRACTING
+  CV_EXTRACTION_REVIEW
   CV_ANALYZING
   INFO_REQUIRED
   REANALYZING
@@ -46,6 +48,13 @@ enum AnalysisJobStatus {
 enum AnalysisJobType {
   INITIAL
   REANALYSIS
+}
+
+enum ResumeExtractionReviewStatus {
+  PROCESSING
+  READY
+  CONFIRMED
+  FAILED
 }
 
 enum MaterialCategory {
@@ -142,6 +151,7 @@ model Application {
   resumeFiles                 ResumeFile[]
   analysisJobs                ResumeAnalysisJob[]
   analysisResults             ResumeAnalysisResult[]
+  extractionReviews           ResumeExtractionReview[]
   secondaryAnalysisRuns       SecondaryAnalysisRun[]
   secondaryAnalysisFieldValues SecondaryAnalysisFieldValue[]
   supplementalFields          SupplementalFieldSubmission[]
@@ -194,6 +204,7 @@ model ResumeAnalysisJob {
   application                  Application                   @relation(fields: [applicationId], references: [id])
   resumeFile                   ResumeFile?                   @relation(fields: [resumeFileId], references: [id])
   analysisResult               ResumeAnalysisResult?
+  extractionReview             ResumeExtractionReview?
   secondaryAnalysisRuns        SecondaryAnalysisRun[]
   supplementalFieldSubmissions SupplementalFieldSubmission[]
 
@@ -217,6 +228,26 @@ model ResumeAnalysisResult {
   analysisJob ResumeAnalysisJob @relation(fields: [analysisJobId], references: [id])
 
   @@index([applicationId])
+}
+
+model ResumeExtractionReview {
+  id                    String                       @id @default(cuid())
+  applicationId         String
+  analysisJobId         String                       @unique
+  externalJobId         String?
+  status                ResumeExtractionReviewStatus @default(PROCESSING)
+  extractedFields       Json?
+  rawExtractionResponse String?                      @db.Text
+  errorMessage          String?
+  confirmedAt           DateTime?
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+
+  application Application       @relation(fields: [applicationId], references: [id])
+  analysisJob ResumeAnalysisJob @relation(fields: [analysisJobId], references: [id])
+
+  @@index([applicationId])
+  @@index([status])
 }
 
 model SecondaryAnalysisRun {

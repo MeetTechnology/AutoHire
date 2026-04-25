@@ -175,6 +175,33 @@ export async function startResumeAnalysis(applicationId: string) {
   );
 }
 
+export async function confirmResumeExtraction(
+  applicationId: string,
+  input?: {
+    extractionRawResponse?: string;
+  },
+) {
+  const response = await fetch(
+    `/api/applications/${applicationId}/resume/confirm-extraction`,
+    buildFetchOptions({
+      method: "POST",
+      credentials: "include",
+      ...(input?.extractionRawResponse
+        ? {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              extractionRawResponse: input.extractionRawResponse,
+            }),
+          }
+        : {}),
+    }),
+  );
+
+  return parseResponse<{ analysisJobId: string; applicationStatus: string }>(
+    response,
+  );
+}
+
 export async function deleteUploadedResume(applicationId: string) {
   const response = await fetch(
     `/api/applications/${applicationId}/resume`,

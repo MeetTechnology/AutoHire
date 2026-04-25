@@ -10,10 +10,14 @@ import {
   buildMissingFieldsFromItemNames,
   buildSupplementalFieldPayload,
 } from "@/lib/resume-analysis/missing-field-registry";
-import { normalizeAnalysisResultPayload } from "@/lib/resume-analysis/result-normalizer";
+import {
+  normalizeAnalysisResultPayload,
+  normalizeExtractionResultPayload,
+} from "@/lib/resume-analysis/result-normalizer";
 import { readStoredObject } from "@/lib/storage/object-store";
 
 type ExternalJobStatus = "queued" | "processing" | "completed" | "failed";
+type ExternalAnalysisStage = "initial" | "extraction" | "judgment";
 
 type AnalysisResult = {
   eligibilityResult: EligibilityResult;
@@ -47,6 +51,14 @@ const liveInitialResultSchema = z
     parsed_result: z.unknown().optional(),
     status: z.string().nullable().optional(),
     error_message: z.string().nullable().optional(),
+    extraction_raw_response: z.string().nullable().optional(),
+    extraction_parsed_result: z.unknown().optional(),
+    extraction_status: z.string().nullable().optional(),
+    extraction_error_message: z.string().nullable().optional(),
+    judgment_raw_response: z.string().nullable().optional(),
+    judgment_parsed_result: z.unknown().optional(),
+    judgment_status: z.string().nullable().optional(),
+    judgment_error_message: z.string().nullable().optional(),
   })
   .passthrough();
 
@@ -108,6 +120,19 @@ const liveSecondaryTriggerResponseSchema = z
     job_id: numericIdSchema.optional(),
     run_id: numericIdSchema,
     message: z.string().optional(),
+  })
+  .passthrough();
+
+const liveExtractionCorrectionResponseSchema = z
+  .object({
+    message: z.string().optional(),
+    job_id: numericIdSchema,
+    extraction_raw_response: z.string(),
+    extraction_status: z.string().nullable().optional(),
+    raw_response: z.string().nullable().optional(),
+    status: z.string().nullable().optional(),
+    extraction_parsed_result: z.unknown().optional(),
+    parsed_result: z.unknown().optional(),
   })
   .passthrough();
 
@@ -317,11 +342,31 @@ function buildMockExtractedFields(scenario: string) {
   };
 }
 
-function buildMockResult(scenario: string): AnalysisResult {
+function getMockJudgmentText(scenario: string) {
+  const rawText = buildMockRawText(scenario);
+  const judgmentStart = rawText.indexOf("### 2. Analysis Process");
+
+  return judgmentStart >= 0 ? rawText.slice(judgmentStart).trim() : rawText;
+}
+
+function buildMockResult(
+  scenario: string,
+  externalJobId?: string,
+): AnalysisResult {
+  const correctedExtraction = externalJobId
+    ? correctedMockExtractionRawResponses.get(externalJobId)
+    : null;
+  const extractedFields = correctedExtraction
+    ? normalizeExtractionResultPayload({
+        extraction_raw_response: correctedExtraction,
+      }).extractedFields
+    : buildMockExtractedFields(scenario);
   const normalized = normalizeAnalysisResultPayload({
-    raw_response: buildMockRawText(scenario),
+    raw_response: correctedExtraction
+      ? `${correctedExtraction}\n\n${getMockJudgmentText(scenario)}`
+      : buildMockRawText(scenario),
     parsed_result: {
-      extracted_fields: buildMockExtractedFields(scenario),
+      extracted_fields: extractedFields,
     },
   });
 
@@ -334,6 +379,20 @@ function buildMockResult(scenario: string): AnalysisResult {
     rawReasoning: normalized.rawReasoning,
   };
 }
+
+function buildMockExtractionRawText(scenario: string) {
+  return buildMockRawText(scenario).split("### 2. Analysis Process")[0]?.trim() ?? "";
+}
+
+function buildMockExtractionResult(scenario: string) {
+  return {
+    extractedFields: buildMockExtractedFields(scenario),
+    rawResponse: buildMockExtractionRawText(scenario),
+  };
+}
+
+const judgedMockExternalJobIds = new Set<string>();
+const correctedMockExtractionRawResponses = new Map<string, string>();
 
 function parseMockExternalJobId(externalJobId: string) {
   const [, scenario = "insufficient_info"] = externalJobId.split(":");
@@ -540,12 +599,26 @@ function buildLiveProgressMessage(
   detail?: LiveJobDetail,
 ) {
   const initialStatus = detail?.initial_result?.status?.trim().toLowerCase();
+  const extractionStatus =
+    detail?.initial_result?.extraction_status?.trim().toLowerCase();
+  const judgmentStatus =
+    detail?.initial_result?.judgment_status?.trim().toLowerCase();
 
   if (jobStatus === "queued") {
-    return "Your CV has been uploaded and is queued for analysis.";
+    return extractionStatus
+      ? "Your CV has been uploaded and is queued for information extraction."
+      : "Your CV has been uploaded and is queued for analysis.";
   }
 
   if (jobStatus === "processing") {
+    if (judgmentStatus && judgmentStatus !== "completed") {
+      return "";
+    }
+
+    if (extractionStatus && extractionStatus !== "completed") {
+      return "The system is extracting key information from your CV. Please wait.";
+    }
+
     if (initialStatus === "completed") {
       return "The upstream analysis has completed. The system is syncing the result.";
     }
@@ -563,18 +636,77 @@ function buildLiveProgressMessage(
 function getLiveStatusFromDetail(detail: LiveJobDetail) {
   const jobStatus = normalizeLiveStatus(detail.job.status);
   const initialStatus = detail.initial_result?.status?.trim().toLowerCase();
+  const extractionStatus =
+    detail.initial_result?.extraction_status?.trim().toLowerCase();
+  const judgmentStatus =
+    detail.initial_result?.judgment_status?.trim().toLowerCase();
   const errorMessage =
+    detail.initial_result?.judgment_error_message ??
+    detail.initial_result?.extraction_error_message ??
     detail.initial_result?.error_message ??
     detail.job.error_message ??
     detail.secondary_run?.error_message ??
     null;
 
-  if (initialStatus === "error") {
+  if (
+    initialStatus === "error" ||
+    extractionStatus === "error" ||
+    extractionStatus === "failed" ||
+    judgmentStatus === "error" ||
+    judgmentStatus === "failed"
+  ) {
     return {
       jobStatus: "failed" as const,
       stageText: "Upstream analysis failed",
       progressMessage: buildLiveProgressMessage("failed", detail),
       errorMessage: errorMessage ?? "The upstream analysis job failed.",
+      analysisStage: (judgmentStatus === "error" || judgmentStatus === "failed"
+        ? "judgment"
+        : extractionStatus
+          ? "extraction"
+          : "initial") as ExternalAnalysisStage,
+    };
+  }
+
+  if (extractionStatus && judgmentStatus !== "completed") {
+    if (
+      extractionStatus === "completed" &&
+      (!judgmentStatus ||
+        judgmentStatus === "pending" ||
+        judgmentStatus === "queued")
+    ) {
+      return {
+        jobStatus: "completed" as const,
+        stageText: "CV information extraction completed",
+        progressMessage:
+          "The key information has been extracted. Please review and confirm it.",
+        errorMessage: null,
+        analysisStage: "extraction" as ExternalAnalysisStage,
+      };
+    }
+
+    if (judgmentStatus && judgmentStatus !== "completed") {
+      return {
+        jobStatus:
+          judgmentStatus === "pending" || judgmentStatus === "queued"
+            ? ("queued" as const)
+            : ("processing" as const),
+        stageText: "Eligibility judgment in progress",
+        progressMessage: buildLiveProgressMessage("processing", detail),
+        errorMessage: null,
+        analysisStage: "judgment" as ExternalAnalysisStage,
+      };
+    }
+
+    return {
+      jobStatus,
+      stageText:
+        jobStatus === "queued"
+          ? "Queued for information extraction"
+          : "Extracting CV information",
+      progressMessage: buildLiveProgressMessage(jobStatus, detail),
+      errorMessage: null,
+      analysisStage: "extraction" as ExternalAnalysisStage,
     };
   }
 
@@ -593,6 +725,9 @@ function getLiveStatusFromDetail(detail: LiveJobDetail) {
       stageText: "CV review completed",
       progressMessage: buildLiveProgressMessage("completed", detail),
       errorMessage: null,
+      analysisStage: (judgmentStatus === "completed"
+        ? "judgment"
+        : "initial") as ExternalAnalysisStage,
     };
   }
 
@@ -602,6 +737,7 @@ function getLiveStatusFromDetail(detail: LiveJobDetail) {
       stageText: "Upstream analysis failed",
       progressMessage: buildLiveProgressMessage(jobStatus, detail),
       errorMessage: errorMessage ?? "The upstream analysis job failed.",
+      analysisStage: "initial" as ExternalAnalysisStage,
     };
   }
 
@@ -610,6 +746,7 @@ function getLiveStatusFromDetail(detail: LiveJobDetail) {
     stageText: jobStatus === "queued" ? "Queued for analysis" : "Analyzing CV",
     progressMessage: buildLiveProgressMessage(jobStatus, detail),
     errorMessage: null,
+    analysisStage: "initial" as ExternalAnalysisStage,
   };
 }
 
@@ -709,21 +846,10 @@ export async function createResumeAnalysisJob(input: {
       });
     }
 
-    const fileBuffer = await readStoredObject(input.objectKey);
-    const formData = new FormData();
-
-    formData.append(
-      "file",
-      new Blob([new Uint8Array(fileBuffer)], {
-        type: input.fileType || "application/octet-stream",
-      }),
-      input.fileName,
-    );
-
     const payload = liveUploadResponseSchema.parse(
       await callLiveService("/resume-process/upload", {
         method: "POST",
-        body: formData,
+        body: await buildStoredResumeFormData(input),
       }),
     );
 
@@ -741,6 +867,65 @@ export async function createResumeAnalysisJob(input: {
     externalJobId: `mock:${scenario}:${Date.now()}`,
     jobStatus: "completed" as ExternalJobStatus,
     stageText: "Mock analysis completed",
+    errorMessage: null,
+  };
+}
+
+async function buildStoredResumeFormData(input: {
+  fileName: string;
+  fileType?: string;
+  objectKey?: string;
+}) {
+  if (!input.objectKey) {
+    throw new ResumeAnalysisError({
+      message: "CV object key is required in live mode.",
+      failureCode: "UPSTREAM_RESULT_SCHEMA_INVALID",
+      httpStatus: 500,
+    });
+  }
+
+  const fileBuffer = await readStoredObject(input.objectKey);
+  const formData = new FormData();
+
+  formData.append(
+    "file",
+    new Blob([new Uint8Array(fileBuffer)], {
+      type: input.fileType || "application/octet-stream",
+    }),
+    input.fileName,
+  );
+
+  return formData;
+}
+
+export async function createResumeExtractionJob(input: {
+  applicationId: string;
+  fileName: string;
+  fileType?: string;
+  objectKey?: string;
+}) {
+  if (isLiveMode()) {
+    const payload = liveUploadResponseSchema.parse(
+      await callLiveService("/resume-process/extraction/upload", {
+        method: "POST",
+        body: await buildStoredResumeFormData(input),
+      }),
+    );
+
+    return {
+      externalJobId: String(payload.job_id),
+      jobStatus: "queued" as ExternalJobStatus,
+      stageText: "CV uploaded and queued for information extraction",
+      errorMessage: null,
+    };
+  }
+
+  const scenario = getMockScenarioFromFileName(input.fileName);
+
+  return {
+    externalJobId: `mock-extract:${scenario}:${Date.now()}`,
+    jobStatus: "completed" as ExternalJobStatus,
+    stageText: "Mock extraction completed",
     errorMessage: null,
   };
 }
@@ -909,11 +1094,152 @@ export async function getResumeAnalysisStatus(input: {
     return getLiveStatusFromDetail(payload);
   }
 
+  if (input.externalJobId.startsWith("mock-extract:")) {
+    const judgmentStarted = judgedMockExternalJobIds.has(input.externalJobId);
+
+    return {
+      jobStatus: "completed" as ExternalJobStatus,
+      stageText: judgmentStarted
+        ? "Mock eligibility judgment completed"
+        : "Mock information extraction completed",
+      progressMessage: judgmentStarted
+        ? "The mock eligibility judgment has completed."
+        : "The mock extraction has completed. Please review and confirm it.",
+      errorMessage: null,
+      analysisStage: judgmentStarted
+        ? ("judgment" as ExternalAnalysisStage)
+        : ("extraction" as ExternalAnalysisStage),
+    };
+  }
+
   return {
     jobStatus: "completed" as ExternalJobStatus,
     stageText: "Mock analysis completed",
     progressMessage: "The mock analysis job has completed.",
     errorMessage: null,
+    analysisStage: "initial" as ExternalAnalysisStage,
+  };
+}
+
+export async function getResumeExtractionResult(input: {
+  externalJobId: string;
+}) {
+  if (isLiveMode()) {
+    const detail = liveJobDetailSchema.parse(
+      await callLiveService(`/resume-process/jobs/${input.externalJobId}`),
+    );
+
+    if (!detail.initial_result) {
+      throw new ResumeAnalysisError({
+        message: "Upstream job detail is missing initial_result.",
+        failureCode: "UPSTREAM_RESULT_SCHEMA_INVALID",
+        retryable: true,
+        httpStatus: 502,
+      });
+    }
+
+    const extractionStatus =
+      detail.initial_result.extraction_status?.trim().toLowerCase();
+
+    if (extractionStatus !== "completed") {
+      throw new ResumeAnalysisError({
+        message: "Upstream extraction result is not ready yet.",
+        failureCode: "UPSTREAM_EXTRACTION_NOT_READY",
+        retryable: true,
+        httpStatus: 409,
+      });
+    }
+
+    return normalizeExtractionResultPayload(detail.initial_result);
+  }
+
+  return buildMockExtractionResult(parseMockExternalJobId(input.externalJobId));
+}
+
+export async function triggerEligibilityJudgment(input: {
+  externalJobId: string;
+}) {
+  if (isLiveMode()) {
+    const payload = liveUploadResponseSchema.parse(
+      await callLiveService(
+        `/resume-process/jobs/${encodeURIComponent(input.externalJobId)}/judge-eligibility`,
+        {
+          method: "POST",
+        },
+      ),
+    );
+
+    return {
+      externalJobId: String(payload.job_id),
+      jobStatus: "queued" as ExternalJobStatus,
+      stageText: "Eligibility judgment queued",
+      errorMessage: null,
+    };
+  }
+
+  judgedMockExternalJobIds.add(input.externalJobId);
+
+  return {
+    externalJobId: input.externalJobId,
+    jobStatus: "completed" as ExternalJobStatus,
+    stageText: "Mock eligibility judgment completed",
+    errorMessage: null,
+  };
+}
+
+export async function correctResumeExtraction(input: {
+  externalJobId: string;
+  extractionRawResponse: string;
+}) {
+  const extractionRawResponse = input.extractionRawResponse.trim();
+
+  if (!extractionRawResponse) {
+    throw new ResumeAnalysisError({
+      message: "Corrected extraction information cannot be empty.",
+      failureCode: "UPSTREAM_RESULT_SCHEMA_INVALID",
+      httpStatus: 400,
+    });
+  }
+
+  if (isLiveMode()) {
+    const payload = liveExtractionCorrectionResponseSchema.parse(
+      await callLiveService(
+        `/resume-process/jobs/${encodeURIComponent(input.externalJobId)}/extraction`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            extraction_raw_response: extractionRawResponse,
+          }),
+        },
+      ),
+    );
+    const normalized = normalizeExtractionResultPayload(payload);
+
+    return {
+      externalJobId: String(payload.job_id),
+      extractionStatus: payload.extraction_status ?? payload.status ?? null,
+      rawResponse: normalized.rawResponse ?? extractionRawResponse,
+      extractedFields: normalized.extractedFields,
+    };
+  }
+
+  const normalized = normalizeExtractionResultPayload({
+    extraction_raw_response: extractionRawResponse,
+  });
+
+  correctedMockExtractionRawResponses.set(
+    input.externalJobId,
+    extractionRawResponse,
+  );
+
+  return {
+    externalJobId: input.externalJobId,
+    extractionStatus: "completed",
+    rawResponse: normalized.rawResponse ?? extractionRawResponse,
+    extractedFields: normalized.extractedFields,
   };
 }
 
@@ -943,6 +1269,21 @@ export async function getResumeAnalysisResult(input: {
       });
     }
 
+    const judgmentStatus =
+      detail.initial_result.judgment_status?.trim().toLowerCase();
+
+    if (
+      detail.initial_result.extraction_status &&
+      judgmentStatus !== "completed"
+    ) {
+      throw new ResumeAnalysisError({
+        message: "Upstream eligibility judgment result is not ready yet.",
+        failureCode: "UPSTREAM_JUDGMENT_NOT_READY",
+        retryable: true,
+        httpStatus: 409,
+      });
+    }
+
     const normalized = normalizeAnalysisResultPayload(detail.initial_result);
 
     return {
@@ -955,7 +1296,22 @@ export async function getResumeAnalysisResult(input: {
     };
   }
 
-  return buildMockResult(parseMockExternalJobId(input.externalJobId));
+  if (
+    input.externalJobId.startsWith("mock-extract:") &&
+    !judgedMockExternalJobIds.has(input.externalJobId)
+  ) {
+    throw new ResumeAnalysisError({
+      message: "Mock eligibility judgment result is not ready yet.",
+      failureCode: "UPSTREAM_JUDGMENT_NOT_READY",
+      retryable: true,
+      httpStatus: 409,
+    });
+  }
+
+  return buildMockResult(
+    parseMockExternalJobId(input.externalJobId),
+    input.externalJobId,
+  );
 }
 
 export function isRetryableResumeAnalysisError(error: unknown) {

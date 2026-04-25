@@ -9,6 +9,9 @@ import {
   useState,
   useTransition,
   type ChangeEvent,
+  type FocusEvent,
+  type KeyboardEvent,
+  type MutableRefObject,
   type ReactNode,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,9 +19,11 @@ import { useForm } from "react-hook-form";
 
 import type { MissingField } from "@/features/analysis/types";
 import {
+  buildInitialCvReviewExtractionText,
   getInitialCvReviewFieldValue,
   hasInitialCvReviewExtract,
   INITIAL_CV_REVIEW_FIELD_ROWS,
+  type InitialCvReviewFieldKey,
 } from "@/features/analysis/initial-cv-review-extract";
 import {
   ActionButton,
@@ -32,6 +37,7 @@ import {
 } from "@/components/ui/page-shell";
 import {
   confirmResumeUpload,
+  confirmResumeExtraction,
   createResumeUploadIntent,
   deleteUploadedResume,
   fetchAnalysisResult,
@@ -69,8 +75,13 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 type SupplementalFormValues = Record<string, string>;
+type ExtractionCorrectionFields = Record<InitialCvReviewFieldKey, string>;
+type ExtractionCorrectionErrors = Partial<
+  Record<InitialCvReviewFieldKey, string>
+>;
 
 const ANALYZING_STATUSES = [
+  "CV_EXTRACTING",
   "CV_ANALYZING",
   "REANALYZING",
   "SECONDARY_ANALYZING",
@@ -87,6 +98,102 @@ const RESULT_VIEW_TO_STEP = {
   additional: 2,
 } as const;
 
+const EXTRACTION_READONLY_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
+  "name",
+]);
+
+const EXTRACTION_OPTIONAL_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
+  "work_email",
+  "phone_number",
+]);
+
+const EXTRACTION_MULTILINE_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
+  "work_experience_2020_present",
+  "research_area",
+]);
+
+const EXTRACTION_EMAIL_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
+  "personal_email",
+  "work_email",
+]);
+
+const EXTRACTION_YEAR_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
+  "year_of_birth",
+  "doctoral_graduation_time",
+]);
+
+const DOCTORAL_DEGREE_STATUS_OPTIONS = [
+  "Obtained",
+  "Doctorate completed",
+  "In progress",
+  "Expected",
+  "Not obtained",
+  "Master's only",
+  "Not specified",
+] as const;
+
+function buildExtractionCorrectionFields(
+  extractedFields: Record<string, unknown>,
+): ExtractionCorrectionFields {
+  return Object.fromEntries(
+    INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => [
+      row.key,
+      getInitialCvReviewFieldValue(extractedFields, row.key),
+    ]),
+  ) as ExtractionCorrectionFields;
+}
+
+function isMissingExtractionValue(value: string) {
+  const trimmed = value.trim();
+
+  return !trimmed || /^!!!\s*null\s*!!!$/i.test(trimmed);
+}
+
+function validateExtractionCorrectionFields(
+  fields: ExtractionCorrectionFields,
+): ExtractionCorrectionErrors {
+  const errors: ExtractionCorrectionErrors = {};
+
+  for (const row of INITIAL_CV_REVIEW_FIELD_ROWS) {
+    if (EXTRACTION_READONLY_FIELD_KEYS.has(row.key)) {
+      continue;
+    }
+
+    const value = fields[row.key] ?? "";
+    const isOptional = EXTRACTION_OPTIONAL_FIELD_KEYS.has(row.key);
+
+    if (isMissingExtractionValue(value)) {
+      if (isOptional) {
+        continue;
+      }
+
+      errors[row.key] = `${row.label} is required.`;
+      continue;
+    }
+
+    if (
+      EXTRACTION_EMAIL_FIELD_KEYS.has(row.key) &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+    ) {
+      errors[row.key] = `${row.label} must be a valid email address.`;
+      continue;
+    }
+
+    if (
+      EXTRACTION_YEAR_FIELD_KEYS.has(row.key) &&
+      !/^\d{4}$/.test(value.trim())
+    ) {
+      errors[row.key] = `${row.label} must be a four-digit year.`;
+    }
+  }
+
+  return errors;
+}
+
+function getFirstExtractionErrorKey(errors: ExtractionCorrectionErrors) {
+  return INITIAL_CV_REVIEW_FIELD_ROWS.find((row) => errors[row.key])?.key ?? null;
+}
+
 /**
  * Once initial CV review passes, `getReachableFlowStep` advances to step 2 because
  * Additional Information is unlocked — but `/apply/resume` is still the primary
@@ -99,6 +206,7 @@ function isUnifiedCvReviewPrimarySurfaceStatus(
   return (
     status === "ELIGIBLE" ||
     status === "INFO_REQUIRED" ||
+    status === "CV_EXTRACTION_REVIEW" ||
     status === "SECONDARY_ANALYZING" ||
     status === "SECONDARY_REVIEW" ||
     status === "SECONDARY_FAILED"
@@ -328,21 +436,15 @@ function renderSupplementalField(
 }
 
 function AnalysisProgressPanel({
-  title,
-  description,
   primaryMessage,
   secondaryMessage,
   progressRatio,
   ariaValueText,
-  statusLabel,
 }: {
-  title: string;
-  description: string;
   primaryMessage: string;
   secondaryMessage?: string | null;
   progressRatio: number;
   ariaValueText: string;
-  statusLabel: string;
 }) {
   const titleId = useId();
   const progressLabelId = useId();
@@ -357,33 +459,13 @@ function AnalysisProgressPanel({
   return (
     <SectionCard className="overflow-hidden">
       <div className="mx-auto max-w-2xl text-center" aria-labelledby={titleId}>
-        <div className="mx-auto inline-flex min-h-9 items-center rounded-full border border-[color:var(--border)] bg-[color:var(--muted)]/70 px-3 text-xs font-semibold text-[color:var(--primary)]">
-          {statusLabel}
-        </div>
-        <h2
-          id={titleId}
-          className="mt-4 text-xl font-semibold text-[color:var(--primary)]"
-        >
-          {title}
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[color:var(--foreground-soft)]">
-          {description}
+        <p id={titleId} className="text-sm font-semibold text-[color:var(--primary)]">
+          Please be patient
         </p>
         <div
-          className="mx-auto mt-5 max-w-xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 px-4 py-4"
+          className="mx-auto mt-4 max-w-xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/55 px-4 py-4"
           aria-busy="true"
         >
-          <div className="mb-2 flex items-center justify-between gap-3 text-left">
-            <p
-              id={progressLabelId}
-              className="text-xs font-semibold text-[color:var(--primary)]"
-            >
-              Estimated wait progress
-            </p>
-            <p className="text-xs text-[color:var(--foreground-soft)]">
-              Outcome will appear automatically
-            </p>
-          </div>
           {/* Unmount this panel when analysis ends—no brief 100% flash before result content. */}
           <div
             className="h-2 overflow-hidden rounded-full bg-white"
@@ -416,7 +498,7 @@ function AnalysisProgressPanel({
           ) : null}
         </div>
         <p className="sr-only" aria-live="polite" aria-atomic="true">
-          {`${title}. ${primaryMessage}${
+          {`Please be patient. ${primaryMessage}${
             secondaryMessage ? ` ${secondaryMessage}` : ""
           }`}
         </p>
@@ -437,14 +519,29 @@ function getInitialBanner(
   }
 
   if (
+    snapshot.applicationStatus === "CV_EXTRACTING" ||
     snapshot.applicationStatus === "CV_ANALYZING" ||
     snapshot.applicationStatus === "REANALYZING"
   ) {
     return (
       <StatusBanner
         tone="loading"
-        title="Your CV is being reviewed"
+        title={
+          snapshot.applicationStatus === "CV_EXTRACTING"
+            ? "Your CV information is being extracted"
+            : "Your CV is being reviewed"
+        }
         description={statusText}
+      />
+    );
+  }
+
+  if (snapshot.applicationStatus === "CV_EXTRACTION_REVIEW") {
+    return (
+      <StatusBanner
+        tone="neutral"
+        title="Please confirm the extracted information"
+        description="Eligibility judgment will start after you confirm the CV information shown below."
       />
     );
   }
@@ -528,21 +625,21 @@ function getInitialBanner(
 }
 
 function InitialCvReviewExtractCard({
-  latestResult,
+  extract,
 }: {
-  latestResult: NonNullable<ApplicationSnapshot["latestResult"]>;
+  extract: { extractedFields: Record<string, unknown> };
 }) {
   return (
     <SectionCard
       title="Key Profile Information"
-      description="Verify the key details extracted from your CV. Update any missing or incorrect fields to ensure an accurate eligibility assessment."
+      description="Review the key details extracted from your CV."
     >
       <div className="overflow-x-auto rounded-xl border border-[color:var(--border)] bg-white">
         <table className="min-w-full border-collapse">
           <tbody>
             {INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => {
               const value = getInitialCvReviewFieldValue(
-                latestResult.extractedFields,
+                extract.extractedFields,
                 row.key,
               );
 
@@ -565,6 +662,253 @@ function InitialCvReviewExtractCard({
             })}
           </tbody>
         </table>
+      </div>
+    </SectionCard>
+  );
+}
+
+function EditableExtractionReviewCard({
+  fields,
+  errors,
+  activeField,
+  draftValue,
+  showErrors,
+  isConfirming,
+  fieldRefs,
+  onStartEdit,
+  onDraftChange,
+  onCommitEdit,
+  onConfirm,
+}: {
+  fields: ExtractionCorrectionFields;
+  errors: ExtractionCorrectionErrors;
+  activeField: InitialCvReviewFieldKey | null;
+  draftValue: string;
+  showErrors: boolean;
+  isConfirming: boolean;
+  fieldRefs: MutableRefObject<
+    Partial<Record<InitialCvReviewFieldKey, HTMLTableRowElement | null>>
+  >;
+  onStartEdit: (fieldKey: InitialCvReviewFieldKey) => void;
+  onDraftChange: (value: string) => void;
+  onCommitEdit: (value?: string) => void;
+  onConfirm: () => void;
+}) {
+  const hasErrors = Object.keys(errors).length > 0;
+
+  function renderEditor(row: (typeof INITIAL_CV_REVIEW_FIELD_ROWS)[number]) {
+    const hasError = Boolean(errors[row.key]);
+    const inputClassName = getInputClassName(
+      cn(
+        "bg-white",
+        hasError &&
+          showErrors &&
+          "border-[color:var(--accent)] ring-1 ring-[color:var(--ring)]",
+      ),
+    );
+    const commonProps = {
+      value: draftValue,
+      disabled: isConfirming,
+      "aria-invalid": hasError && showErrors,
+      onChange: (
+        event:
+          | ChangeEvent<HTMLInputElement>
+          | ChangeEvent<HTMLTextAreaElement>
+          | ChangeEvent<HTMLSelectElement>,
+      ) => onDraftChange(event.currentTarget.value),
+      onBlur: (
+        event: FocusEvent<
+          HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+        >,
+      ) => onCommitEdit(event.currentTarget.value),
+    };
+
+    if (row.key === "doctoral_degree_status") {
+      const options = DOCTORAL_DEGREE_STATUS_OPTIONS.includes(
+        draftValue as (typeof DOCTORAL_DEGREE_STATUS_OPTIONS)[number],
+      )
+        ? DOCTORAL_DEGREE_STATUS_OPTIONS
+        : ([draftValue, ...DOCTORAL_DEGREE_STATUS_OPTIONS].filter(
+            Boolean,
+          ) as readonly string[]);
+
+      return (
+        <select
+          autoFocus
+          className={inputClassName}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onCommitEdit(event.currentTarget.value);
+            }
+          }}
+          {...commonProps}
+        >
+          <option value="">Please select</option>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (EXTRACTION_MULTILINE_FIELD_KEYS.has(row.key)) {
+      return (
+        <textarea
+          autoFocus
+          className={getInputClassName(
+            cn(
+              "min-h-28",
+              hasError &&
+                showErrors &&
+                "border-[color:var(--accent)] ring-1 ring-[color:var(--ring)]",
+            ),
+          )}
+          onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              onCommitEdit(event.currentTarget.value);
+            }
+          }}
+          {...commonProps}
+        />
+      );
+    }
+
+    return (
+      <input
+        autoFocus
+        type={EXTRACTION_EMAIL_FIELD_KEYS.has(row.key) ? "email" : "text"}
+        inputMode={EXTRACTION_YEAR_FIELD_KEYS.has(row.key) ? "numeric" : undefined}
+        maxLength={EXTRACTION_YEAR_FIELD_KEYS.has(row.key) ? 4 : undefined}
+        className={inputClassName}
+        onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            onCommitEdit(event.currentTarget.value);
+          }
+        }}
+        {...commonProps}
+      />
+    );
+  }
+
+  return (
+    <SectionCard
+      title="Key information review"
+      description="Please verify the extracted details below. Click any editable value to make a correction before starting eligibility judgment."
+    >
+      <div className="flex flex-col gap-4">
+        <div className="overflow-x-auto rounded-xl border border-[color:var(--border)] bg-white">
+          <table className="min-w-full border-collapse">
+            <tbody>
+              {INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => {
+                const value = fields[row.key] ?? "";
+                const isReadonly = EXTRACTION_READONLY_FIELD_KEYS.has(row.key);
+                const isEditing = activeField === row.key;
+                const hasError = Boolean(errors[row.key]);
+                const displayValue = isMissingExtractionValue(value)
+                  ? "Not provided"
+                  : value;
+
+                return (
+                  <tr
+                    key={row.key}
+                    ref={(node) => {
+                      fieldRefs.current[row.key] = node;
+                    }}
+                    className={cn(
+                      "border-b border-[color:var(--border)] last:border-b-0",
+                      hasError && showErrors && "bg-red-50/70",
+                    )}
+                  >
+                    <th
+                      scope="row"
+                      className="w-64 px-4 py-3 text-left align-top text-sm font-medium text-[color:var(--primary)]"
+                    >
+                      <span>{row.label}</span>
+                      {!isReadonly ? (
+                        <span className="ml-2 text-xs font-normal text-[color:var(--muted-foreground)]">
+                          {EXTRACTION_OPTIONAL_FIELD_KEYS.has(row.key)
+                            ? "Optional"
+                            : "Required"}
+                        </span>
+                      ) : (
+                        <span className="ml-2 text-xs font-normal text-[color:var(--muted-foreground)]">
+                          Read-only
+                        </span>
+                      )}
+                    </th>
+                    <td className="px-4 py-3 align-top text-sm">
+                      {isEditing ? (
+                        <div className="flex flex-col gap-2">
+                          {renderEditor(row)}
+                          {hasError && showErrors ? (
+                            <span className="text-xs text-red-600">
+                              {errors[row.key]}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[color:var(--muted-foreground)]">
+                              Press Enter or click outside to save.
+                            </span>
+                          )}
+                        </div>
+                      ) : isReadonly ? (
+                        <span className="block break-words whitespace-pre-wrap text-[color:var(--muted-foreground)]">
+                          {displayValue}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isConfirming}
+                          onClick={() => onStartEdit(row.key)}
+                          className={cn(
+                            "group -mx-2 -my-1 block w-full rounded-md px-2 py-1 text-left transition",
+                            "hover:bg-amber-50 focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:outline-none",
+                            hasError && showErrors
+                              ? "text-red-700"
+                              : "text-[color:var(--foreground-soft)]",
+                          )}
+                        >
+                          <span className="break-words whitespace-pre-wrap">
+                            {displayValue}
+                          </span>
+                          <span className="ml-2 text-xs font-medium text-[color:var(--muted-foreground)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                            Edit
+                          </span>
+                          {hasError && showErrors ? (
+                            <span className="mt-1 block text-xs text-red-600">
+                              {errors[row.key]}
+                            </span>
+                          ) : null}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
+            Corrections are saved to the review service first; eligibility
+            judgment starts only after these fields pass validation.
+          </p>
+          <ActionButton
+            type="button"
+            onClick={onConfirm}
+            disabled={isConfirming || hasErrors}
+            className="w-full sm:w-auto"
+          >
+            {isConfirming
+              ? "Saving Correction and Starting Judgment..."
+              : "Confirm and Start Eligibility Judgment"}
+          </ActionButton>
+        </div>
       </div>
     </SectionCard>
   );
@@ -742,6 +1086,8 @@ export function CvReviewExperience() {
   const [isUploadingResume, startResumeUploadTransition] = useTransition();
   const [isStartingResumeAnalysis, startResumeAnalysisTransition] =
     useTransition();
+  const [isConfirmingExtraction, startExtractionConfirmTransition] =
+    useTransition();
   const [isDeletingUploadedResume, startDeleteResumeTransition] =
     useTransition();
   const [isSubmittingSupplemental, startSupplementalTransition] =
@@ -757,6 +1103,18 @@ export function CvReviewExperience() {
   const [supplementalDraftSavedAt, setSupplementalDraftSavedAt] = useState<
     string | null
   >(null);
+  const [extractionCorrectionFields, setExtractionCorrectionFields] =
+    useState<ExtractionCorrectionFields>(() =>
+      buildExtractionCorrectionFields({}),
+    );
+  const [activeExtractionField, setActiveExtractionField] =
+    useState<InitialCvReviewFieldKey | null>(null);
+  const [extractionDraftValue, setExtractionDraftValue] = useState("");
+  const [hasAttemptedExtractionSubmit, setHasAttemptedExtractionSubmit] =
+    useState(false);
+  const extractionFieldRefs = useRef<
+    Partial<Record<InitialCvReviewFieldKey, HTMLTableRowElement | null>>
+  >({});
   const [mailtoHref, setMailtoHref] = useState<string | undefined>(undefined);
   const hasTrackedPageView = useRef(false);
   const { register, handleSubmit, reset, watch, getValues } =
@@ -842,6 +1200,24 @@ export function CvReviewExperience() {
   }, [router]);
 
   useEffect(() => {
+    const review = snapshot?.latestExtractionReview;
+
+    if (!review || snapshot?.applicationStatus !== "CV_EXTRACTION_REVIEW") {
+      return;
+    }
+
+    setExtractionCorrectionFields(
+      buildExtractionCorrectionFields(review.extractedFields),
+    );
+    setActiveExtractionField(null);
+    setExtractionDraftValue("");
+    setHasAttemptedExtractionSubmit(false);
+  }, [
+    snapshot?.applicationStatus,
+    snapshot?.latestExtractionReview,
+  ]);
+
+  useEffect(() => {
     if (!snapshot || hasTrackedPageView.current) {
       return;
     }
@@ -855,6 +1231,9 @@ export function CvReviewExperience() {
           ? "resume_upload"
           : snapshot.applicationStatus === "INFO_REQUIRED"
             ? "supplemental"
+            : snapshot.applicationStatus === "CV_EXTRACTING" ||
+                snapshot.applicationStatus === "CV_EXTRACTION_REVIEW"
+              ? "resume_extraction"
             : snapshot.applicationStatus === "SECONDARY_ANALYZING" ||
                 snapshot.applicationStatus === "SECONDARY_REVIEW" ||
                 snapshot.applicationStatus === "SECONDARY_FAILED"
@@ -898,9 +1277,12 @@ export function CvReviewExperience() {
   useEffect(() => {
     if (
       !snapshot ||
-      !["CV_ANALYZING", "REANALYZING", "SECONDARY_ANALYZING"].includes(
-        snapshot.applicationStatus,
-      )
+      ![
+        "CV_EXTRACTING",
+        "CV_ANALYZING",
+        "REANALYZING",
+        "SECONDARY_ANALYZING",
+      ].includes(snapshot.applicationStatus)
     ) {
       return;
     }
@@ -1090,13 +1472,13 @@ export function CvReviewExperience() {
           current
             ? {
                 ...current,
-                applicationStatus: "CV_ANALYZING",
+                applicationStatus: "CV_EXTRACTING",
                 currentStep: "result",
               }
             : current,
         );
         setStatusText(
-          "Your CV is being reviewed. This page will update automatically.",
+          "The system is extracting key information from your CV. This page will update automatically.",
         );
         await syncAnalysisProgress(snapshot.applicationId);
       } catch (nextError) {
@@ -1104,6 +1486,95 @@ export function CvReviewExperience() {
           nextError instanceof Error
             ? nextError.message
             : "Unable to start CV analysis.",
+        );
+      }
+    });
+  }
+
+  function scrollToFirstExtractionError(errors: ExtractionCorrectionErrors) {
+    const firstErrorKey = getFirstExtractionErrorKey(errors);
+
+    if (!firstErrorKey) {
+      return;
+    }
+
+    extractionFieldRefs.current[firstErrorKey]?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }
+
+  function handleStartExtractionFieldEdit(fieldKey: InitialCvReviewFieldKey) {
+    if (EXTRACTION_READONLY_FIELD_KEYS.has(fieldKey) || isConfirmingExtraction) {
+      return;
+    }
+
+    setActiveExtractionField(fieldKey);
+    setExtractionDraftValue(extractionCorrectionFields[fieldKey] ?? "");
+  }
+
+  function handleCommitExtractionFieldEdit(value?: string) {
+    if (!activeExtractionField) {
+      return;
+    }
+
+    const nextValue = (value ?? extractionDraftValue).trim();
+
+    setExtractionCorrectionFields((current) => {
+      if (current[activeExtractionField] === nextValue) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [activeExtractionField]: nextValue,
+      };
+    });
+    setActiveExtractionField(null);
+    setExtractionDraftValue("");
+  }
+
+  function handleConfirmExtraction() {
+    if (
+      !snapshot ||
+      snapshot.applicationStatus !== "CV_EXTRACTION_REVIEW" ||
+      !snapshot.latestExtractionReview
+    ) {
+      return;
+    }
+
+    const errors = validateExtractionCorrectionFields(extractionCorrectionFields);
+
+    if (Object.keys(errors).length > 0) {
+      setHasAttemptedExtractionSubmit(true);
+      scrollToFirstExtractionError(errors);
+      return;
+    }
+
+    startExtractionConfirmTransition(async () => {
+      try {
+        setError(null);
+        await confirmResumeExtraction(snapshot.applicationId, {
+          extractionRawResponse: buildInitialCvReviewExtractionText(
+            extractionCorrectionFields,
+          ),
+        });
+        setSnapshot((current) =>
+          current
+            ? {
+                ...current,
+                applicationStatus: "CV_ANALYZING",
+                currentStep: "result",
+              }
+            : current,
+        );
+        setStatusText("");
+        await syncAnalysisProgress(snapshot.applicationId);
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to start eligibility judgment.",
         );
       }
     });
@@ -1179,9 +1650,23 @@ export function CvReviewExperience() {
     });
   }
 
+  const activeInitialCvReviewExtract = useMemo(
+    () =>
+      snapshot?.latestResult ??
+      (snapshot?.latestExtractionReview
+        ? {
+            extractedFields: snapshot.latestExtractionReview.extractedFields,
+          }
+        : null),
+    [snapshot?.latestExtractionReview, snapshot?.latestResult],
+  );
   const hasInitialCvReviewExtractData = useMemo(
-    () => hasInitialCvReviewExtract(snapshot?.latestResult?.extractedFields),
-    [snapshot?.latestResult?.extractedFields],
+    () => hasInitialCvReviewExtract(activeInitialCvReviewExtract?.extractedFields),
+    [activeInitialCvReviewExtract?.extractedFields],
+  );
+  const extractionCorrectionErrors = useMemo(
+    () => validateExtractionCorrectionFields(extractionCorrectionFields),
+    [extractionCorrectionFields],
   );
   const missingFields = useMemo(
     () => snapshot?.latestResult?.missingFields ?? [],
@@ -1240,7 +1725,12 @@ export function CvReviewExperience() {
     : false;
   const isAnalyzingStage = Boolean(
     snapshot &&
-    ["CV_ANALYZING", "REANALYZING", "SECONDARY_ANALYZING"].includes(
+    [
+      "CV_EXTRACTING",
+      "CV_ANALYZING",
+      "REANALYZING",
+      "SECONDARY_ANALYZING",
+    ].includes(
       snapshot.applicationStatus,
     ),
   );
@@ -1304,9 +1794,13 @@ export function CvReviewExperience() {
     }
 
     switch (snapshot.applicationStatus) {
+      case "CV_EXTRACTING":
+        return "The system is extracting key information from your CV. This page will update automatically.";
+      case "CV_EXTRACTION_REVIEW":
+        return "Review the information extracted from your CV. Eligibility judgment will start after you confirm it.";
       case "CV_ANALYZING":
       case "REANALYZING":
-        return "Your CV is still being reviewed. This page will update automatically; please keep it open.";
+        return "Your confirmed CV information is being evaluated. This page will update automatically; please keep it open.";
       case "INFO_REQUIRED":
         if (isEligibleContactCompletion) {
           return currentResultStep === 2
@@ -1334,7 +1828,7 @@ export function CvReviewExperience() {
       case "INELIGIBLE":
         return "This submission does not meet the published requirements. See the summary below for the reasons provided.";
       case "INTRO_VIEWED":
-        return "Upload your latest CV and keep this page open while the review runs.";
+        return 'Upload your latest CV and click "Confirm Upload". Keep this page open as we will extract key information for eligibility assessment. You may re-upload your CV before confirming, but it cannot be replaced once confirmed.';
       case "CV_UPLOADED":
         return "Your CV has been saved. Start CV analysis when you are ready.";
       default:
@@ -1361,7 +1855,9 @@ export function CvReviewExperience() {
       <PageShell
         title={
           currentResultStep === 1
-            ? "CV Upload & Preliminary Assessment"
+            ? snapshot?.applicationStatus === "CV_EXTRACTION_REVIEW"
+              ? "Confirm CV Information"
+              : "CV Upload & Preliminary Assessment"
             : isEligibleContactCompletion
               ? "Complete your contact details to continue."
               : "Provide the remaining information needed to finish CV review."
@@ -1401,8 +1897,8 @@ export function CvReviewExperience() {
             <>
               {showUploadState ? (
                 <SectionCard
-                  title="Applicant CV"
-                  description="Choosing a file saves it automatically. Start CV analysis when you are ready. You can replace or delete the file before analysis starts."
+                  title={undefined}
+                  description={undefined}
                 >
                   <div className="flex flex-col gap-5">
                     <label className="block">
@@ -1507,23 +2003,13 @@ export function CvReviewExperience() {
                       >
                         {isStartingResumeAnalysis
                           ? "Starting Analysis..."
-                          : "Start CV Analysis"}
+                          : "Confirm Upload"}
                       </ActionButton>
                     </div>
                   </div>
                 </SectionCard>
               ) : isAnalyzingStage ? (
                 <AnalysisProgressPanel
-                  title={
-                    snapshot.applicationStatus === "SECONDARY_ANALYZING"
-                      ? "Additional review in progress"
-                      : "CV submission is running"
-                  }
-                  description={
-                    snapshot.applicationStatus === "SECONDARY_ANALYZING"
-                      ? "When this step finishes, you can continue to Additional Information to upload supporting materials."
-                      : "Your CV is being evaluated against the published requirements. This may take a little time."
-                  }
                   progressRatio={analysisProgressView?.progressRatio ?? 0}
                   primaryMessage={
                     analysisProgressView?.primaryMessage ??
@@ -1538,10 +2024,6 @@ export function CvReviewExperience() {
                     analysisProgressView?.ariaValueText ??
                     "CV review in progress."
                   }
-                  statusLabel={
-                    analysisProgressView?.statusLabel ??
-                    formatAnalysisStatusLabel(analysisJobStatus)
-                  }
                 />
               ) : (
                 getInitialBanner(snapshot, statusText, {
@@ -1549,13 +2031,32 @@ export function CvReviewExperience() {
                 })
               )}
 
-              {hasInitialCvReviewExtractData && snapshot.latestResult ? (
+              {hasInitialCvReviewExtractData &&
+              activeInitialCvReviewExtract &&
+              snapshot.applicationStatus !== "CV_EXTRACTION_REVIEW" ? (
                 <InitialCvReviewExtractCard
-                  latestResult={snapshot.latestResult}
+                  extract={activeInitialCvReviewExtract}
                 />
               ) : null}
 
-              {hasInitialCvReviewExtractData ? (
+              {snapshot.applicationStatus === "CV_EXTRACTION_REVIEW" &&
+              snapshot.latestExtractionReview ? (
+                <EditableExtractionReviewCard
+                  fields={extractionCorrectionFields}
+                  errors={extractionCorrectionErrors}
+                  activeField={activeExtractionField}
+                  draftValue={extractionDraftValue}
+                  showErrors={hasAttemptedExtractionSubmit}
+                  isConfirming={isConfirmingExtraction}
+                  fieldRefs={extractionFieldRefs}
+                  onStartEdit={handleStartExtractionFieldEdit}
+                  onDraftChange={setExtractionDraftValue}
+                  onCommitEdit={handleCommitExtractionFieldEdit}
+                  onConfirm={handleConfirmExtraction}
+                />
+              ) : null}
+
+              {hasInitialCvReviewExtractData && snapshot.latestResult ? (
                 <InitialCvReviewDeterminationCard snapshot={snapshot} />
               ) : null}
 

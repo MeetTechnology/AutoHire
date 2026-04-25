@@ -32,6 +32,7 @@ import {
   createAnalysisJob,
   createAnalysisResult,
   createApplication,
+  createExtractionReview,
   createEvent,
   createMaterial,
   createResumeFile,
@@ -43,8 +44,10 @@ import {
   findSecondaryAnalysisRunByExternalRunId,
   getApplicationById,
   getApplicationFeedbackByApplicationId,
+  getExtractionReviewByAnalysisJobId,
   getLatestAnalysisJob,
   getLatestAnalysisResult,
+  getLatestExtractionReview,
   getLatestResumeFile,
   getLatestResumeVersion,
   getLatestSecondaryAnalysisRun,
@@ -54,19 +57,23 @@ import {
   submitApplicationFeedbackRecord,
   updateAnalysisJob,
   updateApplication,
+  updateExtractionReview,
   upsertApplicationFeedbackDraft,
   upsertSecondaryAnalysisFieldValues,
   upsertSecondaryAnalysisRun,
 } from "@/lib/data/store";
 import {
-  createResumeAnalysisJob,
+  correctResumeExtraction,
+  createResumeExtractionJob,
   getResumeAnalysisErrorMessage,
+  getResumeExtractionResult,
   getResumeAnalysisResult,
   getResumeAnalysisStatus,
   getSecondaryAnalysisResult,
   isRetryableResumeAnalysisError,
   reanalyzeWithSupplementalFields,
   syncExpertJobUpstreamMapping,
+  triggerEligibilityJudgment,
   triggerSecondaryAnalysis,
 } from "@/lib/resume-analysis/client";
 import {
@@ -388,7 +395,7 @@ export async function startInitialAnalysis(input: {
   resumeFileId: string;
 }) {
   const latestResumeFile = await getLatestResumeFile(input.applicationId);
-  const analysis = await createResumeAnalysisJob({
+  const analysis = await createResumeExtractionJob({
     applicationId: input.applicationId,
     fileName: input.fileName,
     fileType: latestResumeFile?.fileType,
@@ -409,8 +416,21 @@ export async function startInitialAnalysis(input: {
         : null,
   });
 
+  await createExtractionReview({
+    applicationId: input.applicationId,
+    analysisJobId: job.id,
+    externalJobId: analysis.externalJobId,
+    status:
+      analysis.jobStatus === "failed"
+        ? "FAILED"
+        : analysis.jobStatus === "completed"
+          ? "PROCESSING"
+          : "PROCESSING",
+    errorMessage: analysis.errorMessage ?? null,
+  });
+
   await updateApplication(input.applicationId, {
-    applicationStatus: "CV_ANALYZING",
+    applicationStatus: "CV_EXTRACTING",
     currentStep: "result",
     latestAnalysisJobId: job.id,
   });
@@ -444,6 +464,96 @@ export async function startInitialAnalysisFromLatestResume(
     fileName: latestResumeFile.fileName,
     resumeFileId: latestResumeFile.id,
   });
+}
+
+export async function confirmExtractionAndStartEligibilityJudgment(
+  applicationId: string,
+  input?: {
+    extractionRawResponse?: string | null;
+  },
+) {
+  await requireApplicationStage({
+    applicationId,
+    allowedStatuses: ["CV_EXTRACTION_REVIEW"],
+    message:
+      "Extracted CV information can only be confirmed after extraction completes.",
+    code: "EXTRACTION_CONFIRM_NOT_ALLOWED",
+  });
+
+  const latestJob = await getLatestAnalysisJob(applicationId);
+
+  if (!latestJob?.externalJobId) {
+    throw new ApplicationServiceError(
+      "No extraction job is available for eligibility judgment.",
+      409,
+      "EXTRACTION_JOB_REQUIRED",
+    );
+  }
+
+  const review = await getLatestExtractionReview(applicationId);
+
+  if (!review || review.analysisJobId !== latestJob.id || review.status !== "READY") {
+    throw new ApplicationServiceError(
+      "Extracted CV information is not ready for confirmation.",
+      409,
+      "EXTRACTION_REVIEW_NOT_READY",
+    );
+  }
+
+  const correctedExtractionRawResponse = input?.extractionRawResponse?.trim();
+
+  if (correctedExtractionRawResponse) {
+    if (!correctedExtractionRawResponse.includes("### 1. Extracted Information")) {
+      throw new ApplicationServiceError(
+        "Corrected extraction information must include the complete extracted information section.",
+        400,
+        "EXTRACTION_CORRECTION_INVALID",
+      );
+    }
+
+    const correction = await correctResumeExtraction({
+      externalJobId: latestJob.externalJobId,
+      extractionRawResponse: correctedExtractionRawResponse,
+    });
+
+    await updateExtractionReview(latestJob.id, {
+      status: "READY",
+      extractedFields: correction.extractedFields,
+      rawExtractionResponse: correction.rawResponse,
+      errorMessage: null,
+    });
+  }
+
+  const judgment = await triggerEligibilityJudgment({
+    externalJobId: latestJob.externalJobId,
+  });
+
+  await updateExtractionReview(latestJob.id, {
+    status: "CONFIRMED",
+    confirmedAt: new Date(),
+    errorMessage: null,
+  });
+
+  await updateAnalysisJob(latestJob.id, {
+    jobStatus: mapExternalJobStatus(judgment.jobStatus),
+    stageText: judgment.stageText ?? "Eligibility judgment queued",
+    errorMessage: judgment.errorMessage ?? null,
+    finishedAt:
+      judgment.jobStatus === "completed" || judgment.jobStatus === "failed"
+        ? new Date()
+        : null,
+  });
+
+  await updateApplication(applicationId, {
+    applicationStatus: "CV_ANALYZING",
+    currentStep: "result",
+    latestAnalysisJobId: latestJob.id,
+  });
+
+  return {
+    analysisJobId: latestJob.id,
+    applicationStatus: "CV_ANALYZING" as const,
+  };
 }
 
 export async function removeLatestResumeUpload(applicationId: string) {
@@ -573,6 +683,9 @@ export async function refreshAnalysisState(applicationId: string) {
   }
 
   const mappedJobStatus = mapExternalJobStatus(status.jobStatus);
+  const analysisStage =
+    "analysisStage" in status ? status.analysisStage : "initial";
+  const applicationForStage = await getApplicationById(applicationId);
 
   await updateAnalysisJob(job.id, {
     jobStatus: mappedJobStatus,
@@ -583,6 +696,106 @@ export async function refreshAnalysisState(applicationId: string) {
         ? new Date()
         : null,
   });
+
+  if (
+    analysisStage === "extraction" &&
+    applicationForStage?.applicationStatus !== "CV_ANALYZING"
+  ) {
+    if (mappedJobStatus !== "COMPLETED") {
+      if (mappedJobStatus === "FAILED") {
+        await updateExtractionReview(job.id, {
+          status: "FAILED",
+          errorMessage: status.errorMessage ?? "The extraction failed.",
+        });
+      }
+
+      return {
+        jobStatus: mappedJobStatus,
+        stageText: status.stageText ?? "Extracting CV information",
+        progressMessage:
+          mappedJobStatus === "FAILED"
+            ? "The extraction failed. Please review the input and try again."
+            : (status.progressMessage ??
+              "The system is extracting key information from your CV. Please wait."),
+        errorMessage: status.errorMessage ?? null,
+      };
+    }
+
+    try {
+      const extraction = await getResumeExtractionResult({
+        externalJobId: job.externalJobId ?? "",
+      });
+      const existingReview = await getExtractionReviewByAnalysisJobId(job.id);
+
+      if (existingReview) {
+        await updateExtractionReview(job.id, {
+          status: "READY",
+          extractedFields: extraction.extractedFields,
+          rawExtractionResponse: extraction.rawResponse,
+          errorMessage: null,
+        });
+      } else {
+        await createExtractionReview({
+          applicationId,
+          analysisJobId: job.id,
+          externalJobId: job.externalJobId,
+          status: "READY",
+          extractedFields: extraction.extractedFields,
+          rawExtractionResponse: extraction.rawResponse,
+        });
+      }
+
+      await updateApplication(applicationId, {
+        applicationStatus: "CV_EXTRACTION_REVIEW",
+        currentStep: "result",
+      });
+
+      return {
+        jobStatus: "COMPLETED" as const,
+        stageText: "CV information extraction completed",
+        progressMessage:
+          "The key information has been extracted. Please review and confirm it.",
+        errorMessage: null,
+      };
+    } catch (error) {
+      if (isRetryableResumeAnalysisError(error)) {
+        await updateAnalysisJob(job.id, {
+          jobStatus: "PROCESSING",
+          stageText: "Syncing extraction result",
+          errorMessage: null,
+          finishedAt: null,
+        });
+
+        return {
+          jobStatus: "PROCESSING" as const,
+          stageText: "Syncing extraction result",
+          progressMessage:
+            "The upstream extraction has completed. The system is syncing the extracted information.",
+          errorMessage: null,
+        };
+      }
+
+      const errorMessage = getResumeAnalysisErrorMessage(error);
+      await updateExtractionReview(job.id, {
+        status: "FAILED",
+        errorMessage,
+      });
+      await updateAnalysisJob(job.id, {
+        jobStatus: "FAILED",
+        stageText: "Extraction failed",
+        errorMessage,
+        finishedAt: new Date(),
+      });
+
+      return {
+        jobStatus: "FAILED" as const,
+        stageText: "Extraction failed",
+        progressMessage:
+          "The extraction failed. Please review the input and try again.",
+        errorMessage,
+      };
+    }
+  }
 
   if (mappedJobStatus !== "COMPLETED") {
     return {

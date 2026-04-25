@@ -11,6 +11,7 @@ export type TrackingStepName =
   | "invite_access"
   | "intro"
   | "resume_upload"
+  | "resume_extraction"
   | "analysis_result"
   | "supplemental"
   | "secondary_analysis"

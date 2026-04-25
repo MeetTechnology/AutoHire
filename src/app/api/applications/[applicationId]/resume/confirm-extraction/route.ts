@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   ApplicationServiceError,
-  startInitialAnalysisFromLatestResume,
+  confirmExtractionAndStartEligibilityJudgment,
 } from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError } from "@/lib/http";
-import { getResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
+import {
+  ResumeAnalysisError,
+  getResumeAnalysisErrorMessage,
+} from "@/lib/resume-analysis/client";
 import { trackEventFromRequest } from "@/lib/tracking/service";
 
 type Params = {
@@ -25,24 +28,34 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   try {
-    const job = await startInitialAnalysisFromLatestResume(applicationId);
+    const body = (await request.json().catch(() => ({}))) as {
+      extractionRawResponse?: unknown;
+    };
+    const extractionRawResponse =
+      typeof body.extractionRawResponse === "string"
+        ? body.extractionRawResponse
+        : undefined;
+
+    const result =
+      await confirmExtractionAndStartEligibilityJudgment(applicationId, {
+        extractionRawResponse,
+      });
 
     await trackEventFromRequest(request, {
-      eventType: "resume_extraction_started",
+      eventType: "resume_extraction_confirmed",
       applicationId,
       pageName: "apply_resume",
       stepName: "resume_extraction",
       actionName: "button_click",
       eventStatus: "SUCCESS",
       payload: {
-        analysisJobId: job.id,
+        analysisJobId: result.analysisJobId,
       },
     });
 
     return NextResponse.json({
       applicationId,
-      analysisJobId: job.id,
-      applicationStatus: "CV_EXTRACTING",
+      ...result,
     });
   } catch (error) {
     if (error instanceof ApplicationServiceError) {
@@ -52,20 +65,28 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const message = getResumeAnalysisErrorMessage(error);
+    const status =
+      error instanceof ResumeAnalysisError && error.httpStatus
+        ? error.httpStatus
+        : 502;
+    const code =
+      error instanceof ResumeAnalysisError
+        ? error.failureCode
+        : "JUDGMENT_START_FAILED";
 
     await trackEventFromRequest(request, {
-      eventType: "analysis_start_failed",
+      eventType: "eligibility_judgment_start_failed",
       applicationId,
       pageName: "apply_resume",
       stepName: "resume_extraction",
       actionName: "button_click",
       eventStatus: "FAIL",
-      errorCode: "ANALYSIS_START_FAILED",
+      errorCode: "JUDGMENT_START_FAILED",
       errorMessage: message,
     });
 
-    return jsonError(message, 502, {
-      code: "ANALYSIS_START_FAILED",
+    return jsonError(message, status, {
+      code,
     });
   }
 }

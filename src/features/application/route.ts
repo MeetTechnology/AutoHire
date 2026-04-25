@@ -13,6 +13,8 @@ export function resolveRouteFromStatus(status: ApplicationStatus) {
   if (
     status === "INTRO_VIEWED" ||
     status === "CV_UPLOADED" ||
+    status === "CV_EXTRACTING" ||
+    status === "CV_EXTRACTION_REVIEW" ||
     status === "CV_ANALYZING" ||
     status === "REANALYZING" ||
     status === "INFO_REQUIRED" ||
@@ -50,6 +52,8 @@ export function getReachableFlowStep(
   if (
     status === "INTRO_VIEWED" ||
     status === "CV_UPLOADED" ||
+    status === "CV_EXTRACTING" ||
+    status === "CV_EXTRACTION_REVIEW" ||
     status === "CV_ANALYZING" ||
     status === "REANALYZING" ||
     status === "INELIGIBLE"

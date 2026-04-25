@@ -613,3 +613,45 @@ export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision
 
   throw new Error("CV analysis result is missing both text payload and structured fields.");
 }
+
+export function normalizeExtractionResultPayload(payload: unknown) {
+  if (!isRecord(payload)) {
+    throw new Error("CV extraction payload must be an object.");
+  }
+
+  const parsedResult = isRecord(payload.extraction_parsed_result)
+    ? payload.extraction_parsed_result
+    : isRecord(payload.extractionParsedResult)
+      ? payload.extractionParsedResult
+      : isRecord(payload.parsed_result)
+        ? payload.parsed_result
+        : isRecord(payload.parsedResult)
+          ? payload.parsedResult
+          : null;
+  const baseRecord = parsedResult ?? payload;
+  const extractedFields = coerceExtractedFields(baseRecord);
+  const rawResponse =
+    (typeof payload.extraction_raw_response === "string"
+      ? payload.extraction_raw_response.trim()
+      : null) ??
+    (typeof payload.extractionRawResponse === "string"
+      ? payload.extractionRawResponse.trim()
+      : null) ??
+    normalizeTextPayload(baseRecord) ??
+    normalizeTextPayload(payload);
+
+  if (rawResponse) {
+    return {
+      extractedFields: {
+        ...extractedFields,
+        ...parseExtractedInformationSection(rawResponse),
+      },
+      rawResponse,
+    };
+  }
+
+  return {
+    extractedFields,
+    rawResponse: null,
+  };
+}

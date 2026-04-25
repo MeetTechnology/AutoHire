@@ -11,6 +11,8 @@ describe("resolveRouteFromStatus", () => {
     expect(resolveRouteFromStatus("INIT")).toBe("/apply");
     expect(resolveRouteFromStatus("INTRO_VIEWED")).toBe("/apply/resume");
     expect(resolveRouteFromStatus("CV_UPLOADED")).toBe("/apply/resume");
+    expect(resolveRouteFromStatus("CV_EXTRACTING")).toBe("/apply/resume");
+    expect(resolveRouteFromStatus("CV_EXTRACTION_REVIEW")).toBe("/apply/resume");
   });
 
   it("routes CV review states to the unified CV Review page", () => {
@@ -30,6 +32,8 @@ describe("resolveRouteFromStatus", () => {
 
   it("maps later review states to the additional-information step", () => {
     expect(getReachableFlowStep("CV_ANALYZING")).toBe(1);
+    expect(getReachableFlowStep("CV_EXTRACTING")).toBe(1);
+    expect(getReachableFlowStep("CV_EXTRACTION_REVIEW")).toBe(1);
     expect(getReachableFlowStep("INELIGIBLE")).toBe(1);
     expect(getReachableFlowStep("ELIGIBLE")).toBe(2);
     expect(getReachableFlowStep("INFO_REQUIRED")).toBe(2);

@@ -3,18 +3,22 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   addMaterialRecord,
   ApplicationServiceError,
+  confirmExtractionAndStartEligibilityJudgment,
+  createResumeUploadRecord,
   enterMaterialsStage,
   filterSecondaryFieldsForPromptProgress,
   getApplicationFeedbackSnapshot,
   getEditableSecondaryAnalysisSnapshot,
   getMaterialsByCategory,
   getSnapshot,
+  refreshAnalysisState,
   removeMaterialRecord,
   saveApplicationFeedbackDraft,
   saveEditableSecondaryAnalysisFields,
   saveProductInnovationDescription,
   shouldShowFullSecondaryFieldSet,
   startSecondaryAnalysis,
+  startInitialAnalysisFromLatestResume,
   submitApplicationFeedback,
   submitApplication,
   submitSupplementalFields,
@@ -209,6 +213,45 @@ describe("secondary analysis editable service flow", () => {
 
     const snapshot = await getSnapshot("app_progress");
     expect(snapshot?.applicationStatus).toBe("REANALYZING");
+  });
+
+  it("moves initial review through extraction confirmation before final judgment", async () => {
+    await createResumeUploadRecord({
+      applicationId: "app_intro",
+      fileName: "candidate-eligible.pdf",
+      fileType: "application/pdf",
+      fileSize: 1800,
+      objectKey: "applications/app_intro/resume/candidate-eligible.pdf",
+    });
+
+    const extractionJob = await startInitialAnalysisFromLatestResume("app_intro");
+    let snapshot = await getSnapshot("app_intro");
+    expect(snapshot?.applicationStatus).toBe("CV_EXTRACTING");
+    expect(snapshot?.latestExtractionReview).toMatchObject({
+      analysisJobId: extractionJob.id,
+      status: "PROCESSING",
+    });
+
+    await refreshAnalysisState("app_intro");
+    snapshot = await getSnapshot("app_intro");
+    expect(snapshot?.applicationStatus).toBe("CV_EXTRACTION_REVIEW");
+    expect(snapshot?.latestResult).toBeNull();
+    expect(snapshot?.latestExtractionReview).toMatchObject({
+      status: "READY",
+      extractedFields: {
+        name: "Jane Doe",
+      },
+    });
+
+    await confirmExtractionAndStartEligibilityJudgment("app_intro");
+    snapshot = await getSnapshot("app_intro");
+    expect(snapshot?.applicationStatus).toBe("CV_ANALYZING");
+    expect(snapshot?.latestExtractionReview?.status).toBe("CONFIRMED");
+
+    await refreshAnalysisState("app_intro");
+    snapshot = await getSnapshot("app_intro");
+    expect(snapshot?.applicationStatus).toBe("ELIGIBLE");
+    expect(snapshot?.latestResult?.extractedFields.name).toBe("Jane Doe");
   });
 
   it("saves contact-only completion without starting reanalysis", async () => {

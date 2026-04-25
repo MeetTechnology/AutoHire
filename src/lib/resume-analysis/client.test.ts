@@ -109,6 +109,185 @@ describe("resume analysis adapter", () => {
     expect(formData.get("file")).toBeTruthy();
   });
 
+  it("uploads resume to live extraction endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ job_id: 88, files_count: 1 }), {
+        status: 202,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { createResumeExtractionJob } = await loadClient({
+      RESUME_ANALYSIS_MODE: "live",
+      RESUME_ANALYSIS_BASE_URL: "http://resume.test/api/v1",
+      RESUME_ANALYSIS_API_KEY: "secret",
+    });
+    const job = await createResumeExtractionJob({
+      applicationId: "app_live",
+      fileName: "candidate.pdf",
+      fileType: "application/pdf",
+      objectKey: "applications/app_live/resume/candidate.pdf",
+    });
+
+    expect(job.externalJobId).toBe("88");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://resume.test/api/v1/resume-process/extraction/upload",
+    );
+  });
+
+  it("returns extraction-ready status and extracted fields for split jobs", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+          job: {
+            id: 88,
+            status: "completed",
+            error_message: null,
+          },
+          initial_result: {
+            status: "completed",
+            extraction_status: "completed",
+            extraction_raw_response: `### 1. Extracted Information
+- Name: Jane Doe
+- Personal Email: jane@example.com
+- Work Email: jane@university.edu
+- Phone Number: +1 555 010 2000
+- Year of Birth: 1988
+- Doctoral Degree Status: Obtained
+- Doctoral Graduation Time: 2018
+- Current Title Equivalence: Associate Professor
+- Current Country of Employment: United States
+- Work Experience (2020-Present): 2020-Present, United States, Example University, Associate Professor
+- Research Area: Semiconductor materials`,
+          },
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { getResumeAnalysisStatus, getResumeExtractionResult } =
+      await loadClient({
+        RESUME_ANALYSIS_MODE: "live",
+        RESUME_ANALYSIS_BASE_URL: "http://resume.test/api/v1",
+        RESUME_ANALYSIS_API_KEY: "secret",
+      });
+
+    await expect(
+      getResumeAnalysisStatus({ externalJobId: "88" }),
+    ).resolves.toMatchObject({
+      jobStatus: "completed",
+      analysisStage: "extraction",
+    });
+    await expect(
+      getResumeExtractionResult({ externalJobId: "88" }),
+    ).resolves.toMatchObject({
+      extractedFields: {
+        name: "Jane Doe",
+        year_of_birth: "1988",
+      },
+    });
+  });
+
+  it("triggers eligibility judgment for split jobs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ job_id: 88 }), {
+        status: 202,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { triggerEligibilityJudgment } = await loadClient({
+      RESUME_ANALYSIS_MODE: "live",
+      RESUME_ANALYSIS_BASE_URL: "http://resume.test/api/v1",
+      RESUME_ANALYSIS_API_KEY: "secret",
+    });
+
+    await expect(
+      triggerEligibilityJudgment({ externalJobId: "88" }),
+    ).resolves.toMatchObject({
+      externalJobId: "88",
+      jobStatus: "queued",
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://resume.test/api/v1/resume-process/jobs/88/judge-eligibility",
+    );
+  });
+
+  it("submits corrected extraction text for split jobs", async () => {
+    const correctedText = `### 1. Extracted Information
+- Name: Corrected Name
+- Personal Email: !!!null!!!
+- Work Email: corrected@example.edu
+- Phone Number: !!!null!!!
+- Year of Birth: 1988
+- Doctoral Degree Status: Obtained
+- Doctoral Graduation Time: 2018
+- Current Title Equivalence: Associate Professor
+- Current Country of Employment: United States
+- Work Experience (2020-Present): 2020-Present, United States, Example University, Associate Professor
+- Research Area: Advanced manufacturing materials`;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: "resume extraction corrected",
+          job_id: 88,
+          extraction_raw_response: correctedText,
+          extraction_status: "completed",
+          raw_response: correctedText,
+          status: "completed",
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { correctResumeExtraction } = await loadClient({
+      RESUME_ANALYSIS_MODE: "live",
+      RESUME_ANALYSIS_BASE_URL: "http://resume.test/api/v1",
+      RESUME_ANALYSIS_API_KEY: "secret",
+    });
+
+    await expect(
+      correctResumeExtraction({
+        externalJobId: "88",
+        extractionRawResponse: correctedText,
+      }),
+    ).resolves.toMatchObject({
+      externalJobId: "88",
+      rawResponse: correctedText,
+      extractedFields: {
+        name: "Corrected Name",
+        work_email: "corrected@example.edu",
+      },
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://resume.test/api/v1/resume-process/jobs/88/extraction",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({ extraction_raw_response: correctedText }),
+    });
+  });
+
   it("maps completed upstream job without initial_result to processing while syncing result", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

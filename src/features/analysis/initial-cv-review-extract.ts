@@ -71,3 +71,19 @@ export function getInitialCvReviewFieldValue(
 
   return String(raw).trim();
 }
+
+export function buildInitialCvReviewExtractionText(
+  extractedFields: Record<string, unknown>,
+) {
+  const rows = INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => {
+    const value = getInitialCvReviewFieldValue(extractedFields, row.key);
+    const correctionLabel =
+      row.key === "work_experience_2020_present"
+        ? "Work Experience (2020-Present)"
+        : row.label;
+
+    return `- ${correctionLabel}: ${value || "!!!null!!!"}`;
+  });
+
+  return ["### 1. Extracted Information", ...rows].join("\n");
+}

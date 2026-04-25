@@ -26,6 +26,18 @@ async function waitForMaterialsPageSession(page: Page) {
   await expect(page.getByText("Application number")).toBeVisible();
 }
 
+async function confirmExtractedCvInformation(page: Page) {
+  await expect(
+    page.getByRole("heading", {
+      name: /Confirm CV Information/i,
+    }),
+  ).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("Key Profile Information")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Confirm and Start Eligibility Judgment" })
+    .click();
+}
+
 test.beforeEach(async ({ request }) => {
   await request.post("/api/test/reset-memory");
 });
@@ -53,6 +65,7 @@ test("eligible resume flow can reach materials and submit", async ({
     timeout: 15000,
   });
   await page.getByRole("button", { name: "Start CV Analysis" }).click();
+  await confirmExtractedCvInformation(page);
 
   await expect(
     page.getByText("Initial CV review passed", {
@@ -126,6 +139,7 @@ test("eligible review with missing contact fields requires completion before mat
     timeout: 15000,
   });
   await page.getByRole("button", { name: "Start CV Analysis" }).click();
+  await confirmExtractedCvInformation(page);
 
   await expect(
     page.getByRole("heading", {

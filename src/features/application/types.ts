@@ -6,6 +6,8 @@ export type ApplicationStatus =
   | "INIT"
   | "INTRO_VIEWED"
   | "CV_UPLOADED"
+  | "CV_EXTRACTING"
+  | "CV_EXTRACTION_REVIEW"
   | "CV_ANALYZING"
   | "INFO_REQUIRED"
   | "REANALYZING"
@@ -38,6 +40,12 @@ export type EligibilityResult =
   | "INSUFFICIENT_INFO"
   | "ELIGIBLE"
   | "INELIGIBLE";
+
+export type ResumeExtractionReviewStatus =
+  | "PROCESSING"
+  | "READY"
+  | "CONFIRMED"
+  | "FAILED";
 
 export type MaterialCategory =
   | "IDENTITY"
@@ -97,6 +105,18 @@ export type SecondaryAnalysisSnapshot = {
   run: SecondaryAnalysisRunSummary | null;
 };
 
+export type ResumeExtractionReviewSnapshot = {
+  id: string;
+  analysisJobId: string;
+  externalJobId: string | null;
+  status: ResumeExtractionReviewStatus;
+  extractedFields: Record<string, unknown>;
+  rawExtractionResponse: string | null;
+  errorMessage: string | null;
+  confirmedAt: string | null;
+  updatedAt: string;
+};
+
 export type EditableSecondaryAnalysisSnapshot = {
   runId: string | null;
   status: SecondaryAnalysisStatus;
@@ -121,6 +141,7 @@ export type ApplicationSnapshot = {
   screeningPhoneNumber: string | null;
   resumeAnalysisStatus: AnalysisJobStatus | null;
   latestResumeFile: UploadedFileSummary | null;
+  latestExtractionReview: ResumeExtractionReviewSnapshot | null;
   latestResult: {
     displaySummary: string | null;
     reasonText: string | null;

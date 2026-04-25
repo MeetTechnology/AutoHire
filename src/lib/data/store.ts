@@ -8,6 +8,7 @@ import type {
   ApplicationStatus,
   EligibilityResult,
   MaterialCategory,
+  ResumeExtractionReviewStatus,
 } from "@/features/application/types";
 import {
   mergeMissingFieldsWithScreeningContactRequirements,
@@ -118,6 +119,20 @@ type AnalysisResultRecord = {
   extractedFields: Record<string, unknown>;
   missingFields: MissingField[];
   createdAt: Date;
+};
+
+type ResumeExtractionReviewRecord = {
+  id: string;
+  applicationId: string;
+  analysisJobId: string;
+  externalJobId: string | null;
+  status: ResumeExtractionReviewStatus;
+  extractedFields: Record<string, unknown>;
+  rawExtractionResponse: string | null;
+  errorMessage: string | null;
+  confirmedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 type SupplementalFieldRecord = {
@@ -276,6 +291,7 @@ type PersistedStore = {
   resumeFiles: ResumeFileRecord[];
   analysisJobs: AnalysisJobRecord[];
   analysisResults: AnalysisResultRecord[];
+  extractionReviews: ResumeExtractionReviewRecord[];
   secondaryAnalysisRuns: SecondaryAnalysisRunRecord[];
   secondaryAnalysisFieldValues: SecondaryAnalysisFieldValueRecord[];
   supplementalFields: SupplementalFieldRecord[];
@@ -387,6 +403,56 @@ function buildSampleStore(): PersistedStore {
         updatedAt: now,
       },
       {
+        id: "app_extraction",
+        expertId: "expert_extraction",
+        invitationId: "invitation_extraction",
+        applicationStatus: "CV_EXTRACTING",
+        currentStep: "result",
+        eligibilityResult: "UNKNOWN",
+        latestAnalysisJobId: "job_extraction",
+        firstAccessedAt: now,
+        lastAccessedAt: now,
+        introConfirmedAt: now,
+        resumeUploadStartedAt: now,
+        resumeUploadedAt: now,
+        analysisStartedAt: now,
+        analysisCompletedAt: null,
+        materialsEnteredAt: null,
+        submittedAt: null,
+        screeningPassportFullName: null,
+        screeningContactEmail: null,
+        screeningWorkEmail: null,
+        screeningPhoneNumber: null,
+        productInnovationDescription: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "app_extraction_review",
+        expertId: "expert_extraction_review",
+        invitationId: "invitation_extraction_review",
+        applicationStatus: "CV_EXTRACTION_REVIEW",
+        currentStep: "result",
+        eligibilityResult: "UNKNOWN",
+        latestAnalysisJobId: "job_extraction_review",
+        firstAccessedAt: now,
+        lastAccessedAt: now,
+        introConfirmedAt: now,
+        resumeUploadStartedAt: now,
+        resumeUploadedAt: now,
+        analysisStartedAt: now,
+        analysisCompletedAt: null,
+        materialsEnteredAt: null,
+        submittedAt: null,
+        screeningPassportFullName: null,
+        screeningContactEmail: null,
+        screeningWorkEmail: null,
+        screeningPhoneNumber: null,
+        productInnovationDescription: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
         id: "app_secondary",
         expertId: "expert_secondary",
         invitationId: "invitation_secondary",
@@ -443,6 +509,27 @@ function buildSampleStore(): PersistedStore {
         versionNo: 1,
         uploadedAt: now,
       },
+      {
+        id: "resume_extraction",
+        applicationId: "app_extraction",
+        fileName: "candidate-extraction.pdf",
+        objectKey: "applications/app_extraction/resume/candidate-extraction.pdf",
+        fileType: "application/pdf",
+        fileSize: 2048,
+        versionNo: 1,
+        uploadedAt: now,
+      },
+      {
+        id: "resume_extraction_review",
+        applicationId: "app_extraction_review",
+        fileName: "candidate-extraction-review.pdf",
+        objectKey:
+          "applications/app_extraction_review/resume/candidate-extraction-review.pdf",
+        fileType: "application/pdf",
+        fileSize: 2048,
+        versionNo: 1,
+        uploadedAt: now,
+      },
     ],
     analysisJobs: [
       {
@@ -477,6 +564,30 @@ function buildSampleStore(): PersistedStore {
         jobType: "INITIAL",
         jobStatus: "COMPLETED",
         stageText: "CV review completed",
+        errorMessage: null,
+        startedAt: now,
+        finishedAt: now,
+      },
+      {
+        id: "job_extraction",
+        applicationId: "app_extraction",
+        resumeFileId: "resume_extraction",
+        externalJobId: "mock-extract:eligible:sample",
+        jobType: "INITIAL",
+        jobStatus: "PROCESSING",
+        stageText: "Extracting CV information",
+        errorMessage: null,
+        startedAt: now,
+        finishedAt: null,
+      },
+      {
+        id: "job_extraction_review",
+        applicationId: "app_extraction_review",
+        resumeFileId: "resume_extraction_review",
+        externalJobId: "mock-extract:eligible:review",
+        jobType: "INITIAL",
+        jobStatus: "COMPLETED",
+        stageText: "CV information extraction completed",
         errorMessage: null,
         startedAt: now,
         finishedAt: now,
@@ -557,6 +668,47 @@ function buildSampleStore(): PersistedStore {
         },
         missingFields: [],
         createdAt: now,
+      },
+    ],
+    extractionReviews: [
+      {
+        id: "extraction_processing",
+        applicationId: "app_extraction",
+        analysisJobId: "job_extraction",
+        externalJobId: "mock-extract:eligible:sample",
+        status: "PROCESSING",
+        extractedFields: {},
+        rawExtractionResponse: null,
+        errorMessage: null,
+        confirmedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "extraction_ready",
+        applicationId: "app_extraction_review",
+        analysisJobId: "job_extraction_review",
+        externalJobId: "mock-extract:eligible:review",
+        status: "READY",
+        extractedFields: {
+          name: "Extraction Review Expert",
+          personal_email: "extraction.review@example.com",
+          work_email: "extraction.review@university.edu",
+          phone_number: "+1 555 010 5000",
+          year_of_birth: "1988",
+          doctoral_degree_status: "Obtained",
+          doctoral_graduation_time: "2018",
+          current_title_equivalence: "Associate Professor",
+          current_country_of_employment: "United States",
+          work_experience_2020_present:
+            "2020-Present, United States, Example University, Associate Professor",
+          research_area: "Semiconductor materials",
+        },
+        rawExtractionResponse: "### 1. Extracted Information",
+        errorMessage: null,
+        confirmedAt: null,
+        createdAt: now,
+        updatedAt: now,
       },
     ],
     secondaryAnalysisRuns: [],
@@ -1211,6 +1363,129 @@ export async function getLatestAnalysisResult(applicationId: string) {
   return prisma.resumeAnalysisResult.findFirst({
     where: { applicationId },
     orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function createExtractionReview(input: {
+  applicationId: string;
+  analysisJobId: string;
+  externalJobId: string | null;
+  status: ResumeExtractionReviewStatus;
+  extractedFields?: Record<string, unknown>;
+  rawExtractionResponse?: string | null;
+  errorMessage?: string | null;
+  confirmedAt?: Date | null;
+}) {
+  if (getRuntimeMode() === "memory") {
+    const now = new Date();
+    const record: ResumeExtractionReviewRecord = {
+      id: createId("extraction"),
+      applicationId: input.applicationId,
+      analysisJobId: input.analysisJobId,
+      externalJobId: input.externalJobId,
+      status: input.status,
+      extractedFields: input.extractedFields ?? {},
+      rawExtractionResponse: input.rawExtractionResponse ?? null,
+      errorMessage: input.errorMessage ?? null,
+      confirmedAt: input.confirmedAt ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    getMemoryStore().extractionReviews.push(record);
+    return record;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.resumeExtractionReview.create({
+    data: {
+      applicationId: input.applicationId,
+      analysisJobId: input.analysisJobId,
+      externalJobId: input.externalJobId,
+      status: input.status,
+      extractedFields: (input.extractedFields ?? {}) as Prisma.InputJsonValue,
+      rawExtractionResponse: input.rawExtractionResponse ?? null,
+      errorMessage: input.errorMessage ?? null,
+      confirmedAt: input.confirmedAt ?? null,
+    },
+  });
+}
+
+export async function updateExtractionReview(
+  analysisJobId: string,
+  data: {
+    status?: ResumeExtractionReviewStatus;
+    extractedFields?: Record<string, unknown>;
+    rawExtractionResponse?: string | null;
+    errorMessage?: string | null;
+    confirmedAt?: Date | null;
+  },
+) {
+  if (getRuntimeMode() === "memory") {
+    const review = getMemoryStore().extractionReviews.find(
+      (item) => item.analysisJobId === analysisJobId,
+    );
+
+    if (!review) {
+      return null;
+    }
+
+    Object.assign(review, {
+      ...data,
+      updatedAt: new Date(),
+    });
+    return review;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.resumeExtractionReview.update({
+    where: { analysisJobId },
+    data: {
+      ...(data.status ? { status: data.status } : {}),
+      ...(data.extractedFields
+        ? { extractedFields: data.extractedFields as Prisma.InputJsonValue }
+        : {}),
+      ...(typeof data.rawExtractionResponse !== "undefined"
+        ? { rawExtractionResponse: data.rawExtractionResponse }
+        : {}),
+      ...(typeof data.errorMessage !== "undefined"
+        ? { errorMessage: data.errorMessage }
+        : {}),
+      ...(typeof data.confirmedAt !== "undefined"
+        ? { confirmedAt: data.confirmedAt }
+        : {}),
+    },
+  });
+}
+
+export async function getLatestExtractionReview(applicationId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore()
+        .extractionReviews.filter((item) => item.applicationId === applicationId)
+        .sort(byDateDesc)[0] ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.resumeExtractionReview.findFirst({
+    where: { applicationId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function getExtractionReviewByAnalysisJobId(analysisJobId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().extractionReviews.find(
+        (item) => item.analysisJobId === analysisJobId,
+      ) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.resumeExtractionReview.findUnique({
+    where: { analysisJobId },
   });
 }
 
@@ -1937,6 +2212,46 @@ function countMaterialsByCategory(
   return materials.filter((item) => item.category === category).length;
 }
 
+function toExtractionReviewSnapshot(
+  review:
+    | ResumeExtractionReviewRecord
+    | {
+        id: string;
+        analysisJobId: string;
+        externalJobId: string | null;
+        status: ResumeExtractionReviewStatus;
+        extractedFields: unknown;
+        rawExtractionResponse: string | null;
+        errorMessage: string | null;
+        confirmedAt: Date | null;
+        updatedAt: Date;
+      }
+    | null,
+) {
+  if (!review) {
+    return null;
+  }
+
+  const extractedFields =
+    typeof review.extractedFields === "object" &&
+    review.extractedFields !== null &&
+    !Array.isArray(review.extractedFields)
+      ? (review.extractedFields as Record<string, unknown>)
+      : {};
+
+  return {
+    id: review.id,
+    analysisJobId: review.analysisJobId,
+    externalJobId: review.externalJobId ?? null,
+    status: review.status,
+    extractedFields,
+    rawExtractionResponse: review.rawExtractionResponse ?? null,
+    errorMessage: review.errorMessage ?? null,
+    confirmedAt: review.confirmedAt?.toISOString() ?? null,
+    updatedAt: review.updatedAt.toISOString(),
+  };
+}
+
 function toSnapshotFromMemory(
   application: ApplicationRecord,
 ): ApplicationSnapshot {
@@ -1951,6 +2266,10 @@ function toSnapshotFromMemory(
       .sort(byDateDesc)[0] ?? null;
   const latestResult =
     store.analysisResults
+      .filter((item) => item.applicationId === application.id)
+      .sort(byDateDesc)[0] ?? null;
+  const latestExtractionReview =
+    store.extractionReviews
       .filter((item) => item.applicationId === application.id)
       .sort(byDateDesc)[0] ?? null;
   const materials = store.materials.filter(
@@ -1995,6 +2314,7 @@ function toSnapshotFromMemory(
           uploadedAt: latestResumeFile.uploadedAt.toISOString(),
         }
       : null,
+    latestExtractionReview: toExtractionReviewSnapshot(latestExtractionReview),
     latestResult: latestResult
       ? {
           displaySummary: latestResult.displaySummary,
@@ -2033,7 +2353,13 @@ export async function buildApplicationSnapshot(
   }
 
   const prisma = await getPrisma();
-  const [latestResumeFile, latestAnalysisJob, latestResult, materials] =
+  const [
+    latestResumeFile,
+    latestAnalysisJob,
+    latestResult,
+    latestExtractionReview,
+    materials,
+  ] =
     await Promise.all([
       prisma.resumeFile.findFirst({
         where: { applicationId },
@@ -2044,6 +2370,10 @@ export async function buildApplicationSnapshot(
         orderBy: { startedAt: "desc" },
       }),
       prisma.resumeAnalysisResult.findFirst({
+        where: { applicationId },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.resumeExtractionReview.findFirst({
         where: { applicationId },
         orderBy: { createdAt: "desc" },
       }),
@@ -2093,6 +2423,15 @@ export async function buildApplicationSnapshot(
           uploadedAt: latestResumeFile.uploadedAt.toISOString(),
         }
       : null,
+    latestExtractionReview: toExtractionReviewSnapshot(
+      latestExtractionReview
+        ? {
+            ...latestExtractionReview,
+            extractedFields: latestExtractionReview.extractedFields,
+            status: latestExtractionReview.status as ResumeExtractionReviewStatus,
+          }
+        : null,
+    ),
     latestResult: latestResult
       ? {
           displaySummary: latestResult.displaySummary,

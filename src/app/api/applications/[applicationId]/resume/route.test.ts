@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 
 import { POST as analyzeResumePost } from "@/app/api/applications/[applicationId]/resume/analyze/route";
+import { POST as confirmExtractionPost } from "@/app/api/applications/[applicationId]/resume/confirm-extraction/route";
 import {
   DELETE as resumeDelete,
   POST as resumePost,
@@ -12,6 +13,7 @@ import {
   listApplicationEvents,
   listFileUploadAttempts,
 } from "@/lib/data/store";
+import { refreshAnalysisState } from "@/lib/application/service";
 
 function resetMemoryStore() {
   (
@@ -155,11 +157,81 @@ describe("POST /api/applications/[applicationId]/resume", () => {
     expect(response.status).toBe(200);
 
     const snapshot = await buildApplicationSnapshot("app_intro");
-    expect(snapshot?.applicationStatus).toBe("CV_ANALYZING");
+    expect(snapshot?.applicationStatus).toBe("CV_EXTRACTING");
+    expect(snapshot?.latestExtractionReview?.status).toBe("PROCESSING");
 
     const events = await listApplicationEvents("app_intro");
-    expect(events.some((event) => event.eventType === "analysis_started")).toBe(
-      true,
+    expect(
+      events.some((event) => event.eventType === "resume_extraction_started"),
+    ).toBe(true);
+  });
+
+  it("confirms extracted CV information and starts eligibility judgment", async () => {
+    const correctedExtraction = `### 1. Extracted Information
+- Name: Corrected Name
+- Personal Email: !!!null!!!
+- Work Email: corrected@example.edu
+- Phone Number: !!!null!!!
+- Year of Birth: 1988
+- Doctoral Degree Status: Obtained
+- Doctoral Graduation Time: 2018
+- Current Title Equivalence: Associate Professor
+- Current Country of Employment: United States
+- Work Experience (2020-Present): 2020-Present, United States, Example University, Associate Professor
+- Research Area: Advanced manufacturing materials`;
+
+    await resumePost(
+      buildAuthorizedRequest("http://localhost/api/applications/app_intro/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uploadId: "upload_resume_for_confirmation",
+          fileName: "candidate-eligible.pdf",
+          fileType: "application/pdf",
+          fileSize: 1800,
+          objectKey: "applications/app_intro/resume/candidate-eligible.pdf",
+        }),
+      }),
+      { params: Promise.resolve({ applicationId: "app_intro" }) },
+    );
+    await analyzeResumePost(
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_intro/resume/analyze",
+        {
+          method: "POST",
+        },
+      ),
+      { params: Promise.resolve({ applicationId: "app_intro" }) },
+    );
+    await refreshAnalysisState("app_intro");
+
+    const readySnapshot = await buildApplicationSnapshot("app_intro");
+    expect(readySnapshot?.applicationStatus).toBe("CV_EXTRACTION_REVIEW");
+    expect(readySnapshot?.latestExtractionReview?.status).toBe("READY");
+
+    const response = await confirmExtractionPost(
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_intro/resume/confirm-extraction",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            extractionRawResponse: correctedExtraction,
+          }),
+        },
+      ),
+      { params: Promise.resolve({ applicationId: "app_intro" }) },
+    );
+
+    expect(response.status).toBe(200);
+    const snapshot = await buildApplicationSnapshot("app_intro");
+    expect(snapshot?.applicationStatus).toBe("CV_ANALYZING");
+    expect(snapshot?.latestExtractionReview?.status).toBe("CONFIRMED");
+    expect(snapshot?.latestExtractionReview?.rawExtractionResponse).toBe(
+      correctedExtraction,
+    );
+    expect(snapshot?.latestExtractionReview?.extractedFields.name).toBe(
+      "Corrected Name",
     );
   });
 
