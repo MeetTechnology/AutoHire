@@ -11,17 +11,19 @@ describe("resolveRouteFromStatus", () => {
     expect(resolveRouteFromStatus("INIT")).toBe("/apply");
     expect(resolveRouteFromStatus("INTRO_VIEWED")).toBe("/apply/resume");
     expect(resolveRouteFromStatus("CV_UPLOADED")).toBe("/apply/resume");
-    expect(resolveRouteFromStatus("CV_EXTRACTING")).toBe("/apply/resume");
-    expect(resolveRouteFromStatus("CV_EXTRACTION_REVIEW")).toBe("/apply/resume");
+    expect(resolveRouteFromStatus("CV_EXTRACTING")).toBe("/apply/result");
+    expect(resolveRouteFromStatus("CV_EXTRACTION_REVIEW")).toBe(
+      "/apply/result",
+    );
   });
 
-  it("routes CV review states to the unified CV Review page", () => {
-    expect(resolveRouteFromStatus("CV_ANALYZING")).toBe("/apply/resume");
-    expect(resolveRouteFromStatus("INFO_REQUIRED")).toBe("/apply/resume");
-    expect(resolveRouteFromStatus("ELIGIBLE")).toBe("/apply/resume");
-    expect(resolveRouteFromStatus("SECONDARY_ANALYZING")).toBe("/apply/resume");
-    expect(resolveRouteFromStatus("SECONDARY_REVIEW")).toBe("/apply/resume");
-    expect(resolveRouteFromStatus("SECONDARY_FAILED")).toBe("/apply/resume");
+  it("routes post-upload CV review states to the result page", () => {
+    expect(resolveRouteFromStatus("CV_ANALYZING")).toBe("/apply/result");
+    expect(resolveRouteFromStatus("INFO_REQUIRED")).toBe("/apply/result");
+    expect(resolveRouteFromStatus("ELIGIBLE")).toBe("/apply/result");
+    expect(resolveRouteFromStatus("SECONDARY_ANALYZING")).toBe("/apply/result");
+    expect(resolveRouteFromStatus("SECONDARY_REVIEW")).toBe("/apply/result");
+    expect(resolveRouteFromStatus("SECONDARY_FAILED")).toBe("/apply/result");
   });
 
   it("routes submitted state to the submission-complete page", () => {
@@ -46,7 +48,7 @@ describe("resolveRouteFromStatus", () => {
 describe("buildApplyFlowStepLinks", () => {
   it("sends Additional Information to the correct editable or review surface", () => {
     expect(buildApplyFlowStepLinks("INFO_REQUIRED")[2]).toBe(
-      "/apply/resume?view=additional",
+      "/apply/result?view=additional",
     );
     expect(buildApplyFlowStepLinks("ELIGIBLE")[2]).toBe("/apply/materials");
     expect(buildApplyFlowStepLinks("SECONDARY_REVIEW")[2]).toBe(
@@ -61,9 +63,15 @@ describe("buildApplyFlowStepLinks", () => {
     expect(buildApplyFlowStepLinks(null)[2]).toBe("/apply/materials");
   });
 
-  it("keeps CV Review on the unified route", () => {
+  it("keeps upload states on resume and post-upload states on result", () => {
     expect(buildApplyFlowStepLinks("INTRO_VIEWED")[1]).toBe(
       "/apply/resume?view=review",
+    );
+    expect(buildApplyFlowStepLinks("CV_UPLOADED")[1]).toBe(
+      "/apply/resume?view=review",
+    );
+    expect(buildApplyFlowStepLinks("CV_EXTRACTING")[1]).toBe(
+      "/apply/result?view=review",
     );
   });
 

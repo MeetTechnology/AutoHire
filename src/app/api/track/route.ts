@@ -6,10 +6,7 @@ import { trackEventFromRequest } from "@/lib/tracking/service";
 
 const trackEventSchema = z.object({
   event_type: z.string().min(1),
-  event_time: z
-    .string()
-    .datetime({ offset: true })
-    .optional(),
+  event_time: z.string().datetime({ offset: true }).optional(),
   page_name: z
     .enum([
       "apply_entry",
@@ -24,6 +21,7 @@ const trackEventSchema = z.object({
       "invite_access",
       "intro",
       "resume_upload",
+      "resume_extraction",
       "analysis_result",
       "supplemental",
       "secondary_analysis",
@@ -35,6 +33,7 @@ const trackEventSchema = z.object({
   action_name: z
     .enum([
       "page_view",
+      "page_duration",
       "button_click",
       "intent_create",
       "upload_start",

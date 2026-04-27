@@ -21,6 +21,7 @@ export type TrackingStepName =
 
 export type TrackingActionName =
   | "page_view"
+  | "page_duration"
   | "button_click"
   | "intent_create"
   | "upload_start"

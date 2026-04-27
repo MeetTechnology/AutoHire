@@ -13,7 +13,10 @@ const REQUEST_HEADER = "x-autohire-request-id";
 const SESSION_HEADER = "x-autohire-session-id";
 
 function ensureBrowserCryptoUuid() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
 
@@ -75,6 +78,49 @@ type TrackEventInput = {
   } | null;
 };
 
+function buildTrackEventBody(
+  input: TrackEventInput,
+  requestId: string,
+  sessionId: string,
+) {
+  return {
+    event_type: input.eventType,
+    event_time: new Date().toISOString(),
+    page_name: input.pageName,
+    step_name: input.stepName,
+    action_name: input.actionName,
+    event_status: input.eventStatus,
+    session_id: sessionId,
+    request_id: requestId,
+    application_id: input.applicationId ?? undefined,
+    token: input.token ?? undefined,
+    duration_ms: input.durationMs ?? undefined,
+    error_code: input.errorCode ?? undefined,
+    error_message: input.errorMessage ?? undefined,
+    referer:
+      typeof document !== "undefined"
+        ? document.referrer || undefined
+        : undefined,
+    landing_path:
+      input.landingPath ??
+      (typeof window !== "undefined" ? window.location.pathname : undefined),
+    utm: input.utm ?? undefined,
+    upload: input.upload
+      ? {
+          upload_id: input.upload.uploadId,
+          kind: input.upload.kind,
+          category: input.upload.category ?? null,
+          file_name: input.upload.fileName,
+          file_ext: input.upload.fileExt ?? undefined,
+          file_size: input.upload.fileSize ?? undefined,
+          failure_stage: input.upload.failureStage ?? undefined,
+          object_key: input.upload.objectKey ?? undefined,
+        }
+      : undefined,
+    payload: input.payload ?? undefined,
+  };
+}
+
 export async function trackEvent(input: TrackEventInput) {
   const requestId = createTrackingRequestId();
   const sessionId = getOrCreateTrackingSessionId();
@@ -89,39 +135,62 @@ export async function trackEvent(input: TrackEventInput) {
         },
         requestId,
       ),
-      body: JSON.stringify({
-        event_type: input.eventType,
-        event_time: new Date().toISOString(),
-        page_name: input.pageName,
-        step_name: input.stepName,
-        action_name: input.actionName,
-        event_status: input.eventStatus,
-        session_id: sessionId,
-        request_id: requestId,
-        application_id: input.applicationId ?? undefined,
-        token: input.token ?? undefined,
-        duration_ms: input.durationMs ?? undefined,
-        error_code: input.errorCode ?? undefined,
-        error_message: input.errorMessage ?? undefined,
-        referer: typeof document !== "undefined" ? document.referrer || undefined : undefined,
-        landing_path:
-          input.landingPath ??
-          (typeof window !== "undefined" ? window.location.pathname : undefined),
-        utm: input.utm ?? undefined,
-        upload: input.upload
-          ? {
-              upload_id: input.upload.uploadId,
-              kind: input.upload.kind,
-              category: input.upload.category ?? null,
-              file_name: input.upload.fileName,
-              file_ext: input.upload.fileExt ?? undefined,
-              file_size: input.upload.fileSize ?? undefined,
-              failure_stage: input.upload.failureStage ?? undefined,
-              object_key: input.upload.objectKey ?? undefined,
-            }
-          : undefined,
-        payload: input.payload ?? undefined,
-      }),
+      body: JSON.stringify(buildTrackEventBody(input, requestId, sessionId)),
+    });
+  } catch {
+    // Tracking must never block the user flow.
+  }
+}
+
+export function trackPageDuration(input: {
+  eventType: string;
+  pageName: TrackingPageName;
+  stepName: TrackingStepName;
+  applicationId: string;
+  durationMs: number;
+}) {
+  if (input.durationMs < 1000) {
+    return;
+  }
+
+  const requestId = createTrackingRequestId();
+  const sessionId = getOrCreateTrackingSessionId();
+  const body = JSON.stringify(
+    buildTrackEventBody(
+      {
+        eventType: input.eventType,
+        pageName: input.pageName,
+        stepName: input.stepName,
+        actionName: "page_duration",
+        eventStatus: "SUCCESS",
+        applicationId: input.applicationId,
+        durationMs: Math.round(input.durationMs),
+      },
+      requestId,
+      sessionId,
+    ),
+  );
+
+  try {
+    const blob = new Blob([body], { type: "application/json" });
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.sendBeacon?.("/api/track", blob)
+    ) {
+      return;
+    }
+
+    void fetch("/api/track", {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+      headers: buildTrackedRequestHeaders(
+        {
+          "Content-Type": "application/json",
+        },
+        requestId,
+      ),
+      body,
     });
   } catch {
     // Tracking must never block the user flow.
@@ -157,7 +226,10 @@ export async function trackClick(input: {
   eventType: string;
   pageName: TrackingPageName;
   stepName: TrackingStepName;
+  eventStatus?: "SUCCESS" | "FAIL";
   applicationId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
   payload?: Record<string, unknown> | null;
 }) {
   return trackEvent({
@@ -165,8 +237,10 @@ export async function trackClick(input: {
     pageName: input.pageName,
     stepName: input.stepName,
     actionName: "button_click",
-    eventStatus: "SUCCESS",
+    eventStatus: input.eventStatus ?? "SUCCESS",
     applicationId: input.applicationId ?? null,
+    errorCode: input.errorCode ?? null,
+    errorMessage: input.errorMessage ?? null,
     payload: input.payload ?? null,
   });
 }
@@ -191,7 +265,8 @@ export async function trackUploadStage(input: {
     pageName: input.pageName,
     stepName: input.stepName,
     actionName:
-      input.eventType.endsWith("_started") || input.eventType.endsWith("_failed")
+      input.eventType.endsWith("_started") ||
+      input.eventType.endsWith("_failed")
         ? input.eventStatus === "FAIL"
           ? "upload_fail"
           : "upload_start"

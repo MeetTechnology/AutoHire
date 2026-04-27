@@ -1,21 +1,5 @@
-import { redirect } from "next/navigation";
+import { CvReviewExperienceWithSuspense } from "@/features/application/components/cv-review-experience";
 
-type ResultPageProps = {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-};
-
-export default async function ResultPage({ searchParams }: ResultPageProps) {
-  const resolvedSearchParams = await searchParams;
-  const view = resolvedSearchParams.view;
-  const firstView = Array.isArray(view) ? view[0] : view;
-
-  if (firstView === "additional") {
-    redirect("/apply/resume?view=additional");
-  }
-
-  if (firstView === "review") {
-    redirect("/apply/resume?view=review");
-  }
-
-  redirect("/apply/resume");
+export default function ResultPage() {
+  return <CvReviewExperienceWithSuspense trackingPageName="apply_result" />;
 }

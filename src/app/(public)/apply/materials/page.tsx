@@ -48,6 +48,7 @@ import {
   trackClick,
   trackPageView,
 } from "@/lib/tracking/client";
+import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
 
 const REQUIRED_CATEGORIES: Array<{
   key: Lowercase<MaterialCategory>;
@@ -78,6 +79,12 @@ function MaterialsPageContent() {
   const requestedView = searchParams.get("view");
   const isReviewRequest = requestedView === "review";
 
+  usePageDurationTracking({
+    pageName: "apply_materials",
+    stepName: "materials",
+    applicationId: snapshot?.applicationId,
+  });
+
   useEffect(() => {
     let active = true;
 
@@ -105,7 +112,9 @@ function MaterialsPageContent() {
           nextSnapshot.applicationStatus === "SUBMITTED" &&
           !isReviewRequest
         ) {
-          router.replace(resolveRouteFromStatus(nextSnapshot.applicationStatus));
+          router.replace(
+            resolveRouteFromStatus(nextSnapshot.applicationStatus),
+          );
           return;
         }
 
@@ -323,7 +332,9 @@ function MaterialsPageContent() {
                   <DisclosureSection
                     key={category.key}
                     title={
-                      isRequiredCategory ? `${category.label} *` : category.label
+                      isRequiredCategory
+                        ? `${category.label} *`
+                        : category.label
                     }
                     summary={
                       isReadOnlyReview
@@ -342,9 +353,7 @@ function MaterialsPageContent() {
                               : "inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.06em] text-amber-700"
                           }
                         >
-                          {requirementMet
-                            ? fileCountLabel
-                            : "⚠ Missing"}
+                          {requirementMet ? fileCountLabel : "⚠ Missing"}
                         </span>
                       </div>
                     }
@@ -354,7 +363,9 @@ function MaterialsPageContent() {
                         <MaterialCategoryGuidance category={category.key} />
                       </div>
 
-                      {isRequiredCategory && !requirementMet && !isReadOnlyReview ? (
+                      {isRequiredCategory &&
+                      !requirementMet &&
+                      !isReadOnlyReview ? (
                         <div className="rounded-xl border border-[color:var(--border-strong)] bg-white px-4 py-3 text-sm text-[color:var(--foreground-soft)]">
                           Upload at least one file in this category to unlock
                           final confirmation.
@@ -376,14 +387,20 @@ function MaterialsPageContent() {
                             <p className="text-sm font-medium text-[color:var(--primary)]">
                               {records.length > 0 ? (
                                 <>
-                                  <span className="mr-1 font-semibold" aria-hidden>
+                                  <span
+                                    className="mr-1 font-semibold"
+                                    aria-hidden
+                                  >
                                     +
                                   </span>
                                   Click to add file(s)
                                 </>
                               ) : (
                                 <>
-                                  <span className="mr-1 font-semibold" aria-hidden>
+                                  <span
+                                    className="mr-1 font-semibold"
+                                    aria-hidden
+                                  >
                                     +
                                   </span>
                                   Click to upload file(s)
@@ -401,7 +418,10 @@ function MaterialsPageContent() {
                             className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground-soft)]"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <span className="truncate" title={record.fileName}>
+                              <span
+                                className="truncate"
+                                title={record.fileName}
+                              >
                                 {record.fileName}
                               </span>
                               {!isReadOnlyReview ? (

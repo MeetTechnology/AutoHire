@@ -44,6 +44,7 @@ import type {
   FeedbackDeviceType,
 } from "@/features/application/types";
 import { trackPageView } from "@/lib/tracking/client";
+import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
 import { cn } from "@/lib/utils";
 
 const SUBMISSION_HEADLINE =
@@ -146,15 +147,24 @@ export default function SubmissionCompletePage() {
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(true);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
-    "idle",
-  );
+  const [saveState, setSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const saveResetTimerRef = useRef<number | null>(null);
   const lastPersistedFeedbackRef = useRef(
     serializeFeedbackDraft({ rating: null, comment: "" }),
   );
   const hasTrackedViewRef = useRef(false);
+
+  usePageDurationTracking({
+    pageName: "apply_submission_complete",
+    stepName: "feedback",
+    applicationId:
+      snapshot?.applicationStatus === "SUBMITTED"
+        ? snapshot.applicationId
+        : null,
+  });
 
   useEffect(() => {
     let active = true;
@@ -170,7 +180,9 @@ export default function SubmissionCompletePage() {
         }
 
         if (nextSnapshot.applicationStatus !== "SUBMITTED") {
-          router.replace(resolveRouteFromStatus(nextSnapshot.applicationStatus));
+          router.replace(
+            resolveRouteFromStatus(nextSnapshot.applicationStatus),
+          );
           return;
         }
 
@@ -278,11 +290,14 @@ export default function SubmissionCompletePage() {
         setSaveState("saving");
         setDraftError(null);
 
-        const saved = await saveApplicationFeedbackDraft(snapshot.applicationId, {
-          rating: feedback.rating,
-          comment: feedback.comment,
-          context: buildFeedbackContext(),
-        });
+        const saved = await saveApplicationFeedbackDraft(
+          snapshot.applicationId,
+          {
+            rating: feedback.rating,
+            comment: feedback.comment,
+            context: buildFeedbackContext(),
+          },
+        );
 
         lastPersistedFeedbackRef.current = serializeFeedbackDraft({
           rating: saved.rating,
@@ -334,25 +349,21 @@ export default function SubmissionCompletePage() {
 
   const isSubmitted = feedback.status === "SUBMITTED";
   const canSendFeedback =
-    isFeedbackReady &&
-    hasFeedbackContent &&
-    !commentTooLong &&
-    !isSubmitting;
+    isFeedbackReady && hasFeedbackContent && !commentTooLong && !isSubmitting;
   const submitButtonLabel = isSubmitting
     ? "Sending..."
     : submitError
       ? "Try again"
       : "Send feedback";
-  const liveMessage =
-    isSubmitted
-      ? "Thanks - your feedback was sent."
-      : submitError
-        ? "Feedback couldn't be sent. Please try again."
-        : commentTooLong
-          ? "Please shorten your comment to 2,000 characters or fewer."
-          : draftError && !isFeedbackReady
-            ? "Feedback is temporarily unavailable."
-            : null;
+  const liveMessage = isSubmitted
+    ? "Thanks - your feedback was sent."
+    : submitError
+      ? "Feedback couldn't be sent. Please try again."
+      : commentTooLong
+        ? "Please shorten your comment to 2,000 characters or fewer."
+        : draftError && !isFeedbackReady
+          ? "Feedback is temporarily unavailable."
+          : null;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -365,11 +376,14 @@ export default function SubmissionCompletePage() {
       setIsSubmitting(true);
       setSubmitError(null);
 
-      const submitted = await submitApplicationFeedback(snapshot.applicationId, {
-        rating: feedback.rating,
-        comment: feedback.comment,
-        context: buildFeedbackContext(),
-      });
+      const submitted = await submitApplicationFeedback(
+        snapshot.applicationId,
+        {
+          rating: feedback.rating,
+          comment: feedback.comment,
+          context: buildFeedbackContext(),
+        },
+      );
 
       lastPersistedFeedbackRef.current = serializeFeedbackDraft({
         rating: submitted.rating,
@@ -454,7 +468,10 @@ export default function SubmissionCompletePage() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        <MessageCircle className="size-5 shrink-0" aria-hidden />
+                        <MessageCircle
+                          className="size-5 shrink-0"
+                          aria-hidden
+                        />
                         Open WeChat
                       </a>
                     </div>
@@ -477,7 +494,10 @@ export default function SubmissionCompletePage() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        <MessageCircle className="size-5 shrink-0" aria-hidden />
+                        <MessageCircle
+                          className="size-5 shrink-0"
+                          aria-hidden
+                        />
                         Open WhatsApp Chat
                       </a>
                     </div>
@@ -488,7 +508,10 @@ export default function SubmissionCompletePage() {
           ) : null}
 
           {!isLoading && !error && snapshot ? (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
               <SectionCard
                 title={
                   isSubmitted
@@ -579,7 +602,7 @@ export default function SubmissionCompletePage() {
                               Your comment
                             </p>
                           </div>
-                          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[color:var(--foreground-soft)]">
+                          <p className="mt-3 text-sm leading-6 whitespace-pre-wrap text-[color:var(--foreground-soft)]">
                             {feedback.comment}
                           </p>
                         </div>
@@ -602,7 +625,9 @@ export default function SubmissionCompletePage() {
                         />
                       ) : null}
 
-                      {draftError && isFeedbackReady && saveState === "error" ? (
+                      {draftError &&
+                      isFeedbackReady &&
+                      saveState === "error" ? (
                         <StatusBanner
                           tone="neutral"
                           title="Draft couldn't be saved"
@@ -634,7 +659,9 @@ export default function SubmissionCompletePage() {
                           }}
                           aria-invalid={commentTooLong}
                           aria-describedby={
-                            commentTooLong ? "feedback-comment-too-long" : undefined
+                            commentTooLong
+                              ? "feedback-comment-too-long"
+                              : undefined
                           }
                           disabled={isSubmitting}
                         />
@@ -643,7 +670,8 @@ export default function SubmissionCompletePage() {
                             id="feedback-comment-too-long"
                             className="text-sm font-medium text-rose-700"
                           >
-                            Please shorten your comment to 2,000 characters or fewer.
+                            Please shorten your comment to 2,000 characters or
+                            fewer.
                           </p>
                         ) : null}
                       </div>
@@ -652,7 +680,7 @@ export default function SubmissionCompletePage() {
                         <button
                           type="submit"
                           className={cn(
-                            "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-zinc-950 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto",
+                            "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-zinc-950 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto",
                           )}
                           disabled={!canSendFeedback}
                         >

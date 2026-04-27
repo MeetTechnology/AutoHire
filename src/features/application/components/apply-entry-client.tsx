@@ -21,6 +21,7 @@ import {
 } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
 import { trackClick, trackPageView } from "@/lib/tracking/client";
+import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
 import { cn } from "@/lib/utils";
 
 type ApplyEntryClientProps = {
@@ -116,6 +117,12 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const [activeSection, setActiveSection] =
     useState<IntroSectionId>("overview");
   const hasTrackedPageView = useRef(false);
+
+  usePageDurationTracking({
+    pageName: "apply_entry",
+    stepName: "intro",
+    applicationId: snapshot?.applicationId,
+  });
 
   useEffect(() => {
     let active = true;
@@ -305,8 +312,8 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
               is a licensed professional service institution for national-level
               talent programs. We specialize in{" "}
               <strong className="font-bold text-black">
-                providing full-process application support for high-level overseas
-                talents
+                providing full-process application support for high-level
+                overseas talents
               </strong>
               . Should you choose to submit your application through us, we will
               offer you three core services:
@@ -326,10 +333,10 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
                 <span className="font-semibold text-[color:var(--foreground)]">
                   Platform Matching:
                 </span>{" "}
-                We will match you with competitive Chinese universities, research
-                institutions and enterprises as your application platform. (The
-                talent program requires candidates to apply jointly with a
-                platform.)
+                We will match you with competitive Chinese universities,
+                research institutions and enterprises as your application
+                platform. (The talent program requires candidates to apply
+                jointly with a platform.)
               </li>
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
@@ -354,8 +361,8 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
                   Academic Exchange:
                 </span>{" "}
                 We organize online and offline seminars and special lectures for
-                overseas scholars, domestic universities and enterprises, so as to
-                build long-term cooperation bridges.
+                overseas scholars, domestic universities and enterprises, so as
+                to build long-term cooperation bridges.
               </li>
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
@@ -369,8 +376,8 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
                 <span className="font-semibold text-[color:var(--foreground)]">
                   Technology Transfer:
                 </span>{" "}
-                We assist in commercializing your technological achievements with
-                Chinese enterprises.
+                We assist in commercializing your technological achievements
+                with Chinese enterprises.
               </li>
               <li className="pl-1">
                 <span className="font-semibold text-[color:var(--foreground)]">
@@ -500,7 +507,9 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
               onClick={handleStart}
               disabled={isPending || isReadOnlyReview}
             >
-              <span>{isPending ? "Opening..." : "Continue to CV Submission"}</span>
+              <span>
+                {isPending ? "Opening..." : "Continue to CV Submission"}
+              </span>
               <ChevronRight className="h-4 w-4" aria-hidden />
             </ActionButton>
           </div>

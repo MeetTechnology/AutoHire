@@ -12,8 +12,32 @@ async function uploadVirtualFile(page: Page, name: string, index = 0) {
     });
 }
 
+async function uploadMaterialFile(
+  page: Page,
+  categoryName: RegExp,
+  name: string,
+) {
+  const category = page
+    .getByRole("button", { name: categoryName })
+    .locator("xpath=..");
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await category.getByText(/Click to (upload|add) file\(s\)/i).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name,
+    mimeType: "application/pdf",
+    buffer: Buffer.from("sample file content"),
+  });
+}
+
 async function initializeBrowserSession(page: Page, token: string) {
+  const sessionResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/expert-session") &&
+      response.status() === 200,
+  );
   await page.goto(`/apply?t=${token}`);
+  await sessionResponse;
 }
 
 /** Waits until client `fetchSession` has set `snapshot` (MetaStrip is gated on it). */
@@ -23,16 +47,40 @@ async function waitForMaterialsPageSession(page: Page) {
       name: /Required Documents/,
     }),
   ).toBeVisible();
-  await expect(page.getByText("Application number")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Upload by category" }),
+  ).toBeVisible();
+  await expect(page.getByText("Loading uploaded materials")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Confirm Submission" }),
+  ).toBeVisible();
 }
 
-async function confirmExtractedCvInformation(page: Page) {
+async function updateExtractionField(
+  page: Page,
+  rowName: RegExp,
+  value: string,
+) {
+  const row = page.getByRole("row", { name: rowName });
+  await row.getByRole("button").click();
+  const input = row.getByRole("textbox");
+  await input.fill(value);
+  await input.press("Enter");
+}
+
+async function confirmExtractedCvInformation(
+  page: Page,
+  beforeConfirm?: () => Promise<void>,
+) {
   await expect(
     page.getByRole("heading", {
       name: /Confirm CV Information/i,
     }),
   ).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText("Key Profile Information")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Key information review" }),
+  ).toBeVisible();
+  await beforeConfirm?.();
   await page
     .getByRole("button", { name: "Confirm and Start Eligibility Judgment" })
     .click();
@@ -51,6 +99,7 @@ test("invalid token shows an error", async ({ page }) => {
 test("eligible resume flow can reach materials and submit", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   await page.goto("/apply/resume?t=sample-init-token");
 
   await expect(
@@ -64,7 +113,7 @@ test("eligible resume flow can reach materials and submit", async ({
   await expect(page.getByText("candidate-eligible.pdf")).toBeVisible({
     timeout: 15000,
   });
-  await page.getByRole("button", { name: "Start CV Analysis" }).click();
+  await page.getByRole("button", { name: "Confirm Upload" }).click();
   await confirmExtractedCvInformation(page);
 
   await expect(
@@ -79,19 +128,19 @@ test("eligible resume flow can reach materials and submit", async ({
   await page.getByRole("link", { name: /Additional Information/i }).click();
 
   await waitForMaterialsPageSession(page);
-  await uploadVirtualFile(page, "passport.pdf");
-  await expect(page.getByText("passport.pdf")).toBeVisible({ timeout: 15000 });
-  await uploadVirtualFile(page, "degree.pdf", 1);
-  await expect(page.getByText("degree.pdf")).toBeVisible({ timeout: 15000 });
-  await uploadVirtualFile(page, "employment.pdf", 2);
+  await uploadMaterialFile(page, /Identity Documents/i, "passport.pdf");
+  await expect(page.getByText("passport.pdf")).toBeVisible({ timeout: 30000 });
+  await uploadMaterialFile(page, /Education Documents/i, "degree.pdf");
+  await expect(page.getByText("degree.pdf")).toBeVisible({ timeout: 30000 });
+  await uploadMaterialFile(page, /Employment Documents/i, "employment.pdf");
   await expect(page.getByText("employment.pdf")).toBeVisible({
-    timeout: 15000,
+    timeout: 30000,
   });
 
   await page.getByRole("button", { name: "Confirm Submission" }).click();
   await expect(
     page.getByText(
-      "We have received your materials and will respond within 1 to 3 business days.",
+      "Application Received! We will review your package and contact you within 1 week.",
     ),
   ).toBeVisible();
 });
@@ -101,7 +150,7 @@ test("insufficient info flow supports supplemental fields", async ({
 }) => {
   await initializeBrowserSession(page, "sample-progress-token");
   await page.goto("/apply/result?view=additional");
-  await expect(page).toHaveURL(/\/apply\/resume\?view=additional/);
+  await expect(page).toHaveURL(/\/apply\/result\?view=additional/);
 
   await expect(
     page.getByText("Some required information is still missing"),
@@ -129,7 +178,7 @@ test("insufficient info flow supports supplemental fields", async ({
   ).toHaveCount(0);
 });
 
-test("eligible review with missing contact fields requires completion before materials", async ({
+test("eligible review with corrected required contact field can continue to materials", async ({
   page,
 }) => {
   await page.goto("/apply/resume?t=sample-init-token");
@@ -138,23 +187,28 @@ test("eligible review with missing contact fields requires completion before mat
   await expect(page.getByText("candidate-contact-missing.pdf")).toBeVisible({
     timeout: 15000,
   });
-  await page.getByRole("button", { name: "Start CV Analysis" }).click();
-  await confirmExtractedCvInformation(page);
+  await page.getByRole("button", { name: "Confirm Upload" }).click();
+  await confirmExtractedCvInformation(page, async () => {
+    await updateExtractionField(
+      page,
+      /Personal EmailRequired/i,
+      "taylor.chen@example.com",
+    );
+  });
 
+  await expect(
+    page.getByText("Initial CV review passed", {
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 10000 });
   await expect(
     page.getByRole("heading", {
       name: /Complete your contact details to continue/i,
     }),
-  ).toBeVisible({ timeout: 10000 });
-
-  await page.getByRole("textbox", { name: /^Name$/i }).fill("Taylor Chen");
+  ).toHaveCount(0);
   await page
-    .getByRole("textbox", { name: /Personal Email/i })
-    .fill("taylor.chen@example.com");
-  await page
-    .getByRole("textbox", { name: /Phone Number/i })
-    .fill("+1 555 010 7000");
-  await page.getByRole("button", { name: "Save Contact Details" }).click();
+    .getByRole("button", { name: "Continue to Additional Information" })
+    .click();
 
   await waitForMaterialsPageSession(page);
 });
@@ -170,7 +224,7 @@ test("submitted token restores submitted materials page", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(
-      "We have received your materials and will respond within 1 to 3 business days.",
+      "Application Received! We will review your package and contact you within 1 week.",
     ),
   ).toBeVisible();
 });

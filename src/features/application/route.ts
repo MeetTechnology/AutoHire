@@ -10,9 +10,11 @@ export function resolveRouteFromStatus(status: ApplicationStatus) {
     return "/apply";
   }
 
+  if (status === "INTRO_VIEWED" || status === "CV_UPLOADED") {
+    return "/apply/resume";
+  }
+
   if (
-    status === "INTRO_VIEWED" ||
-    status === "CV_UPLOADED" ||
     status === "CV_EXTRACTING" ||
     status === "CV_EXTRACTION_REVIEW" ||
     status === "CV_ANALYZING" ||
@@ -24,7 +26,7 @@ export function resolveRouteFromStatus(status: ApplicationStatus) {
     status === "SECONDARY_REVIEW" ||
     status === "SECONDARY_FAILED"
   ) {
-    return "/apply/resume";
+    return "/apply/result";
   }
 
   if (status === "MATERIALS_IN_PROGRESS") {
@@ -106,16 +108,20 @@ export function isFlowStepReadOnly(
 export function buildApplyFlowStepLinks(
   applicationStatus?: ApplicationStatus | null,
 ): readonly string[] {
+  const cvReviewHref =
+    applicationStatus === "INTRO_VIEWED" || applicationStatus === "CV_UPLOADED"
+      ? "/apply/resume?view=review"
+      : "/apply/result?view=review";
   const additionalInformationHref =
     applicationStatus === "INFO_REQUIRED"
-      ? "/apply/resume?view=additional"
+      ? "/apply/result?view=additional"
       : applicationStatus === "SUBMITTED"
         ? "/apply/materials?view=review"
-      : "/apply/materials";
+        : "/apply/materials";
 
   return [
     "/apply",
-    "/apply/resume?view=review",
+    cvReviewHref,
     additionalInformationHref,
     "/apply/submission-complete",
   ];

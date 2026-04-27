@@ -70,7 +70,13 @@ import {
 import type { ApplicationFlowStep } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
 import { isScreeningContactFieldKey } from "@/lib/application/screening-contact";
-import { createUploadId, trackPageView } from "@/lib/tracking/client";
+import {
+  createUploadId,
+  trackClick,
+  trackPageView,
+} from "@/lib/tracking/client";
+import type { TrackingPageName, TrackingStepName } from "@/lib/tracking/types";
+import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -97,6 +103,10 @@ const RESULT_VIEW_TO_STEP = {
   review: 1,
   additional: 2,
 } as const;
+
+type CvReviewExperienceProps = {
+  trackingPageName?: Extract<TrackingPageName, "apply_resume" | "apply_result">;
+};
 
 const EXTRACTION_READONLY_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
   "name",
@@ -191,7 +201,9 @@ function validateExtractionCorrectionFields(
 }
 
 function getFirstExtractionErrorKey(errors: ExtractionCorrectionErrors) {
-  return INITIAL_CV_REVIEW_FIELD_ROWS.find((row) => errors[row.key])?.key ?? null;
+  return (
+    INITIAL_CV_REVIEW_FIELD_ROWS.find((row) => errors[row.key])?.key ?? null
+  );
 }
 
 /**
@@ -211,6 +223,32 @@ function isUnifiedCvReviewPrimarySurfaceStatus(
     status === "SECONDARY_REVIEW" ||
     status === "SECONDARY_FAILED"
   );
+}
+
+function getCvReviewTrackingStepName(
+  status: ApplicationSnapshot["applicationStatus"],
+): TrackingStepName {
+  if (status === "INTRO_VIEWED" || status === "CV_UPLOADED") {
+    return "resume_upload";
+  }
+
+  if (status === "INFO_REQUIRED") {
+    return "supplemental";
+  }
+
+  if (status === "CV_EXTRACTING" || status === "CV_EXTRACTION_REVIEW") {
+    return "resume_extraction";
+  }
+
+  if (
+    status === "SECONDARY_ANALYZING" ||
+    status === "SECONDARY_REVIEW" ||
+    status === "SECONDARY_FAILED"
+  ) {
+    return "secondary_analysis";
+  }
+
+  return "analysis_result";
 }
 
 function getMailtoHref() {
@@ -459,7 +497,10 @@ function AnalysisProgressPanel({
   return (
     <SectionCard className="overflow-hidden">
       <div className="mx-auto max-w-2xl text-center" aria-labelledby={titleId}>
-        <p id={titleId} className="text-sm font-semibold text-[color:var(--primary)]">
+        <p
+          id={titleId}
+          className="text-sm font-semibold text-[color:var(--primary)]"
+        >
           Please be patient
         </p>
         <div
@@ -781,7 +822,9 @@ function EditableExtractionReviewCard({
       <input
         autoFocus
         type={EXTRACTION_EMAIL_FIELD_KEYS.has(row.key) ? "email" : "text"}
-        inputMode={EXTRACTION_YEAR_FIELD_KEYS.has(row.key) ? "numeric" : undefined}
+        inputMode={
+          EXTRACTION_YEAR_FIELD_KEYS.has(row.key) ? "numeric" : undefined
+        }
         maxLength={EXTRACTION_YEAR_FIELD_KEYS.has(row.key) ? 4 : undefined}
         className={inputClassName}
         onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
@@ -939,9 +982,7 @@ function PreliminaryAssessmentResultBody({
         <h2
           className={cn(
             "text-base font-semibold tracking-[-0.02em]",
-            isSuccessPanel
-              ? "text-emerald-950"
-              : "text-[color:var(--primary)]",
+            isSuccessPanel ? "text-emerald-950" : "text-[color:var(--primary)]",
           )}
         >
           Preliminary Assessment Result
@@ -977,7 +1018,9 @@ function PreliminaryAssessmentResultBody({
           <p
             className={cn(
               "text-sm leading-6",
-              isSuccessPanel ? "text-emerald-900/85" : "text-[color:var(--muted-foreground)]",
+              isSuccessPanel
+                ? "text-emerald-900/85"
+                : "text-[color:var(--muted-foreground)]",
             )}
           >
             {extraNote}
@@ -1005,9 +1048,7 @@ function InitialCvReviewDeterminationCard({
     return (
       <SectionCard>
         <PreliminaryAssessmentResultBody
-          statusBadge={
-            <Badge variant="destructive">Not eligible</Badge>
-          }
+          statusBadge={<Badge variant="destructive">Not eligible</Badge>}
           description={description}
           extraNote={reasonText}
         />
@@ -1027,9 +1068,7 @@ function InitialCvReviewDeterminationCard({
     return (
       <SectionCard>
         <PreliminaryAssessmentResultBody
-          statusBadge={
-            <Badge variant="secondary">Information required</Badge>
-          }
+          statusBadge={<Badge variant="secondary">Information required</Badge>}
           description={primary}
         />
       </SectionCard>
@@ -1073,7 +1112,9 @@ function InitialCvReviewDeterminationCard({
   );
 }
 
-export function CvReviewExperience() {
+export function CvReviewExperience({
+  trackingPageName = "apply_resume",
+}: CvReviewExperienceProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
@@ -1148,6 +1189,17 @@ export function CvReviewExperience() {
           requestedResultView as keyof typeof RESULT_VIEW_TO_STEP
         ]
       : statusDrivenResultStep;
+  const trackingStepName = snapshot
+    ? getCvReviewTrackingStepName(snapshot.applicationStatus)
+    : trackingPageName === "apply_result"
+      ? "analysis_result"
+      : "resume_upload";
+
+  usePageDurationTracking({
+    pageName: trackingPageName,
+    stepName: trackingStepName,
+    applicationId: snapshot?.applicationId,
+  });
 
   async function syncAnalysisProgress(applicationId: string) {
     const status = await fetchAnalysisStatus(applicationId);
@@ -1176,6 +1228,25 @@ export function CvReviewExperience() {
           return;
         }
 
+        if (
+          trackingPageName === "apply_result" &&
+          (nextSnapshot.applicationStatus === "INTRO_VIEWED" ||
+            nextSnapshot.applicationStatus === "CV_UPLOADED")
+        ) {
+          router.replace("/apply/resume");
+          return;
+        }
+
+        if (
+          trackingPageName === "apply_resume" &&
+          !requestedResultView &&
+          resolveRouteFromStatus(nextSnapshot.applicationStatus) ===
+            "/apply/result"
+        ) {
+          router.replace("/apply/result");
+          return;
+        }
+
         setSnapshot(nextSnapshot);
       } catch (nextError) {
         if (active) {
@@ -1197,7 +1268,7 @@ export function CvReviewExperience() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [requestedResultView, router, trackingPageName]);
 
   useEffect(() => {
     const review = snapshot?.latestExtractionReview;
@@ -1212,10 +1283,7 @@ export function CvReviewExperience() {
     setActiveExtractionField(null);
     setExtractionDraftValue("");
     setHasAttemptedExtractionSubmit(false);
-  }, [
-    snapshot?.applicationStatus,
-    snapshot?.latestExtractionReview,
-  ]);
+  }, [snapshot?.applicationStatus, snapshot?.latestExtractionReview]);
 
   useEffect(() => {
     if (!snapshot || hasTrackedPageView.current) {
@@ -1224,24 +1292,11 @@ export function CvReviewExperience() {
 
     hasTrackedPageView.current = true;
     void trackPageView({
-      pageName: "apply_resume",
-      stepName:
-        snapshot.applicationStatus === "INTRO_VIEWED" ||
-        snapshot.applicationStatus === "CV_UPLOADED"
-          ? "resume_upload"
-          : snapshot.applicationStatus === "INFO_REQUIRED"
-            ? "supplemental"
-            : snapshot.applicationStatus === "CV_EXTRACTING" ||
-                snapshot.applicationStatus === "CV_EXTRACTION_REVIEW"
-              ? "resume_extraction"
-            : snapshot.applicationStatus === "SECONDARY_ANALYZING" ||
-                snapshot.applicationStatus === "SECONDARY_REVIEW" ||
-                snapshot.applicationStatus === "SECONDARY_FAILED"
-              ? "secondary_analysis"
-              : "analysis_result",
+      pageName: trackingPageName,
+      stepName: trackingStepName,
       applicationId: snapshot.applicationId,
     });
-  }, [snapshot]);
+  }, [snapshot, trackingPageName, trackingStepName]);
 
   useEffect(() => {
     const status = snapshot?.applicationStatus;
@@ -1467,6 +1522,12 @@ export function CvReviewExperience() {
     startResumeAnalysisTransition(async () => {
       try {
         setError(null);
+        void trackClick({
+          eventType: "resume_extraction_start_clicked",
+          pageName: trackingPageName,
+          stepName: "resume_extraction",
+          applicationId: snapshot.applicationId,
+        });
         await startResumeAnalysisRequest(snapshot.applicationId);
         setSnapshot((current) =>
           current
@@ -1505,8 +1566,21 @@ export function CvReviewExperience() {
   }
 
   function handleStartExtractionFieldEdit(fieldKey: InitialCvReviewFieldKey) {
-    if (EXTRACTION_READONLY_FIELD_KEYS.has(fieldKey) || isConfirmingExtraction) {
+    if (
+      EXTRACTION_READONLY_FIELD_KEYS.has(fieldKey) ||
+      isConfirmingExtraction
+    ) {
       return;
+    }
+
+    if (snapshot) {
+      void trackClick({
+        eventType: "extraction_field_edit_started",
+        pageName: trackingPageName,
+        stepName: "resume_extraction",
+        applicationId: snapshot.applicationId,
+        payload: { fieldKey },
+      });
     }
 
     setActiveExtractionField(fieldKey);
@@ -1543,10 +1617,21 @@ export function CvReviewExperience() {
       return;
     }
 
-    const errors = validateExtractionCorrectionFields(extractionCorrectionFields);
+    const errors = validateExtractionCorrectionFields(
+      extractionCorrectionFields,
+    );
 
     if (Object.keys(errors).length > 0) {
       setHasAttemptedExtractionSubmit(true);
+      void trackClick({
+        eventType: "eligibility_judgment_start_clicked",
+        pageName: trackingPageName,
+        stepName: "resume_extraction",
+        eventStatus: "FAIL",
+        applicationId: snapshot.applicationId,
+        errorCode: "extraction_validation_failed",
+        payload: { errorFields: Object.keys(errors) },
+      });
       scrollToFirstExtractionError(errors);
       return;
     }
@@ -1554,6 +1639,12 @@ export function CvReviewExperience() {
     startExtractionConfirmTransition(async () => {
       try {
         setError(null);
+        void trackClick({
+          eventType: "eligibility_judgment_start_clicked",
+          pageName: trackingPageName,
+          stepName: "resume_extraction",
+          applicationId: snapshot.applicationId,
+        });
         await confirmResumeExtraction(snapshot.applicationId, {
           extractionRawResponse: buildInitialCvReviewExtractionText(
             extractionCorrectionFields,
@@ -1612,6 +1703,13 @@ export function CvReviewExperience() {
       return;
     }
 
+    void trackClick({
+      eventType: "supplemental_submit_clicked",
+      pageName: trackingPageName,
+      stepName: "supplemental",
+      applicationId: snapshot.applicationId,
+    });
+
     startSupplementalTransition(async () => {
       try {
         setError(null);
@@ -1650,6 +1748,35 @@ export function CvReviewExperience() {
     });
   }
 
+  function onSupplementalInvalid() {
+    if (!snapshot) {
+      return;
+    }
+
+    void trackClick({
+      eventType: "supplemental_submit_clicked",
+      pageName: trackingPageName,
+      stepName: "supplemental",
+      eventStatus: "FAIL",
+      applicationId: snapshot.applicationId,
+      errorCode: "supplemental_validation_failed",
+    });
+  }
+
+  function handleContinueToMaterials() {
+    if (!snapshot) {
+      return;
+    }
+
+    void trackClick({
+      eventType: "continue_to_materials_clicked",
+      pageName: trackingPageName,
+      stepName: "analysis_result",
+      applicationId: snapshot.applicationId,
+    });
+    router.push("/apply/materials");
+  }
+
   const activeInitialCvReviewExtract = useMemo(
     () =>
       snapshot?.latestResult ??
@@ -1661,7 +1788,8 @@ export function CvReviewExperience() {
     [snapshot?.latestExtractionReview, snapshot?.latestResult],
   );
   const hasInitialCvReviewExtractData = useMemo(
-    () => hasInitialCvReviewExtract(activeInitialCvReviewExtract?.extractedFields),
+    () =>
+      hasInitialCvReviewExtract(activeInitialCvReviewExtract?.extractedFields),
     [activeInitialCvReviewExtract?.extractedFields],
   );
   const extractionCorrectionErrors = useMemo(
@@ -1730,9 +1858,7 @@ export function CvReviewExperience() {
       "CV_ANALYZING",
       "REANALYZING",
       "SECONDARY_ANALYZING",
-    ].includes(
-      snapshot.applicationStatus,
-    ),
+    ].includes(snapshot.applicationStatus),
   );
 
   const analysisProgressView = useMemo(() => {
@@ -1896,10 +2022,7 @@ export function CvReviewExperience() {
           {snapshot ? (
             <>
               {showUploadState ? (
-                <SectionCard
-                  title={undefined}
-                  description={undefined}
-                >
+                <SectionCard title={undefined} description={undefined}>
                   <div className="flex flex-col gap-5">
                     <label className="block">
                       <input
@@ -1969,8 +2092,7 @@ export function CvReviewExperience() {
                               dateStyle: "medium",
                               timeStyle: "short",
                             })}{" "}
-                            - {Math.ceil(uploadedResumeFile.fileSize / 1024)}{" "}
-                            KB
+                            - {Math.ceil(uploadedResumeFile.fileSize / 1024)} KB
                           </p>
                         </div>
                         <button
@@ -2077,7 +2199,7 @@ export function CvReviewExperience() {
                 <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
                   <ActionButton
                     type="button"
-                    onClick={() => router.push("/apply/materials")}
+                    onClick={handleContinueToMaterials}
                     className="w-full sm:w-auto"
                   >
                     Continue to Additional Information
@@ -2100,7 +2222,10 @@ export function CvReviewExperience() {
                         : "Suggested-from-CV entries are shaded softly. Only blank fields need your input before you submit again."
                   }
                 >
-                  <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+                  <form
+                    className="space-y-4"
+                    onSubmit={handleSubmit(onSubmit, onSupplementalInvalid)}
+                  >
                     <MetaStrip
                       items={[
                         {
@@ -2153,7 +2278,9 @@ export function CvReviewExperience() {
   );
 }
 
-export function CvReviewExperienceWithSuspense() {
+export function CvReviewExperienceWithSuspense(
+  props: CvReviewExperienceProps = {},
+) {
   return (
     <Suspense
       fallback={
@@ -2162,7 +2289,7 @@ export function CvReviewExperienceWithSuspense() {
         </div>
       }
     >
-      <CvReviewExperience />
+      <CvReviewExperience {...props} />
     </Suspense>
   );
 }

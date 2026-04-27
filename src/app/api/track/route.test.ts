@@ -50,7 +50,8 @@ describe("POST /api/track", () => {
             file_name: "passport.pdf",
             file_ext: "pdf",
             file_size: 1024,
-            object_key: "applications/app_submitted/materials/IDENTITY/passport.pdf",
+            object_key:
+              "applications/app_submitted/materials/IDENTITY/passport.pdf",
           },
         }),
         duplex: "half",
@@ -112,5 +113,44 @@ describe("POST /api/track", () => {
       sessionId: "sess_invalid_track",
       ipAddress: "203.0.113.99",
     });
+  });
+
+  it("accepts page duration events and stores durationMs", async () => {
+    const response = await trackPost(
+      new NextRequest("http://localhost/api/track", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-autohire-session-id": "sess_duration",
+          "x-autohire-request-id": "req_duration",
+        },
+        body: JSON.stringify({
+          event_type: "analysis_result_duration_recorded",
+          event_time: "2026-04-20T15:31:45.123Z",
+          page_name: "apply_result",
+          step_name: "analysis_result",
+          action_name: "page_duration",
+          event_status: "SUCCESS",
+          session_id: "sess_duration",
+          request_id: "req_duration",
+          application_id: "app_submitted",
+          duration_ms: 2410,
+        }),
+        duplex: "half",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const events = await listApplicationEvents("app_submitted");
+    expect(
+      events.some(
+        (item) =>
+          item.eventType === "analysis_result_duration_recorded" &&
+          item.pageName === "apply_result" &&
+          item.actionName === "page_duration" &&
+          item.durationMs === 2410,
+      ),
+    ).toBe(true);
   });
 });
