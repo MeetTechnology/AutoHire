@@ -178,6 +178,7 @@ export function PageShell({
   maxAccessibleStep,
 }: PageShellProps) {
   const shouldReduceMotion = useReducedMotion();
+  const trimmedDescription = description.trim();
 
   return (
     <motion.section
@@ -192,9 +193,7 @@ export function PageShell({
               <div className="px-4 py-2 sm:px-6 sm:py-2.5 lg:px-8">
                 <FlowArrowStepper
                   steps={steps}
-                  currentStep={
-                    currentStep ?? (stepIndexing === "zero" ? 0 : 1)
-                  }
+                  currentStep={currentStep ?? (stepIndexing === "zero" ? 0 : 1)}
                   stepIndexing={stepIndexing}
                   stepLinks={stepLinks}
                   maxAccessibleStep={maxAccessibleStep}
@@ -214,10 +213,14 @@ export function PageShell({
             >
               {title}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.98rem]">
-              {description}
-            </p>
-            {headerSlot ? <div className="mt-5 w-full">{headerSlot}</div> : null}
+            {trimmedDescription ? (
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.98rem]">
+                {trimmedDescription}
+              </p>
+            ) : null}
+            {headerSlot ? (
+              <div className="mt-5 w-full">{headerSlot}</div>
+            ) : null}
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
@@ -232,9 +235,11 @@ export function PageShell({
                   >
                     {title}
                   </h1>
-                  <p className="max-w-3xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.96rem]">
-                    {description}
-                  </p>
+                  {trimmedDescription ? (
+                    <p className="max-w-3xl text-sm leading-6 text-[color:var(--foreground-soft)] sm:text-[0.96rem]">
+                      {trimmedDescription}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -459,7 +464,7 @@ export function SectionCard({
               </h2>
             ) : null}
             {description ? (
-              <p className="whitespace-pre-line text-sm leading-6 text-[color:var(--foreground-soft)]">
+              <p className="text-sm leading-6 whitespace-pre-line text-[color:var(--foreground-soft)]">
                 {description}
               </p>
             ) : null}

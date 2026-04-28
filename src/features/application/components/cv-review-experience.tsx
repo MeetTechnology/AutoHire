@@ -133,24 +133,83 @@ const EXTRACTION_YEAR_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
 ]);
 
 const DOCTORAL_DEGREE_STATUS_OPTIONS = [
-  "Obtained",
-  "Doctorate completed",
-  "In progress",
-  "Expected",
-  "Not obtained",
-  "Master's only",
-  "Not specified",
+  "Yes,obtained",
+  "In progress/Candidate",
+  "No,highest is Master's/Bachelor's",
 ] as const;
+
+const DOCTORAL_DEGREE_NO_STATUS = "No,highest is Master's/Bachelor's";
+
+function normalizeDoctoralDegreeStatus(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (
+    normalized === "yes,obtained" ||
+    normalized === "obtained" ||
+    normalized === "doctorate completed" ||
+    normalized.includes("obtained") ||
+    normalized.includes("completed")
+  ) {
+    return "Yes,obtained";
+  }
+
+  if (
+    normalized === "in progress/candidate" ||
+    normalized === "in progress" ||
+    normalized === "expected" ||
+    normalized.includes("candidate") ||
+    normalized.includes("progress") ||
+    normalized.includes("expected")
+  ) {
+    return "In progress/Candidate";
+  }
+
+  if (
+    normalized === "no,highest is master's/bachelor's" ||
+    normalized.includes("not obtained") ||
+    normalized.includes("master") ||
+    normalized.includes("bachelor") ||
+    normalized === "no" ||
+    normalized.includes("no doctoral")
+  ) {
+    return DOCTORAL_DEGREE_NO_STATUS;
+  }
+
+  return value.trim();
+}
+
+function normalizeExtractionCorrectionFields(
+  fields: ExtractionCorrectionFields,
+): ExtractionCorrectionFields {
+  const doctoralDegreeStatus = normalizeDoctoralDegreeStatus(
+    fields.doctoral_degree_status ?? "",
+  );
+
+  return {
+    ...fields,
+    doctoral_degree_status: doctoralDegreeStatus,
+    doctoral_graduation_time:
+      doctoralDegreeStatus === DOCTORAL_DEGREE_NO_STATUS
+        ? "none"
+        : (fields.doctoral_graduation_time ?? "").trim(),
+  };
+}
 
 function buildExtractionCorrectionFields(
   extractedFields: Record<string, unknown>,
 ): ExtractionCorrectionFields {
-  return Object.fromEntries(
-    INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => [
-      row.key,
-      getInitialCvReviewFieldValue(extractedFields, row.key),
-    ]),
-  ) as ExtractionCorrectionFields;
+  return normalizeExtractionCorrectionFields(
+    Object.fromEntries(
+      INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => [
+        row.key,
+        getInitialCvReviewFieldValue(extractedFields, row.key),
+      ]),
+    ) as ExtractionCorrectionFields,
+  );
 }
 
 function isMissingExtractionValue(value: string) {
@@ -163,13 +222,14 @@ function validateExtractionCorrectionFields(
   fields: ExtractionCorrectionFields,
 ): ExtractionCorrectionErrors {
   const errors: ExtractionCorrectionErrors = {};
+  const normalizedFields = normalizeExtractionCorrectionFields(fields);
 
   for (const row of INITIAL_CV_REVIEW_FIELD_ROWS) {
     if (EXTRACTION_READONLY_FIELD_KEYS.has(row.key)) {
       continue;
     }
 
-    const value = fields[row.key] ?? "";
+    const value = normalizedFields[row.key] ?? "";
     const isOptional = EXTRACTION_OPTIONAL_FIELD_KEYS.has(row.key);
 
     if (isMissingExtractionValue(value)) {
@@ -178,6 +238,23 @@ function validateExtractionCorrectionFields(
       }
 
       errors[row.key] = `${row.label} is required.`;
+      continue;
+    }
+
+    if (
+      row.key === "doctoral_degree_status" &&
+      !DOCTORAL_DEGREE_STATUS_OPTIONS.includes(
+        value as (typeof DOCTORAL_DEGREE_STATUS_OPTIONS)[number],
+      )
+    ) {
+      errors[row.key] = `${row.label} must use one of the listed options.`;
+      continue;
+    }
+
+    if (
+      row.key === "doctoral_graduation_time" &&
+      normalizedFields.doctoral_degree_status === DOCTORAL_DEGREE_NO_STATUS
+    ) {
       continue;
     }
 
@@ -316,8 +393,6 @@ function renderSupplementalField(
   const currentValue = watch(field.fieldKey) ?? field.defaultValue ?? "";
   const isPrefilled = Boolean(field.defaultValue && currentValue);
   const needsAttention = field.required && !String(currentValue).trim();
-  const shouldShowRequirementBadge =
-    field.required || !["work_email", "phone_number"].includes(field.fieldKey);
   const inputClassName = getInputClassName(
     cn(
       isPrefilled && "bg-[color:var(--muted)]/75",
@@ -340,11 +415,6 @@ function renderSupplementalField(
         {field.label}
       </span>
       <div className="mt-1 flex flex-wrap gap-2">
-        {shouldShowRequirementBadge ? (
-          <span className="text-xs tracking-[0.12em] text-slate-500 uppercase">
-            {field.required ? "Required field" : "Optional field"}
-          </span>
-        ) : null}
         {isPrefilled ? (
           <span className="inline-flex rounded-full border border-[color:var(--border)] bg-white px-2 py-0.5 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-500 uppercase">
             Suggested from CV
@@ -551,9 +621,6 @@ function AnalysisProgressPanel({
 function getInitialBanner(
   snapshot: ApplicationSnapshot | null,
   statusText: string,
-  input?: {
-    isEligibleContactCompletion?: boolean;
-  },
 ) {
   if (!snapshot) {
     return null;
@@ -578,29 +645,11 @@ function getInitialBanner(
   }
 
   if (snapshot.applicationStatus === "CV_EXTRACTION_REVIEW") {
-    return (
-      <StatusBanner
-        tone="neutral"
-        title="Please confirm the extracted information"
-        description="Eligibility judgment will start after you confirm the CV information shown below."
-      />
-    );
+    return null;
   }
 
   if (snapshot.applicationStatus === "INELIGIBLE") {
-    return (
-      <StatusBanner
-        tone="danger"
-        title="The current submission does not meet the application requirements"
-        description={snapshot.latestResult?.displaySummary ?? undefined}
-      >
-        {snapshot.latestResult?.reasonText ? (
-          <p className="text-sm leading-6 text-slate-700">
-            {snapshot.latestResult.reasonText}
-          </p>
-        ) : null}
-      </StatusBanner>
-    );
+    return null;
   }
 
   if (snapshot.applicationStatus === "ELIGIBLE") {
@@ -644,22 +693,7 @@ function getInitialBanner(
   }
 
   if (snapshot.applicationStatus === "INFO_REQUIRED") {
-    return (
-      <StatusBanner
-        tone="neutral"
-        title={
-          input?.isEligibleContactCompletion
-            ? "CV review passed, but a few contact details are still missing"
-            : "Some required information is still missing"
-        }
-        description={
-          input?.isEligibleContactCompletion
-            ? "Please complete the missing contact fields below before continuing to supporting materials."
-            : (snapshot.latestResult?.displaySummary ??
-              "Please complete the fields below and run CV review again.")
-        }
-      />
-    );
+    return null;
   }
 
   return null;
@@ -736,27 +770,38 @@ function EditableExtractionReviewCard({
   onConfirm: () => void;
 }) {
   const hasErrors = Object.keys(errors).length > 0;
+  const doctoralGraduationLocked =
+    fields.doctoral_degree_status === DOCTORAL_DEGREE_NO_STATUS;
 
   function renderEditor(row: (typeof INITIAL_CV_REVIEW_FIELD_ROWS)[number]) {
     const hasError = Boolean(errors[row.key]);
+    const isDoctoralGraduationLocked =
+      row.key === "doctoral_graduation_time" && doctoralGraduationLocked;
     const inputClassName = getInputClassName(
       cn(
         "bg-white",
+        isDoctoralGraduationLocked && "bg-[color:var(--muted)]/75",
         hasError &&
           showErrors &&
           "border-[color:var(--accent)] ring-1 ring-[color:var(--ring)]",
       ),
     );
     const commonProps = {
-      value: draftValue,
-      disabled: isConfirming,
+      value: isDoctoralGraduationLocked ? "none" : draftValue,
+      disabled: isConfirming || isDoctoralGraduationLocked,
       "aria-invalid": hasError && showErrors,
       onChange: (
         event:
           | ChangeEvent<HTMLInputElement>
           | ChangeEvent<HTMLTextAreaElement>
           | ChangeEvent<HTMLSelectElement>,
-      ) => onDraftChange(event.currentTarget.value),
+      ) => {
+        const nextValue = EXTRACTION_YEAR_FIELD_KEYS.has(row.key)
+          ? event.currentTarget.value.replace(/\D/g, "").slice(0, 4)
+          : event.currentTarget.value;
+
+        onDraftChange(nextValue);
+      },
       onBlur: (
         event: FocusEvent<
           HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
@@ -765,14 +810,6 @@ function EditableExtractionReviewCard({
     };
 
     if (row.key === "doctoral_degree_status") {
-      const options = DOCTORAL_DEGREE_STATUS_OPTIONS.includes(
-        draftValue as (typeof DOCTORAL_DEGREE_STATUS_OPTIONS)[number],
-      )
-        ? DOCTORAL_DEGREE_STATUS_OPTIONS
-        : ([draftValue, ...DOCTORAL_DEGREE_STATUS_OPTIONS].filter(
-            Boolean,
-          ) as readonly string[]);
-
       return (
         <select
           autoFocus
@@ -786,7 +823,7 @@ function EditableExtractionReviewCard({
           {...commonProps}
         >
           <option value="">Please select</option>
-          {options.map((option) => (
+          {DOCTORAL_DEGREE_STATUS_OPTIONS.map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
@@ -849,12 +886,19 @@ function EditableExtractionReviewCard({
             <tbody>
               {INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => {
                 const value = fields[row.key] ?? "";
-                const isReadonly = EXTRACTION_READONLY_FIELD_KEYS.has(row.key);
+                const isReadonly =
+                  EXTRACTION_READONLY_FIELD_KEYS.has(row.key) ||
+                  (row.key === "doctoral_graduation_time" &&
+                    doctoralGraduationLocked);
                 const isEditing = activeField === row.key;
                 const hasError = Boolean(errors[row.key]);
-                const displayValue = isMissingExtractionValue(value)
-                  ? "Not provided"
-                  : value;
+                const displayValue =
+                  row.key === "doctoral_graduation_time" &&
+                  doctoralGraduationLocked
+                    ? "none"
+                    : isMissingExtractionValue(value)
+                      ? "Not provided"
+                      : value;
 
                 return (
                   <tr
@@ -871,18 +915,7 @@ function EditableExtractionReviewCard({
                       scope="row"
                       className="w-64 px-4 py-3 text-left align-top text-sm font-medium text-[color:var(--primary)]"
                     >
-                      <span>{row.label}</span>
-                      {!isReadonly ? (
-                        <span className="ml-2 text-xs font-normal text-[color:var(--muted-foreground)]">
-                          {EXTRACTION_OPTIONAL_FIELD_KEYS.has(row.key)
-                            ? "Optional"
-                            : "Required"}
-                        </span>
-                      ) : (
-                        <span className="ml-2 text-xs font-normal text-[color:var(--muted-foreground)]">
-                          Read-only
-                        </span>
-                      )}
+                      {row.label}
                     </th>
                     <td className="px-4 py-3 align-top text-sm">
                       {isEditing ? (
@@ -936,8 +969,8 @@ function EditableExtractionReviewCard({
           </table>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <p className="max-w-2xl text-sm leading-6 text-[color:var(--foreground-soft)]">
             Corrections are saved to the review service first; eligibility
             judgment starts only after these fields pass validation.
           </p>
@@ -1060,19 +1093,7 @@ function InitialCvReviewDeterminationCard({
     eligibilityResult === "INSUFFICIENT_INFO" ||
     snapshot.applicationStatus === "INFO_REQUIRED"
   ) {
-    const primary =
-      reasonText ??
-      displaySummary ??
-      "The model could not finalize eligibility. Please complete the missing fields below.";
-
-    return (
-      <SectionCard>
-        <PreliminaryAssessmentResultBody
-          statusBadge={<Badge variant="secondary">Information required</Badge>}
-          description={primary}
-        />
-      </SectionCard>
-    );
+    return null;
   }
 
   if (eligibilityResult === "ELIGIBLE") {
@@ -1538,9 +1559,7 @@ export function CvReviewExperience({
               }
             : current,
         );
-        setStatusText(
-          "The system is extracting key information from your CV. This page will update automatically.",
-        );
+        setStatusText("");
         await syncAnalysisProgress(snapshot.applicationId);
       } catch (nextError) {
         setError(
@@ -1573,6 +1592,22 @@ export function CvReviewExperience({
       return;
     }
 
+    if (
+      fieldKey === "doctoral_graduation_time" &&
+      extractionCorrectionFields.doctoral_degree_status ===
+        DOCTORAL_DEGREE_NO_STATUS
+    ) {
+      setExtractionCorrectionFields((current) =>
+        current.doctoral_graduation_time === "none"
+          ? current
+          : {
+              ...current,
+              doctoral_graduation_time: "none",
+            },
+      );
+      return;
+    }
+
     if (snapshot) {
       void trackClick({
         eventType: "extraction_field_edit_started",
@@ -1592,17 +1627,27 @@ export function CvReviewExperience({
       return;
     }
 
-    const nextValue = (value ?? extractionDraftValue).trim();
+    const nextValue =
+      activeExtractionField === "doctoral_degree_status"
+        ? normalizeDoctoralDegreeStatus(value ?? extractionDraftValue)
+        : EXTRACTION_YEAR_FIELD_KEYS.has(activeExtractionField)
+          ? (value ?? extractionDraftValue).replace(/\D/g, "").slice(0, 4)
+          : (value ?? extractionDraftValue).trim();
 
     setExtractionCorrectionFields((current) => {
-      if (current[activeExtractionField] === nextValue) {
+      const nextFields = normalizeExtractionCorrectionFields({
+        ...current,
+        [activeExtractionField]: nextValue,
+      });
+
+      if (
+        current[activeExtractionField] === nextFields[activeExtractionField] &&
+        current.doctoral_graduation_time === nextFields.doctoral_graduation_time
+      ) {
         return current;
       }
 
-      return {
-        ...current,
-        [activeExtractionField]: nextValue,
-      };
+      return nextFields;
     });
     setActiveExtractionField(null);
     setExtractionDraftValue("");
@@ -1617,8 +1662,11 @@ export function CvReviewExperience({
       return;
     }
 
-    const errors = validateExtractionCorrectionFields(
+    const normalizedCorrectionFields = normalizeExtractionCorrectionFields(
       extractionCorrectionFields,
+    );
+    const errors = validateExtractionCorrectionFields(
+      normalizedCorrectionFields,
     );
 
     if (Object.keys(errors).length > 0) {
@@ -1647,7 +1695,7 @@ export function CvReviewExperience({
         });
         await confirmResumeExtraction(snapshot.applicationId, {
           extractionRawResponse: buildInitialCvReviewExtractionText(
-            extractionCorrectionFields,
+            normalizedCorrectionFields,
           ),
         });
         setSnapshot((current) =>
@@ -1921,7 +1969,7 @@ export function CvReviewExperience({
 
     switch (snapshot.applicationStatus) {
       case "CV_EXTRACTING":
-        return "The system is extracting key information from your CV. This page will update automatically.";
+        return "";
       case "CV_EXTRACTION_REVIEW":
         return "Review the information extracted from your CV. Eligibility judgment will start after you confirm it.";
       case "CV_ANALYZING":
@@ -2148,9 +2196,7 @@ export function CvReviewExperience({
                   }
                 />
               ) : (
-                getInitialBanner(snapshot, statusText, {
-                  isEligibleContactCompletion,
-                })
+                getInitialBanner(snapshot, statusText)
               )}
 
               {hasInitialCvReviewExtractData &&
@@ -2183,7 +2229,7 @@ export function CvReviewExperience({
               ) : null}
 
               {snapshot.latestResult?.reasonText &&
-              snapshot.applicationStatus !== "INELIGIBLE" &&
+              snapshot.applicationStatus !== "INELIGIBLE" &&  snapshot.applicationStatus !== "SECONDARY_FAILED" &&
               !hasInitialCvReviewExtractData ? (
                 <SectionCard
                   title="CV review summary"
@@ -2211,8 +2257,8 @@ export function CvReviewExperience({
                 <SectionCard
                   title={
                     isEligibleContactCompletion
-                      ? "Complete your contact details"
-                      : "Additional information requested"
+                        ? "Complete your contact details"
+                        : "Additional information requested"
                   }
                   description={
                     isEligibleContactCompletion
