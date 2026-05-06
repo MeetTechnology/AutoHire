@@ -29,9 +29,9 @@ import {
   fetchMaterials,
   fetchSession,
   type MaterialsResponse,
-  submitApplicationRequest,
   uploadBinary,
 } from "@/features/application/client";
+import { submitApplicationAction } from "@/features/application/actions";
 import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
 import {
   buildApplyFlowStepLinks,
@@ -47,6 +47,7 @@ import {
   createUploadId,
   trackClick,
   trackPageView,
+  getOrCreateTrackingSessionId,
 } from "@/lib/tracking/client";
 import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
 
@@ -254,7 +255,10 @@ function MaterialsPageContent() {
           stepName: "submit",
           applicationId: snapshot.applicationId,
         });
-        await submitApplicationRequest(snapshot.applicationId);
+        await submitApplicationAction(
+          snapshot.applicationId,
+          getOrCreateTrackingSessionId(),
+        );
         router.push("/apply/submission-complete");
       } catch (nextError) {
         setError(

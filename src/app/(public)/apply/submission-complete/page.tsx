@@ -27,12 +27,12 @@ import {
   SUBMISSION_COMPLETE_WECHAT_URL,
   SUBMISSION_COMPLETE_WHATSAPP_URL,
 } from "@/features/application/constants";
+import { fetchSession } from "@/features/application/client";
 import {
-  fetchApplicationFeedback,
-  fetchSession,
-  saveApplicationFeedbackDraft,
-  submitApplicationFeedback,
-} from "@/features/application/client";
+  fetchApplicationFeedbackAction,
+  saveFeedbackDraftAction,
+  submitFeedbackAction,
+} from "@/features/application/actions";
 import {
   buildApplyFlowStepLinks,
   resolveRouteFromStatus,
@@ -43,7 +43,7 @@ import type {
   ApplicationSnapshot,
   FeedbackDeviceType,
 } from "@/features/application/types";
-import { trackPageView } from "@/lib/tracking/client";
+import { trackPageView, getOrCreateTrackingSessionId } from "@/lib/tracking/client";
 import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
 import { cn } from "@/lib/utils";
 
@@ -203,7 +203,7 @@ export default function SubmissionCompletePage() {
       }
 
       try {
-        const nextFeedback = await fetchApplicationFeedback(
+        const nextFeedback = await fetchApplicationFeedbackAction(
           nextSnapshot.applicationId,
         );
 
@@ -290,13 +290,14 @@ export default function SubmissionCompletePage() {
         setSaveState("saving");
         setDraftError(null);
 
-        const saved = await saveApplicationFeedbackDraft(
+        const saved = await saveFeedbackDraftAction(
           snapshot.applicationId,
           {
             rating: feedback.rating,
             comment: feedback.comment,
             context: buildFeedbackContext(),
           },
+          getOrCreateTrackingSessionId(),
         );
 
         lastPersistedFeedbackRef.current = serializeFeedbackDraft({
@@ -376,13 +377,14 @@ export default function SubmissionCompletePage() {
       setIsSubmitting(true);
       setSubmitError(null);
 
-      const submitted = await submitApplicationFeedback(
+      const submitted = await submitFeedbackAction(
         snapshot.applicationId,
         {
           rating: feedback.rating,
           comment: feedback.comment,
           context: buildFeedbackContext(),
         },
+        getOrCreateTrackingSessionId(),
       );
 
       lastPersistedFeedbackRef.current = serializeFeedbackDraft({

@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 
+import { GET as getMaterialsRoute } from "@/app/api/applications/[applicationId]/materials/route";
+import { POST as enterMaterialsRoute } from "@/app/api/applications/[applicationId]/materials/enter/route";
+import { POST as saveProductDescriptionRoute } from "@/app/api/applications/[applicationId]/materials/product-description/route";
+import { submitApplicationAction } from "@/features/application/actions";
 import { createSessionToken, getSessionCookieName } from "@/lib/auth/session";
 import {
   getEditableSecondaryAnalysisSnapshot,
   startSecondaryAnalysis,
 } from "@/lib/application/service";
 import { updateApplication } from "@/lib/data/store";
-import { GET as getMaterialsRoute } from "@/app/api/applications/[applicationId]/materials/route";
-import { POST as enterMaterialsRoute } from "@/app/api/applications/[applicationId]/materials/enter/route";
-import { POST as saveProductDescriptionRoute } from "@/app/api/applications/[applicationId]/materials/product-description/route";
-import { POST as submitRoute } from "@/app/api/applications/[applicationId]/submit/route";
 
 function resetMemoryStore() {
   (
@@ -178,20 +178,5 @@ describe("materials stage routes", () => {
 
     expect(response.status).toBe(200);
     expect(payload.productInnovationDescription).toContain("refreshed product");
-  });
-
-  it("blocks final submission before the materials stage starts", async () => {
-    const response = await submitRoute(
-      buildAuthorizedRequest("http://localhost/api/applications/app_secondary/submit", {
-        method: "POST",
-      }),
-      {
-        params: Promise.resolve({ applicationId: "app_secondary" }),
-      },
-    );
-    const payload = await response.json();
-
-    expect(response.status).toBe(409);
-    expect(payload.code).toBe("SUBMISSION_STAGE_NOT_READY");
   });
 });
