@@ -11,6 +11,23 @@ import type {
   ResumeExtractionReviewStatus,
 } from "@/features/application/types";
 import {
+  SUPPLEMENT_CATEGORY_LABELS,
+  SUPPLEMENT_REVIEW_MAX_ROUNDS,
+  SUPPORTED_SUPPLEMENT_CATEGORIES,
+} from "@/features/material-supplement/constants";
+import type {
+  MaterialCategoryReviewStatus,
+  MaterialReviewRunStatus,
+  MaterialSupplementStatus,
+  SupplementCategory,
+  SupplementCategoryDisplayStatus,
+  SupplementHistoryItem,
+  SupplementRequestStatus,
+  SupplementSnapshot,
+  SupplementSummary,
+  SupplementUploadBatchStatus,
+} from "@/features/material-supplement/types";
+import {
   mergeMissingFieldsWithScreeningContactRequirements,
   mergeStoredScreeningContactValuesIntoExtractedFields,
 } from "@/lib/application/screening-contact";
@@ -23,7 +40,13 @@ import type {
   AccessResult as PrismaAccessResult,
   AccessTokenStatusSnapshot as PrismaAccessTokenStatusSnapshot,
   EventStatus as PrismaEventStatus,
+  MaterialCategoryReviewStatus as PrismaMaterialCategoryReviewStatus,
   MaterialCategory as PrismaMaterialCategory,
+  MaterialReviewRunStatus as PrismaMaterialReviewRunStatus,
+  MaterialReviewTriggerType as PrismaMaterialReviewTriggerType,
+  SupplementCategory as PrismaSupplementCategory,
+  SupplementRequestStatus as PrismaSupplementRequestStatus,
+  SupplementUploadBatchStatus as PrismaSupplementUploadBatchStatus,
   UploadFailureStage as PrismaUploadFailureStage,
   UploadKind as PrismaUploadKind,
 } from "@prisma/client";
@@ -46,6 +69,11 @@ export type EventStatus = "SUCCESS" | "FAIL";
 export type UploadKind = "RESUME" | "MATERIAL";
 
 export type UploadFailureStage = "INTENT" | "PUT" | "CONFIRM";
+
+export type MaterialReviewTriggerType =
+  | "INITIAL_SUBMISSION"
+  | "SUPPLEMENT_UPLOAD"
+  | "MANUAL_RETRY";
 
 type InvitationRecord = {
   id: string;
@@ -187,6 +215,85 @@ type MaterialRecord = {
   deletedAt: Date | null;
 };
 
+type MaterialReviewRunRecord = {
+  id: string;
+  applicationId: string;
+  runNo: number;
+  status: MaterialReviewRunStatus;
+  triggerType: MaterialReviewTriggerType;
+  triggeredCategory: SupplementCategory | null;
+  externalRunId: string | null;
+  errorMessage: string | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type MaterialCategoryReviewRecord = {
+  id: string;
+  reviewRunId: string;
+  applicationId: string;
+  category: SupplementCategory;
+  roundNo: number;
+  status: MaterialCategoryReviewStatus;
+  aiMessage: string | null;
+  resultPayload: Record<string, unknown> | null;
+  isLatest: boolean;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SupplementRequestRecord = {
+  id: string;
+  applicationId: string;
+  category: SupplementCategory;
+  reviewRunId: string;
+  categoryReviewId: string;
+  title: string;
+  reason: string | null;
+  suggestedMaterials: string[] | string | null;
+  aiMessage: string | null;
+  status: SupplementRequestStatus;
+  isLatest: boolean;
+  isSatisfied: boolean;
+  satisfiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SupplementUploadBatchRecord = {
+  id: string;
+  applicationId: string;
+  category: SupplementCategory;
+  status: SupplementUploadBatchStatus;
+  fileCount: number;
+  reviewRunId: string | null;
+  confirmedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SupplementFileRecord = {
+  id: string;
+  applicationId: string;
+  category: SupplementCategory;
+  supplementRequestId: string | null;
+  uploadBatchId: string;
+  reviewRunId: string | null;
+  fileName: string;
+  objectKey: string;
+  fileType: string;
+  fileSize: number;
+  isDeleted: boolean;
+  deletedAt: Date | null;
+  uploadedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 type FeedbackRecord = {
   id: string;
   applicationId: string;
@@ -296,6 +403,11 @@ type PersistedStore = {
   secondaryAnalysisFieldValues: SecondaryAnalysisFieldValueRecord[];
   supplementalFields: SupplementalFieldRecord[];
   materials: MaterialRecord[];
+  materialReviewRuns: MaterialReviewRunRecord[];
+  materialCategoryReviews: MaterialCategoryReviewRecord[];
+  supplementRequests: SupplementRequestRecord[];
+  supplementUploadBatches: SupplementUploadBatchRecord[];
+  supplementFiles: SupplementFileRecord[];
   feedbacks: FeedbackRecord[];
   events: EventRecord[];
   accessLogs: InviteAccessLogRecord[];
@@ -321,8 +433,151 @@ function byDateDesc<
   return rightValue.getTime() - leftValue.getTime();
 }
 
+function getLatestSupplementTimestamp(input: {
+  finishedAt?: Date | null;
+  startedAt?: Date | null;
+  updatedAt?: Date | null;
+  createdAt?: Date | null;
+}) {
+  return (
+    input.finishedAt ??
+    input.startedAt ??
+    input.updatedAt ??
+    input.createdAt ??
+    null
+  );
+}
+
+function byLatestSupplementTimestampDesc<
+  T extends {
+    finishedAt?: Date | null;
+    startedAt?: Date | null;
+    updatedAt?: Date | null;
+    createdAt?: Date | null;
+  },
+>(left: T, right: T) {
+  const leftValue = getLatestSupplementTimestamp(left)?.getTime() ?? 0;
+  const rightValue = getLatestSupplementTimestamp(right)?.getTime() ?? 0;
+
+  return rightValue - leftValue;
+}
+
+function normalizeSuggestedMaterials(
+  value: string[] | string | null | undefined,
+): string[] | string | null {
+  if (Array.isArray(value)) {
+    return value.map((item) => item.trim()).filter((item) => item.length > 0);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return null;
+}
+
+function isSupplementRequestPending(request: {
+  status: SupplementRequestStatus;
+  isSatisfied: boolean;
+}) {
+  return !request.isSatisfied && request.status !== "SATISFIED";
+}
+
+function isSupplementRequestSatisfied(request: {
+  status: SupplementRequestStatus;
+  isSatisfied: boolean;
+}) {
+  return request.isSatisfied || request.status === "SATISFIED";
+}
+
+function deriveMaterialSupplementStatus(input: {
+  latestRun: MaterialReviewRunRecord | null;
+  latestCategoryReviews: MaterialCategoryReviewRecord[];
+  latestRequests: SupplementRequestRecord[];
+}): MaterialSupplementStatus {
+  if (!input.latestRun) {
+    return "NOT_STARTED";
+  }
+
+  if (
+    input.latestRun.status === "QUEUED" ||
+    input.latestRun.status === "PROCESSING" ||
+    input.latestCategoryReviews.some(
+      (review) => review.status === "QUEUED" || review.status === "PROCESSING",
+    )
+  ) {
+    return "REVIEWING";
+  }
+
+  const pendingCount = input.latestRequests.filter(isSupplementRequestPending).length;
+  const satisfiedCount = input.latestRequests.filter(
+    isSupplementRequestSatisfied,
+  ).length;
+
+  if (pendingCount > 0 && satisfiedCount > 0) {
+    return "PARTIALLY_SATISFIED";
+  }
+
+  if (pendingCount > 0) {
+    return "SUPPLEMENT_REQUIRED";
+  }
+
+  if (satisfiedCount > 0) {
+    return "SATISFIED";
+  }
+
+  if (input.latestRun.status === "COMPLETED") {
+    return "NO_SUPPLEMENT_REQUIRED";
+  }
+
+  return "NOT_STARTED";
+}
+
+function deriveSupplementCategoryDisplayStatus(input: {
+  latestReview: MaterialCategoryReviewRecord | null;
+  latestRequests: SupplementRequestRecord[];
+}): SupplementCategoryDisplayStatus {
+  if (!input.latestReview) {
+    return "NOT_STARTED";
+  }
+
+  if (
+    input.latestReview.status === "QUEUED" ||
+    input.latestReview.status === "PROCESSING"
+  ) {
+    return "REVIEWING";
+  }
+
+  if (input.latestReview.status === "FAILED") {
+    return "REVIEW_FAILED";
+  }
+
+  const pendingCount = input.latestRequests.filter(isSupplementRequestPending).length;
+  const satisfiedCount = input.latestRequests.filter(
+    isSupplementRequestSatisfied,
+  ).length;
+
+  if (pendingCount > 0 && satisfiedCount > 0) {
+    return "PARTIALLY_SATISFIED";
+  }
+
+  if (pendingCount > 0) {
+    return "SUPPLEMENT_REQUIRED";
+  }
+
+  if (satisfiedCount > 0) {
+    return "SATISFIED";
+  }
+
+  return "NO_SUPPLEMENT_REQUIRED";
+}
+
 function buildSampleStore(): PersistedStore {
   const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+  const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
 
   return {
     invitations: getSampleInvitationSeeds(),
@@ -726,6 +981,213 @@ function buildSampleStore(): PersistedStore {
         uploadedAt: now,
         isDeleted: false,
         deletedAt: null,
+      },
+    ],
+    materialReviewRuns: [
+      {
+        id: "mr_run_initial",
+        applicationId: "app_submitted",
+        runNo: 1,
+        status: "COMPLETED",
+        triggerType: "INITIAL_SUBMISSION",
+        triggeredCategory: null,
+        externalRunId: "mock-material-review-initial",
+        errorMessage: null,
+        startedAt: twoHoursAgo,
+        finishedAt: oneHourAgo,
+        createdAt: twoHoursAgo,
+        updatedAt: oneHourAgo,
+      },
+      {
+        id: "mr_run_identity_retry",
+        applicationId: "app_submitted",
+        runNo: 2,
+        status: "PROCESSING",
+        triggerType: "SUPPLEMENT_UPLOAD",
+        triggeredCategory: "IDENTITY",
+        externalRunId: "mock-material-review-identity",
+        errorMessage: null,
+        startedAt: thirtyMinutesAgo,
+        finishedAt: null,
+        createdAt: thirtyMinutesAgo,
+        updatedAt: thirtyMinutesAgo,
+      },
+    ],
+    materialCategoryReviews: [
+      {
+        id: "mcr_identity_initial",
+        reviewRunId: "mr_run_initial",
+        applicationId: "app_submitted",
+        category: "IDENTITY",
+        roundNo: 1,
+        status: "COMPLETED",
+        aiMessage: "Please provide a clearer proof-of-identity document.",
+        resultPayload: { supplementRequired: true, requests: 1 },
+        isLatest: false,
+        startedAt: twoHoursAgo,
+        finishedAt: oneHourAgo,
+        createdAt: twoHoursAgo,
+        updatedAt: oneHourAgo,
+      },
+      {
+        id: "mcr_identity_retry",
+        reviewRunId: "mr_run_identity_retry",
+        applicationId: "app_submitted",
+        category: "IDENTITY",
+        roundNo: 2,
+        status: "PROCESSING",
+        aiMessage: null,
+        resultPayload: null,
+        isLatest: true,
+        startedAt: thirtyMinutesAgo,
+        finishedAt: null,
+        createdAt: thirtyMinutesAgo,
+        updatedAt: thirtyMinutesAgo,
+      },
+      {
+        id: "mcr_employment_initial",
+        reviewRunId: "mr_run_initial",
+        applicationId: "app_submitted",
+        category: "EMPLOYMENT",
+        roundNo: 1,
+        status: "COMPLETED",
+        aiMessage: "Employment evidence is incomplete.",
+        resultPayload: { supplementRequired: true, requests: 1 },
+        isLatest: true,
+        startedAt: twoHoursAgo,
+        finishedAt: oneHourAgo,
+        createdAt: twoHoursAgo,
+        updatedAt: oneHourAgo,
+      },
+      {
+        id: "mcr_honor_initial",
+        reviewRunId: "mr_run_initial",
+        applicationId: "app_submitted",
+        category: "HONOR",
+        roundNo: 1,
+        status: "COMPLETED",
+        aiMessage: "Honor evidence is already sufficient.",
+        resultPayload: { supplementRequired: false, requests: 1 },
+        isLatest: true,
+        startedAt: twoHoursAgo,
+        finishedAt: oneHourAgo,
+        createdAt: twoHoursAgo,
+        updatedAt: oneHourAgo,
+      },
+    ],
+    supplementRequests: [
+      {
+        id: "supp_req_identity_history",
+        applicationId: "app_submitted",
+        category: "IDENTITY",
+        reviewRunId: "mr_run_initial",
+        categoryReviewId: "mcr_identity_initial",
+        title: "Upload a full passport scan",
+        reason: "The previous upload did not show all identification details.",
+        suggestedMaterials: ["Passport", "National ID card"],
+        aiMessage: "A full document scan is required for identity verification.",
+        status: "SATISFIED",
+        isLatest: false,
+        isSatisfied: true,
+        satisfiedAt: thirtyMinutesAgo,
+        createdAt: oneHourAgo,
+        updatedAt: thirtyMinutesAgo,
+      },
+      {
+        id: "supp_req_employment_latest",
+        applicationId: "app_submitted",
+        category: "EMPLOYMENT",
+        reviewRunId: "mr_run_initial",
+        categoryReviewId: "mcr_employment_initial",
+        title: "Upload recent employment proof",
+        reason: "The current employer evidence is missing.",
+        suggestedMaterials: ["Employment certificate", "Current contract"],
+        aiMessage: "Please upload an official document proving current employment.",
+        status: "PENDING",
+        isLatest: true,
+        isSatisfied: false,
+        satisfiedAt: null,
+        createdAt: oneHourAgo,
+        updatedAt: oneHourAgo,
+      },
+      {
+        id: "supp_req_honor_latest",
+        applicationId: "app_submitted",
+        category: "HONOR",
+        reviewRunId: "mr_run_initial",
+        categoryReviewId: "mcr_honor_initial",
+        title: "Honor materials complete",
+        reason: "No supplement is required for honor materials.",
+        suggestedMaterials: null,
+        aiMessage: "The provided honor materials already satisfy this category.",
+        status: "SATISFIED",
+        isLatest: true,
+        isSatisfied: true,
+        satisfiedAt: oneHourAgo,
+        createdAt: oneHourAgo,
+        updatedAt: oneHourAgo,
+      },
+    ],
+    supplementUploadBatches: [
+      {
+        id: "supp_batch_employment_draft",
+        applicationId: "app_submitted",
+        category: "EMPLOYMENT",
+        status: "DRAFT",
+        fileCount: 1,
+        reviewRunId: null,
+        confirmedAt: null,
+        createdAt: thirtyMinutesAgo,
+        updatedAt: thirtyMinutesAgo,
+      },
+      {
+        id: "supp_batch_identity_reviewing",
+        applicationId: "app_submitted",
+        category: "IDENTITY",
+        status: "REVIEWING",
+        fileCount: 1,
+        reviewRunId: "mr_run_identity_retry",
+        confirmedAt: thirtyMinutesAgo,
+        createdAt: thirtyMinutesAgo,
+        updatedAt: thirtyMinutesAgo,
+      },
+    ],
+    supplementFiles: [
+      {
+        id: "supp_file_employment_draft",
+        applicationId: "app_submitted",
+        category: "EMPLOYMENT",
+        supplementRequestId: "supp_req_employment_latest",
+        uploadBatchId: "supp_batch_employment_draft",
+        reviewRunId: null,
+        fileName: "employment-proof.pdf",
+        objectKey:
+          "applications/app_submitted/supplements/EMPLOYMENT/employment-proof.pdf",
+        fileType: "application/pdf",
+        fileSize: 2048,
+        isDeleted: false,
+        deletedAt: null,
+        uploadedAt: thirtyMinutesAgo,
+        createdAt: thirtyMinutesAgo,
+        updatedAt: thirtyMinutesAgo,
+      },
+      {
+        id: "supp_file_identity_reviewing",
+        applicationId: "app_submitted",
+        category: "IDENTITY",
+        supplementRequestId: null,
+        uploadBatchId: "supp_batch_identity_reviewing",
+        reviewRunId: "mr_run_identity_retry",
+        fileName: "passport-fullscan.pdf",
+        objectKey:
+          "applications/app_submitted/supplements/IDENTITY/passport-fullscan.pdf",
+        fileType: "application/pdf",
+        fileSize: 4096,
+        isDeleted: false,
+        deletedAt: null,
+        uploadedAt: thirtyMinutesAgo,
+        createdAt: thirtyMinutesAgo,
+        updatedAt: thirtyMinutesAgo,
       },
     ],
     feedbacks: [],
@@ -1804,6 +2266,1637 @@ export async function softDeleteMaterial(
     where: { id: fileId },
     data: { isDeleted: true, deletedAt: new Date() },
   });
+}
+
+type MaterialCategoryReviewFilters = {
+  category?: SupplementCategory;
+  reviewRunId?: string;
+  isLatest?: boolean;
+};
+
+type SupplementRequestFilters = {
+  category?: SupplementCategory;
+  reviewRunId?: string;
+  categoryReviewId?: string;
+  isLatest?: boolean;
+  status?: SupplementRequestStatus;
+};
+
+type SupplementFileFilters = {
+  category?: SupplementCategory;
+  uploadBatchId?: string;
+  reviewRunId?: string;
+  supplementRequestId?: string;
+  includeDeleted?: boolean;
+};
+
+type SupplementHistoryFilters = {
+  category?: SupplementCategory;
+  runNo?: number;
+};
+
+type ReplaceLatestSupplementRequestsInput = {
+  applicationId: string;
+  category: SupplementCategory;
+  reviewRunId: string;
+  categoryReviewId: string;
+  requests: Array<{
+    title: string;
+    reason?: string | null;
+    suggestedMaterials?: string[] | string | null;
+    aiMessage?: string | null;
+    status?: SupplementRequestStatus;
+    isSatisfied?: boolean;
+    satisfiedAt?: Date | null;
+  }>;
+};
+
+export type MaterialSupplementSummaryData = SupplementSummary & {
+  latestRunStatus: MaterialReviewRunStatus | null;
+  latestCategoryReviewStatuses: Partial<
+    Record<SupplementCategory, MaterialCategoryReviewStatus>
+  >;
+};
+
+function toSupplementFileSummary(file: SupplementFileRecord) {
+  return {
+    id: file.id,
+    fileName: file.fileName,
+    fileType: file.fileType,
+    fileSize: file.fileSize,
+    uploadedAt: file.uploadedAt.toISOString(),
+  };
+}
+
+function toSupplementRequestSummary(request: SupplementRequestRecord) {
+  return {
+    id: request.id,
+    title: request.title,
+    reason: request.reason,
+    suggestedMaterials: request.suggestedMaterials,
+    aiMessage: request.aiMessage,
+    status: request.status,
+    isSatisfied: request.isSatisfied,
+    updatedAt: request.updatedAt.toISOString(),
+  };
+}
+
+function matchesMaterialCategoryReviewFilters(
+  item: MaterialCategoryReviewRecord,
+  filters?: MaterialCategoryReviewFilters,
+) {
+  if (!filters) {
+    return true;
+  }
+
+  return (
+    (filters.category === undefined || item.category === filters.category) &&
+    (filters.reviewRunId === undefined || item.reviewRunId === filters.reviewRunId) &&
+    (filters.isLatest === undefined || item.isLatest === filters.isLatest)
+  );
+}
+
+function matchesSupplementRequestFilters(
+  item: SupplementRequestRecord,
+  filters?: SupplementRequestFilters,
+) {
+  if (!filters) {
+    return true;
+  }
+
+  return (
+    (filters.category === undefined || item.category === filters.category) &&
+    (filters.reviewRunId === undefined || item.reviewRunId === filters.reviewRunId) &&
+    (filters.categoryReviewId === undefined ||
+      item.categoryReviewId === filters.categoryReviewId) &&
+    (filters.isLatest === undefined || item.isLatest === filters.isLatest) &&
+    (filters.status === undefined || item.status === filters.status)
+  );
+}
+
+function matchesSupplementFileFilters(
+  item: SupplementFileRecord,
+  filters?: SupplementFileFilters,
+) {
+  if (!filters) {
+    return !item.isDeleted;
+  }
+
+  return (
+    (filters.category === undefined || item.category === filters.category) &&
+    (filters.uploadBatchId === undefined ||
+      item.uploadBatchId === filters.uploadBatchId) &&
+    (filters.reviewRunId === undefined || item.reviewRunId === filters.reviewRunId) &&
+    (filters.supplementRequestId === undefined ||
+      item.supplementRequestId === filters.supplementRequestId) &&
+    (filters.includeDeleted === true || !item.isDeleted)
+  );
+}
+
+function toHistoricalSupplementRequestStatus(
+  request: Pick<SupplementRequestRecord, "isSatisfied" | "status">,
+) {
+  if (request.isSatisfied || request.status === "SATISFIED") {
+    return request.status;
+  }
+
+  return "HISTORY_ONLY" satisfies SupplementRequestStatus;
+}
+
+function validateSupplementFileBatchOwnership(input: {
+  applicationId: string;
+  category: SupplementCategory;
+  batch: Pick<SupplementUploadBatchRecord, "applicationId" | "category">;
+}) {
+  if (input.batch.applicationId !== input.applicationId) {
+    throw new Error("Supplement upload batch does not belong to the application.");
+  }
+
+  if (input.batch.category !== input.category) {
+    throw new Error("Supplement upload batch category does not match the file category.");
+  }
+}
+
+function validateSupplementRequestOwnership(input: {
+  applicationId: string;
+  category: SupplementCategory;
+  request: Pick<
+    SupplementRequestRecord,
+    "applicationId" | "category" | "id"
+  > | null;
+}) {
+  if (!input.request) {
+    return;
+  }
+
+  if (input.request.applicationId !== input.applicationId) {
+    throw new Error("Supplement request does not belong to the application.");
+  }
+
+  if (input.request.category !== input.category) {
+    throw new Error(
+      "Supplement request category does not match the uploaded file category.",
+    );
+  }
+}
+
+function validateBatchAndReviewRunCompatibility(input: {
+  batch: Pick<SupplementUploadBatchRecord, "applicationId" | "category">;
+  reviewRun: Pick<
+    MaterialReviewRunRecord,
+    "applicationId" | "triggeredCategory"
+  >;
+}) {
+  if (input.batch.applicationId !== input.reviewRun.applicationId) {
+    throw new Error(
+      "Supplement upload batch and material review run must belong to the same application.",
+    );
+  }
+
+  if (
+    input.reviewRun.triggeredCategory !== null &&
+    input.reviewRun.triggeredCategory !== input.batch.category
+  ) {
+    throw new Error(
+      "Material review run category does not match the supplement upload batch category.",
+    );
+  }
+}
+
+export async function getLatestMaterialReviewRun(applicationId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore()
+        .materialReviewRuns.filter((item) => item.applicationId === applicationId)
+        .sort((left, right) => right.runNo - left.runNo)[0] ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.materialReviewRun.findFirst({
+    where: { applicationId },
+    orderBy: { runNo: "desc" },
+  });
+}
+
+export async function getMaterialReviewRunById(reviewRunId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().materialReviewRuns.find((item) => item.id === reviewRunId) ??
+      null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.materialReviewRun.findUnique({ where: { id: reviewRunId } });
+}
+
+export async function getMaterialReviewRunByApplicationAndRunNo(
+  applicationId: string,
+  runNo: number,
+) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().materialReviewRuns.find(
+        (item) => item.applicationId === applicationId && item.runNo === runNo,
+      ) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.materialReviewRun.findUnique({
+    where: { applicationId_runNo: { applicationId, runNo } },
+  });
+}
+
+export async function listMaterialReviewRuns(applicationId: string) {
+  if (getRuntimeMode() === "memory") {
+    return getMemoryStore().materialReviewRuns
+      .filter((item) => item.applicationId === applicationId)
+      .sort((left, right) => right.runNo - left.runNo);
+  }
+
+  const prisma = await getPrisma();
+  return prisma.materialReviewRun.findMany({
+    where: { applicationId },
+    orderBy: { runNo: "desc" },
+  });
+}
+
+export async function createMaterialReviewRun(input: {
+  applicationId: string;
+  runNo: number;
+  status?: MaterialReviewRunStatus;
+  triggerType: MaterialReviewTriggerType;
+  triggeredCategory?: SupplementCategory | null;
+  externalRunId?: string | null;
+  errorMessage?: string | null;
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
+}) {
+  if (getRuntimeMode() === "memory") {
+    const existing = getMemoryStore().materialReviewRuns.find(
+      (item) =>
+        item.applicationId === input.applicationId && item.runNo === input.runNo,
+    );
+
+    if (existing) {
+      return existing;
+    }
+
+    const now = new Date();
+    const record: MaterialReviewRunRecord = {
+      id: createId("material_review_run"),
+      applicationId: input.applicationId,
+      runNo: input.runNo,
+      status: input.status ?? "QUEUED",
+      triggerType: input.triggerType,
+      triggeredCategory: input.triggeredCategory ?? null,
+      externalRunId: input.externalRunId ?? null,
+      errorMessage: input.errorMessage ?? null,
+      startedAt: input.startedAt ?? null,
+      finishedAt: input.finishedAt ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    getMemoryStore().materialReviewRuns.push(record);
+    return record;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.materialReviewRun.upsert({
+    where: {
+      applicationId_runNo: {
+        applicationId: input.applicationId,
+        runNo: input.runNo,
+      },
+    },
+    update: {},
+    create: {
+      applicationId: input.applicationId,
+      runNo: input.runNo,
+      status: (input.status ?? "QUEUED") as PrismaMaterialReviewRunStatus,
+      triggerType: input.triggerType as PrismaMaterialReviewTriggerType,
+      triggeredCategory: (input.triggeredCategory ?? null) as PrismaSupplementCategory | null,
+      externalRunId: input.externalRunId ?? null,
+      errorMessage: input.errorMessage ?? null,
+      startedAt: input.startedAt ?? null,
+      finishedAt: input.finishedAt ?? null,
+    },
+  });
+}
+
+export async function updateMaterialReviewRun(
+  reviewRunId: string,
+  data: {
+    status?: MaterialReviewRunStatus;
+    triggerType?: MaterialReviewTriggerType;
+    triggeredCategory?: SupplementCategory | null;
+    externalRunId?: string | null;
+    errorMessage?: string | null;
+    startedAt?: Date | null;
+    finishedAt?: Date | null;
+  },
+) {
+  if (getRuntimeMode() === "memory") {
+    const reviewRun = getMemoryStore().materialReviewRuns.find(
+      (item) => item.id === reviewRunId,
+    );
+
+    if (!reviewRun) {
+      return null;
+    }
+
+    Object.assign(reviewRun, data, { updatedAt: new Date() });
+    return reviewRun;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.materialReviewRun.update({
+    where: { id: reviewRunId },
+    data: {
+      ...(data.status === undefined
+        ? {}
+        : { status: data.status as PrismaMaterialReviewRunStatus }),
+      ...(data.triggerType === undefined
+        ? {}
+        : { triggerType: data.triggerType as PrismaMaterialReviewTriggerType }),
+      ...(data.triggeredCategory === undefined
+        ? {}
+        : {
+            triggeredCategory:
+              data.triggeredCategory as PrismaSupplementCategory | null,
+          }),
+      ...(data.externalRunId === undefined
+        ? {}
+        : { externalRunId: data.externalRunId }),
+      ...(data.errorMessage === undefined
+        ? {}
+        : { errorMessage: data.errorMessage }),
+      ...(data.startedAt === undefined ? {} : { startedAt: data.startedAt }),
+      ...(data.finishedAt === undefined ? {} : { finishedAt: data.finishedAt }),
+    },
+  });
+}
+
+export async function getLatestMaterialCategoryReview(
+  applicationId: string,
+  category: SupplementCategory,
+) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().materialCategoryReviews.find(
+        (item) =>
+          item.applicationId === applicationId &&
+          item.category === category &&
+          item.isLatest,
+      ) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.materialCategoryReview.findFirst({
+    where: { applicationId, category: category as PrismaSupplementCategory, isLatest: true },
+  });
+}
+
+export async function listMaterialCategoryReviews(
+  applicationId: string,
+  filters?: MaterialCategoryReviewFilters,
+) {
+  if (getRuntimeMode() === "memory") {
+    return getMemoryStore().materialCategoryReviews
+      .filter(
+        (item) =>
+          item.applicationId === applicationId &&
+          matchesMaterialCategoryReviewFilters(item, filters),
+      )
+      .sort((left, right) => {
+        if (left.roundNo !== right.roundNo) {
+          return right.roundNo - left.roundNo;
+        }
+
+        return byLatestSupplementTimestampDesc(left, right);
+      });
+  }
+
+  const prisma = await getPrisma();
+  return prisma.materialCategoryReview.findMany({
+    where: {
+      applicationId,
+      ...(filters?.category === undefined
+        ? {}
+        : { category: filters.category as PrismaSupplementCategory }),
+      ...(filters?.reviewRunId === undefined
+        ? {}
+        : { reviewRunId: filters.reviewRunId }),
+      ...(filters?.isLatest === undefined ? {} : { isLatest: filters.isLatest }),
+    },
+    orderBy: [{ roundNo: "desc" }, { updatedAt: "desc" }],
+  });
+}
+
+export async function createMaterialCategoryReview(input: {
+  reviewRunId: string;
+  applicationId: string;
+  category: SupplementCategory;
+  roundNo: number;
+  status?: MaterialCategoryReviewStatus;
+  aiMessage?: string | null;
+  resultPayload?: Record<string, unknown> | null;
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
+}) {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const now = new Date();
+
+    for (const existing of store.materialCategoryReviews) {
+      if (
+        existing.applicationId === input.applicationId &&
+        existing.category === input.category &&
+        existing.isLatest
+      ) {
+        existing.isLatest = false;
+        existing.updatedAt = now;
+      }
+    }
+
+    const record: MaterialCategoryReviewRecord = {
+      id: createId("material_category_review"),
+      reviewRunId: input.reviewRunId,
+      applicationId: input.applicationId,
+      category: input.category,
+      roundNo: input.roundNo,
+      status: input.status ?? "QUEUED",
+      aiMessage: input.aiMessage ?? null,
+      resultPayload: input.resultPayload ?? null,
+      isLatest: true,
+      startedAt: input.startedAt ?? null,
+      finishedAt: input.finishedAt ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.materialCategoryReviews.push(record);
+    return record;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.$transaction(async (tx) => {
+    await tx.materialCategoryReview.updateMany({
+      where: {
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        isLatest: true,
+      },
+      data: { isLatest: false },
+    });
+
+    return tx.materialCategoryReview.create({
+      data: {
+        reviewRunId: input.reviewRunId,
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        roundNo: input.roundNo,
+        status: (input.status ?? "QUEUED") as PrismaMaterialCategoryReviewStatus,
+        aiMessage: input.aiMessage ?? null,
+        resultPayload: (input.resultPayload ?? null) as Prisma.InputJsonValue | Prisma.JsonNull,
+        isLatest: true,
+        startedAt: input.startedAt ?? null,
+        finishedAt: input.finishedAt ?? null,
+      },
+    });
+  });
+}
+
+export async function updateMaterialCategoryReview(
+  reviewId: string,
+  data: {
+    status?: MaterialCategoryReviewStatus;
+    aiMessage?: string | null;
+    resultPayload?: Record<string, unknown> | null;
+    isLatest?: boolean;
+    startedAt?: Date | null;
+    finishedAt?: Date | null;
+  },
+) {
+  if (getRuntimeMode() === "memory") {
+    const review = getMemoryStore().materialCategoryReviews.find(
+      (item) => item.id === reviewId,
+    );
+
+    if (!review) {
+      return null;
+    }
+
+    Object.assign(review, data, { updatedAt: new Date() });
+    return review;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.materialCategoryReview.update({
+    where: { id: reviewId },
+    data: {
+      ...(data.status === undefined
+        ? {}
+        : { status: data.status as PrismaMaterialCategoryReviewStatus }),
+      ...(data.aiMessage === undefined ? {} : { aiMessage: data.aiMessage }),
+      ...(data.resultPayload === undefined
+        ? {}
+        : {
+            resultPayload:
+              data.resultPayload === null
+                ? Prisma.JsonNull
+                : (data.resultPayload as Prisma.InputJsonValue),
+          }),
+      ...(data.isLatest === undefined ? {} : { isLatest: data.isLatest }),
+      ...(data.startedAt === undefined ? {} : { startedAt: data.startedAt }),
+      ...(data.finishedAt === undefined ? {} : { finishedAt: data.finishedAt }),
+    },
+  });
+}
+
+export async function listLatestSupplementRequests(
+  applicationId: string,
+  category?: SupplementCategory,
+) {
+  return listSupplementRequests(applicationId, {
+    category,
+    isLatest: true,
+  });
+}
+
+export async function listSupplementRequests(
+  applicationId: string,
+  filters?: SupplementRequestFilters,
+) {
+  if (getRuntimeMode() === "memory") {
+    return getMemoryStore().supplementRequests
+      .filter(
+        (item) =>
+          item.applicationId === applicationId &&
+          matchesSupplementRequestFilters(item, filters),
+      )
+      .sort(byLatestSupplementTimestampDesc);
+  }
+
+  const prisma = await getPrisma();
+  return prisma.supplementRequest.findMany({
+    where: {
+      applicationId,
+      ...(filters?.category === undefined
+        ? {}
+        : { category: filters.category as PrismaSupplementCategory }),
+      ...(filters?.reviewRunId === undefined
+        ? {}
+        : { reviewRunId: filters.reviewRunId }),
+      ...(filters?.categoryReviewId === undefined
+        ? {}
+        : { categoryReviewId: filters.categoryReviewId }),
+      ...(filters?.isLatest === undefined ? {} : { isLatest: filters.isLatest }),
+      ...(filters?.status === undefined
+        ? {}
+        : { status: filters.status as PrismaSupplementRequestStatus }),
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function createSupplementRequest(input: {
+  applicationId: string;
+  category: SupplementCategory;
+  reviewRunId: string;
+  categoryReviewId: string;
+  title: string;
+  reason?: string | null;
+  suggestedMaterials?: string[] | string | null;
+  aiMessage?: string | null;
+  status?: SupplementRequestStatus;
+  isLatest?: boolean;
+  isSatisfied?: boolean;
+  satisfiedAt?: Date | null;
+}) {
+  const normalizedSuggestedMaterials = normalizeSuggestedMaterials(
+    input.suggestedMaterials,
+  );
+  const derivedIsSatisfied =
+    input.isSatisfied ?? (input.status === "SATISFIED" ? true : false);
+  const satisfiedAt =
+    derivedIsSatisfied ? input.satisfiedAt ?? new Date() : input.satisfiedAt ?? null;
+  const shouldBeLatest = input.isLatest ?? true;
+
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const now = new Date();
+
+    if (shouldBeLatest) {
+      for (const existing of store.supplementRequests) {
+        if (
+          existing.applicationId === input.applicationId &&
+          existing.category === input.category &&
+          existing.isLatest
+        ) {
+          existing.isLatest = false;
+          existing.status = toHistoricalSupplementRequestStatus(existing);
+          existing.updatedAt = now;
+        }
+      }
+    }
+
+    const record: SupplementRequestRecord = {
+      id: createId("supplement_request"),
+      applicationId: input.applicationId,
+      category: input.category,
+      reviewRunId: input.reviewRunId,
+      categoryReviewId: input.categoryReviewId,
+      title: input.title,
+      reason: input.reason ?? null,
+      suggestedMaterials: normalizedSuggestedMaterials,
+      aiMessage: input.aiMessage ?? null,
+      status: input.status ?? "PENDING",
+      isLatest: shouldBeLatest,
+      isSatisfied: derivedIsSatisfied,
+      satisfiedAt,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.supplementRequests.push(record);
+    return record;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.$transaction(async (tx) => {
+    if (shouldBeLatest) {
+      const currentLatest = await tx.supplementRequest.findMany({
+        where: {
+          applicationId: input.applicationId,
+          category: input.category as PrismaSupplementCategory,
+          isLatest: true,
+        },
+      });
+
+      await Promise.all(
+        currentLatest.map((request) =>
+          tx.supplementRequest.update({
+            where: { id: request.id },
+            data: {
+              isLatest: false,
+              status: toHistoricalSupplementRequestStatus({
+                isSatisfied: request.isSatisfied,
+                status: request.status as SupplementRequestStatus,
+              }) as PrismaSupplementRequestStatus,
+            },
+          }),
+        ),
+      );
+    }
+
+    return tx.supplementRequest.create({
+      data: {
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        reviewRunId: input.reviewRunId,
+        categoryReviewId: input.categoryReviewId,
+        title: input.title,
+        reason: input.reason ?? null,
+        suggestedMaterials:
+          normalizedSuggestedMaterials === null
+            ? Prisma.JsonNull
+            : (normalizedSuggestedMaterials as Prisma.InputJsonValue),
+        aiMessage: input.aiMessage ?? null,
+        status: (input.status ?? "PENDING") as PrismaSupplementRequestStatus,
+        isLatest: shouldBeLatest,
+        isSatisfied: derivedIsSatisfied,
+        satisfiedAt,
+      },
+    });
+  });
+}
+
+export async function replaceLatestSupplementRequestsForCategory(
+  input: ReplaceLatestSupplementRequestsInput,
+) {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const now = new Date();
+
+    for (const existing of store.supplementRequests) {
+      if (
+        existing.applicationId === input.applicationId &&
+        existing.category === input.category &&
+        existing.isLatest
+      ) {
+        existing.isLatest = false;
+        existing.status = toHistoricalSupplementRequestStatus(existing);
+        existing.updatedAt = now;
+      }
+    }
+
+    const created = input.requests.map((request) => {
+      const isSatisfied =
+        request.isSatisfied ?? (request.status === "SATISFIED" ? true : false);
+      const record: SupplementRequestRecord = {
+        id: createId("supplement_request"),
+        applicationId: input.applicationId,
+        category: input.category,
+        reviewRunId: input.reviewRunId,
+        categoryReviewId: input.categoryReviewId,
+        title: request.title,
+        reason: request.reason ?? null,
+        suggestedMaterials: normalizeSuggestedMaterials(request.suggestedMaterials),
+        aiMessage: request.aiMessage ?? null,
+        status: request.status ?? "PENDING",
+        isLatest: true,
+        isSatisfied,
+        satisfiedAt: isSatisfied ? request.satisfiedAt ?? now : request.satisfiedAt ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      store.supplementRequests.push(record);
+      return record;
+    });
+
+    return created;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.$transaction(async (tx) => {
+    const currentLatest = await tx.supplementRequest.findMany({
+      where: {
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        isLatest: true,
+      },
+    });
+
+    if (currentLatest.length > 0) {
+      await Promise.all(
+        currentLatest.map((request) =>
+          tx.supplementRequest.update({
+            where: { id: request.id },
+            data: {
+              isLatest: false,
+              status: toHistoricalSupplementRequestStatus({
+                isSatisfied: request.isSatisfied,
+                status: request.status as SupplementRequestStatus,
+              }) as PrismaSupplementRequestStatus,
+            },
+          }),
+        ),
+      );
+    }
+
+    const created: Awaited<ReturnType<typeof tx.supplementRequest.create>>[] = [];
+    for (const request of input.requests) {
+      const isSatisfied =
+        request.isSatisfied ?? (request.status === "SATISFIED" ? true : false);
+
+      created.push(
+        await tx.supplementRequest.create({
+          data: {
+            applicationId: input.applicationId,
+            category: input.category as PrismaSupplementCategory,
+            reviewRunId: input.reviewRunId,
+            categoryReviewId: input.categoryReviewId,
+            title: request.title,
+            reason: request.reason ?? null,
+            suggestedMaterials:
+              normalizeSuggestedMaterials(request.suggestedMaterials) === null
+                ? Prisma.JsonNull
+                : (normalizeSuggestedMaterials(
+                    request.suggestedMaterials,
+                  ) as Prisma.InputJsonValue),
+            aiMessage: request.aiMessage ?? null,
+            status: (request.status ?? "PENDING") as PrismaSupplementRequestStatus,
+            isLatest: true,
+            isSatisfied,
+            satisfiedAt: isSatisfied
+              ? request.satisfiedAt ?? new Date()
+              : request.satisfiedAt ?? null,
+          },
+        }),
+      );
+    }
+
+    return created;
+  });
+}
+
+export async function updateSupplementRequest(
+  requestId: string,
+  data: {
+    title?: string;
+    reason?: string | null;
+    suggestedMaterials?: string[] | string | null;
+    aiMessage?: string | null;
+    status?: SupplementRequestStatus;
+    isLatest?: boolean;
+    isSatisfied?: boolean;
+    satisfiedAt?: Date | null;
+  },
+) {
+  if (getRuntimeMode() === "memory") {
+    const request = getMemoryStore().supplementRequests.find(
+      (item) => item.id === requestId,
+    );
+
+    if (!request) {
+      return null;
+    }
+
+    Object.assign(request, {
+      ...(data.title === undefined ? {} : { title: data.title }),
+      ...(data.reason === undefined ? {} : { reason: data.reason }),
+      ...(data.suggestedMaterials === undefined
+        ? {}
+        : {
+            suggestedMaterials: normalizeSuggestedMaterials(data.suggestedMaterials),
+          }),
+      ...(data.aiMessage === undefined ? {} : { aiMessage: data.aiMessage }),
+      ...(data.status === undefined ? {} : { status: data.status }),
+      ...(data.isLatest === undefined ? {} : { isLatest: data.isLatest }),
+      ...(data.isSatisfied === undefined ? {} : { isSatisfied: data.isSatisfied }),
+      ...(data.satisfiedAt === undefined ? {} : { satisfiedAt: data.satisfiedAt }),
+      updatedAt: new Date(),
+    });
+
+    return request;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.supplementRequest.update({
+    where: { id: requestId },
+    data: {
+      ...(data.title === undefined ? {} : { title: data.title }),
+      ...(data.reason === undefined ? {} : { reason: data.reason }),
+      ...(data.suggestedMaterials === undefined
+        ? {}
+        : {
+            suggestedMaterials:
+              normalizeSuggestedMaterials(data.suggestedMaterials) === null
+                ? Prisma.JsonNull
+                : (normalizeSuggestedMaterials(
+                    data.suggestedMaterials,
+                  ) as Prisma.InputJsonValue),
+          }),
+      ...(data.aiMessage === undefined ? {} : { aiMessage: data.aiMessage }),
+      ...(data.status === undefined
+        ? {}
+        : { status: data.status as PrismaSupplementRequestStatus }),
+      ...(data.isLatest === undefined ? {} : { isLatest: data.isLatest }),
+      ...(data.isSatisfied === undefined ? {} : { isSatisfied: data.isSatisfied }),
+      ...(data.satisfiedAt === undefined ? {} : { satisfiedAt: data.satisfiedAt }),
+    },
+  });
+}
+
+export async function createSupplementUploadBatch(input: {
+  applicationId: string;
+  category: SupplementCategory;
+  status?: SupplementUploadBatchStatus;
+  fileCount?: number;
+  reviewRunId?: string | null;
+  confirmedAt?: Date | null;
+}) {
+  if (getRuntimeMode() === "memory") {
+    const now = new Date();
+    const record: SupplementUploadBatchRecord = {
+      id: createId("supplement_upload_batch"),
+      applicationId: input.applicationId,
+      category: input.category,
+      status: input.status ?? "DRAFT",
+      fileCount: input.fileCount ?? 0,
+      reviewRunId: input.reviewRunId ?? null,
+      confirmedAt: input.confirmedAt ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    getMemoryStore().supplementUploadBatches.push(record);
+    return record;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.supplementUploadBatch.create({
+    data: {
+      applicationId: input.applicationId,
+      category: input.category as PrismaSupplementCategory,
+      status: (input.status ?? "DRAFT") as PrismaSupplementUploadBatchStatus,
+      fileCount: input.fileCount ?? 0,
+      reviewRunId: input.reviewRunId ?? null,
+      confirmedAt: input.confirmedAt ?? null,
+    },
+  });
+}
+
+export async function getSupplementUploadBatchById(batchId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().supplementUploadBatches.find((item) => item.id === batchId) ??
+      null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.supplementUploadBatch.findUnique({ where: { id: batchId } });
+}
+
+export async function getLatestDraftSupplementUploadBatch(
+  applicationId: string,
+  category: SupplementCategory,
+) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().supplementUploadBatches
+        .filter(
+          (item) =>
+            item.applicationId === applicationId &&
+            item.category === category &&
+            item.status === "DRAFT",
+        )
+        .sort(byLatestSupplementTimestampDesc)[0] ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.supplementUploadBatch.findFirst({
+    where: {
+      applicationId,
+      category: category as PrismaSupplementCategory,
+      status: "DRAFT",
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function updateSupplementUploadBatch(
+  batchId: string,
+  data: {
+    status?: SupplementUploadBatchStatus;
+    fileCount?: number;
+    reviewRunId?: string | null;
+    confirmedAt?: Date | null;
+  },
+) {
+  if (getRuntimeMode() === "memory") {
+    const batch = getMemoryStore().supplementUploadBatches.find(
+      (item) => item.id === batchId,
+    );
+
+    if (!batch) {
+      return null;
+    }
+
+    Object.assign(batch, data, { updatedAt: new Date() });
+    return batch;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.supplementUploadBatch.update({
+    where: { id: batchId },
+    data: {
+      ...(data.status === undefined
+        ? {}
+        : { status: data.status as PrismaSupplementUploadBatchStatus }),
+      ...(data.fileCount === undefined ? {} : { fileCount: data.fileCount }),
+      ...(data.reviewRunId === undefined ? {} : { reviewRunId: data.reviewRunId }),
+      ...(data.confirmedAt === undefined ? {} : { confirmedAt: data.confirmedAt }),
+    },
+  });
+}
+
+export async function listSupplementFiles(
+  applicationId: string,
+  filters?: SupplementFileFilters,
+) {
+  if (getRuntimeMode() === "memory") {
+    return getMemoryStore().supplementFiles
+      .filter(
+        (item) =>
+          item.applicationId === applicationId &&
+          matchesSupplementFileFilters(item, filters),
+      )
+      .sort(byDateDesc);
+  }
+
+  const prisma = await getPrisma();
+  return prisma.supplementFile.findMany({
+    where: {
+      applicationId,
+      ...(filters?.category === undefined
+        ? {}
+        : { category: filters.category as PrismaSupplementCategory }),
+      ...(filters?.uploadBatchId === undefined
+        ? {}
+        : { uploadBatchId: filters.uploadBatchId }),
+      ...(filters?.reviewRunId === undefined
+        ? {}
+        : { reviewRunId: filters.reviewRunId }),
+      ...(filters?.supplementRequestId === undefined
+        ? {}
+        : { supplementRequestId: filters.supplementRequestId }),
+      ...(filters?.includeDeleted === true ? {} : { isDeleted: false }),
+    },
+    orderBy: { uploadedAt: "desc" },
+  });
+}
+
+export async function getSupplementFileById(fileId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().supplementFiles.find((item) => item.id === fileId) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.supplementFile.findUnique({ where: { id: fileId } });
+}
+
+export async function findActiveSupplementFileDuplicate(
+  applicationId: string,
+  category: SupplementCategory,
+  fileName: string,
+  fileSize: number,
+) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().supplementFiles.find(
+        (item) =>
+          item.applicationId === applicationId &&
+          item.category === category &&
+          item.fileName === fileName &&
+          item.fileSize === fileSize &&
+          !item.isDeleted,
+      ) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.supplementFile.findFirst({
+    where: {
+      applicationId,
+      category: category as PrismaSupplementCategory,
+      fileName,
+      fileSize,
+      isDeleted: false,
+    },
+  });
+}
+
+export async function createSupplementFile(input: {
+  applicationId: string;
+  category: SupplementCategory;
+  supplementRequestId?: string | null;
+  uploadBatchId: string;
+  reviewRunId?: string | null;
+  fileName: string;
+  objectKey: string;
+  fileType: string;
+  fileSize: number;
+  uploadedAt?: Date;
+}) {
+  const uploadedAt = input.uploadedAt ?? new Date();
+
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const batch = store.supplementUploadBatches.find(
+      (item) => item.id === input.uploadBatchId,
+    );
+
+    if (!batch) {
+      throw new Error("Supplement upload batch not found.");
+    }
+
+    if (batch.status !== "DRAFT") {
+      throw new Error("Supplement files can only be added to a draft batch.");
+    }
+
+    validateSupplementFileBatchOwnership({
+      applicationId: input.applicationId,
+      category: input.category,
+      batch,
+    });
+
+    const supplementRequest =
+      input.supplementRequestId === undefined || input.supplementRequestId === null
+        ? null
+        : (store.supplementRequests.find(
+            (item) => item.id === input.supplementRequestId,
+          ) ?? null);
+
+    validateSupplementRequestOwnership({
+      applicationId: input.applicationId,
+      category: input.category,
+      request: supplementRequest,
+    });
+
+    const duplicate = store.supplementFiles.find(
+      (item) =>
+        item.applicationId === input.applicationId &&
+        item.category === input.category &&
+        item.fileName === input.fileName &&
+        item.fileSize === input.fileSize &&
+        !item.isDeleted,
+    );
+
+    if (duplicate) {
+      return duplicate;
+    }
+
+    const now = new Date();
+    const record: SupplementFileRecord = {
+      id: createId("supplement_file"),
+      applicationId: input.applicationId,
+      category: input.category,
+      supplementRequestId: input.supplementRequestId ?? null,
+      uploadBatchId: input.uploadBatchId,
+      reviewRunId: input.reviewRunId ?? null,
+      fileName: input.fileName,
+      objectKey: input.objectKey,
+      fileType: input.fileType,
+      fileSize: input.fileSize,
+      isDeleted: false,
+      deletedAt: null,
+      uploadedAt,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.supplementFiles.push(record);
+    batch.fileCount = store.supplementFiles.filter(
+      (item) => item.uploadBatchId === batch.id && !item.isDeleted,
+    ).length;
+    batch.updatedAt = now;
+    return record;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.$transaction(async (tx) => {
+    const batch = await tx.supplementUploadBatch.findUnique({
+      where: { id: input.uploadBatchId },
+    });
+
+    if (!batch) {
+      throw new Error("Supplement upload batch not found.");
+    }
+
+    if (batch.status !== "DRAFT") {
+      throw new Error("Supplement files can only be added to a draft batch.");
+    }
+
+    validateSupplementFileBatchOwnership({
+      applicationId: input.applicationId,
+      category: input.category,
+      batch,
+    });
+
+    const supplementRequest =
+      input.supplementRequestId === undefined || input.supplementRequestId === null
+        ? null
+        : await tx.supplementRequest.findUnique({
+            where: { id: input.supplementRequestId },
+          });
+
+    validateSupplementRequestOwnership({
+      applicationId: input.applicationId,
+      category: input.category,
+      request: supplementRequest
+        ? {
+            id: supplementRequest.id,
+            applicationId: supplementRequest.applicationId,
+            category: supplementRequest.category as SupplementCategory,
+          }
+        : null,
+    });
+
+    const duplicate = await tx.supplementFile.findFirst({
+      where: {
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        fileName: input.fileName,
+        fileSize: input.fileSize,
+        isDeleted: false,
+      },
+    });
+
+    if (duplicate) {
+      return duplicate;
+    }
+
+    const created = await tx.supplementFile.create({
+      data: {
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        supplementRequestId: input.supplementRequestId ?? null,
+        uploadBatchId: input.uploadBatchId,
+        reviewRunId: input.reviewRunId ?? null,
+        fileName: input.fileName,
+        objectKey: input.objectKey,
+        fileType: input.fileType,
+        fileSize: input.fileSize,
+        uploadedAt,
+      },
+    });
+
+    const activeCount = await tx.supplementFile.count({
+      where: { uploadBatchId: input.uploadBatchId, isDeleted: false },
+    });
+
+    await tx.supplementUploadBatch.update({
+      where: { id: input.uploadBatchId },
+      data: { fileCount: activeCount },
+    });
+
+    return created;
+  });
+}
+
+export async function softDeleteSupplementFile(
+  fileId: string,
+  deletedAt?: Date,
+) {
+  const deletedAtValue = deletedAt ?? new Date();
+
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const file = store.supplementFiles.find((item) => item.id === fileId);
+
+    if (!file) {
+      return null;
+    }
+
+    const batch = store.supplementUploadBatches.find(
+      (item) => item.id === file.uploadBatchId,
+    );
+
+    if (!batch) {
+      throw new Error("Supplement upload batch not found.");
+    }
+
+    if (batch.status !== "DRAFT") {
+      throw new Error("Only draft supplement batch files can be deleted.");
+    }
+
+    file.isDeleted = true;
+    file.deletedAt = deletedAtValue;
+    file.updatedAt = deletedAtValue;
+    batch.fileCount = store.supplementFiles.filter(
+      (item) => item.uploadBatchId === batch.id && !item.isDeleted,
+    ).length;
+    batch.updatedAt = deletedAtValue;
+    return file;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.$transaction(async (tx) => {
+    const file = await tx.supplementFile.findUnique({
+      where: { id: fileId },
+      include: { uploadBatch: true },
+    });
+
+    if (!file) {
+      return null;
+    }
+
+    if (file.uploadBatch.status !== "DRAFT") {
+      throw new Error("Only draft supplement batch files can be deleted.");
+    }
+
+    const updated = await tx.supplementFile.update({
+      where: { id: fileId },
+      data: {
+        isDeleted: true,
+        deletedAt: deletedAtValue,
+      },
+    });
+
+    const activeCount = await tx.supplementFile.count({
+      where: {
+        uploadBatchId: file.uploadBatchId,
+        isDeleted: false,
+      },
+    });
+
+    await tx.supplementUploadBatch.update({
+      where: { id: file.uploadBatchId },
+      data: { fileCount: activeCount },
+    });
+
+    return updated;
+  });
+}
+
+export async function attachSupplementFilesToReviewRun(
+  uploadBatchId: string,
+  reviewRunId: string,
+) {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const batch = store.supplementUploadBatches.find(
+      (item) => item.id === uploadBatchId,
+    );
+
+    if (!batch) {
+      throw new Error("Supplement upload batch not found.");
+    }
+
+    const reviewRun = store.materialReviewRuns.find((item) => item.id === reviewRunId);
+
+    if (!reviewRun) {
+      throw new Error("Material review run not found.");
+    }
+
+    validateBatchAndReviewRunCompatibility({
+      batch,
+      reviewRun,
+    });
+
+    const now = new Date();
+    const files = store.supplementFiles
+      .filter((item) => item.uploadBatchId === uploadBatchId && !item.isDeleted)
+      .map((item) => {
+        item.reviewRunId = reviewRunId;
+        item.updatedAt = now;
+        return item;
+      });
+
+    batch.reviewRunId = reviewRunId;
+    batch.status = "REVIEWING";
+    batch.confirmedAt ??= now;
+    batch.updatedAt = now;
+
+    return { batch, files };
+  }
+
+  const prisma = await getPrisma();
+  return prisma.$transaction(async (tx) => {
+    const batch = await tx.supplementUploadBatch.findUnique({
+      where: { id: uploadBatchId },
+    });
+
+    if (!batch) {
+      throw new Error("Supplement upload batch not found.");
+    }
+
+    const reviewRun = await tx.materialReviewRun.findUnique({
+      where: { id: reviewRunId },
+    });
+
+    if (!reviewRun) {
+      throw new Error("Material review run not found.");
+    }
+
+    validateBatchAndReviewRunCompatibility({
+      batch: {
+        applicationId: batch.applicationId,
+        category: batch.category as SupplementCategory,
+      },
+      reviewRun: {
+        applicationId: reviewRun.applicationId,
+        triggeredCategory:
+          (reviewRun.triggeredCategory as SupplementCategory | null) ?? null,
+      },
+    });
+
+    await tx.supplementFile.updateMany({
+      where: { uploadBatchId, isDeleted: false },
+      data: { reviewRunId },
+    });
+
+    const updatedBatch = await tx.supplementUploadBatch.update({
+      where: { id: uploadBatchId },
+      data: {
+        reviewRunId,
+        status: "REVIEWING",
+        confirmedAt: batch.confirmedAt ?? new Date(),
+      },
+    });
+
+    const files = await tx.supplementFile.findMany({
+      where: { uploadBatchId, isDeleted: false },
+      orderBy: { uploadedAt: "desc" },
+    });
+
+    return {
+      batch: updatedBatch,
+      files,
+    };
+  });
+}
+
+export async function getMaterialSupplementSummaryData(
+  applicationId: string,
+): Promise<MaterialSupplementSummaryData> {
+  const [reviewRuns, latestCategoryReviews, latestRequests] = await Promise.all([
+    listMaterialReviewRuns(applicationId),
+    listMaterialCategoryReviews(applicationId, { isLatest: true }),
+    listLatestSupplementRequests(applicationId),
+  ]);
+
+  const latestRun = reviewRuns[0] ?? null;
+  const latestReviewedAt =
+    latestCategoryReviews
+      .map((item) => getLatestSupplementTimestamp(item))
+      .filter((item): item is Date => item instanceof Date)
+      .sort((left, right) => right.getTime() - left.getTime())[0] ??
+    getLatestSupplementTimestamp(latestRun ?? {}) ??
+    null;
+
+  const latestCategoryReviewStatuses = Object.fromEntries(
+    latestCategoryReviews.map((review) => [review.category, review.status]),
+  ) as Partial<Record<SupplementCategory, MaterialCategoryReviewStatus>>;
+
+  return {
+    applicationId,
+    materialSupplementStatus: deriveMaterialSupplementStatus({
+      latestRun: latestRun as MaterialReviewRunRecord | null,
+      latestCategoryReviews: latestCategoryReviews as MaterialCategoryReviewRecord[],
+      latestRequests: latestRequests as SupplementRequestRecord[],
+    }),
+    latestReviewRunId: latestRun?.id ?? null,
+    latestReviewedAt: latestReviewedAt?.toISOString() ?? null,
+    pendingRequestCount: latestRequests.filter(isSupplementRequestPending).length,
+    satisfiedRequestCount: latestRequests.filter(isSupplementRequestSatisfied).length,
+    remainingReviewRounds: Math.max(
+      0,
+      SUPPLEMENT_REVIEW_MAX_ROUNDS - reviewRuns.length,
+    ),
+    supportedCategories: [...SUPPORTED_SUPPLEMENT_CATEGORIES],
+    latestRunStatus: latestRun?.status ?? null,
+    latestCategoryReviewStatuses,
+  };
+}
+
+export async function getMaterialSupplementSnapshotData(
+  applicationId: string,
+): Promise<SupplementSnapshot> {
+  const [summary, latestCategoryReviews, latestRequests, files, batches] =
+    await Promise.all([
+      getMaterialSupplementSummaryData(applicationId),
+      listMaterialCategoryReviews(applicationId, { isLatest: true }),
+      listLatestSupplementRequests(applicationId),
+      listSupplementFiles(applicationId),
+      (async () => {
+        if (getRuntimeMode() === "memory") {
+          return getMemoryStore().supplementUploadBatches
+            .filter((item) => item.applicationId === applicationId)
+            .sort(byLatestSupplementTimestampDesc);
+        }
+
+        const prisma = await getPrisma();
+        return prisma.supplementUploadBatch.findMany({
+          where: { applicationId },
+          orderBy: { createdAt: "desc" },
+        });
+      })(),
+    ]);
+
+  const categories = SUPPORTED_SUPPLEMENT_CATEGORIES.map((category) => {
+    const latestReview =
+      latestCategoryReviews.find((item) => item.category === category) ?? null;
+    const requests = latestRequests
+      .filter((item) => item.category === category)
+      .sort(byLatestSupplementTimestampDesc);
+    const draftBatchIds = batches
+      .filter((item) => item.category === category && item.status === "DRAFT")
+      .map((item) => item.id);
+    const waitingBatchIds = batches
+      .filter(
+        (item) =>
+          item.category === category &&
+          (item.status === "CONFIRMED" || item.status === "REVIEWING"),
+      )
+      .map((item) => item.id);
+    const draftFiles = files.filter((item) => draftBatchIds.includes(item.uploadBatchId));
+    const waitingReviewFiles = files.filter((item) =>
+      waitingBatchIds.includes(item.uploadBatchId),
+    );
+
+    return {
+      category,
+      label: SUPPLEMENT_CATEGORY_LABELS[category],
+      status: deriveSupplementCategoryDisplayStatus({
+        latestReview: latestReview as MaterialCategoryReviewRecord | null,
+        latestRequests: requests as SupplementRequestRecord[],
+      }),
+      isReviewing:
+        latestReview?.status === "QUEUED" || latestReview?.status === "PROCESSING",
+      latestCategoryReviewId: latestReview?.id ?? null,
+      latestReviewedAt:
+        getLatestSupplementTimestamp(
+          (latestReview as MaterialCategoryReviewRecord | null) ?? {},
+        )?.toISOString() ?? null,
+      aiMessage: latestReview?.aiMessage ?? null,
+      pendingRequestCount: requests.filter(isSupplementRequestPending).length,
+      requests: requests.map((item) =>
+        toSupplementRequestSummary(item as SupplementRequestRecord),
+      ),
+      draftFiles: draftFiles.map((item) =>
+        toSupplementFileSummary(item as SupplementFileRecord),
+      ),
+      waitingReviewFiles: waitingReviewFiles.map((item) =>
+        toSupplementFileSummary(item as SupplementFileRecord),
+      ),
+    };
+  });
+
+  return {
+    applicationId,
+    summary: {
+      materialSupplementStatus: summary.materialSupplementStatus,
+      latestReviewRunId: summary.latestReviewRunId,
+      latestReviewedAt: summary.latestReviewedAt,
+      pendingRequestCount: summary.pendingRequestCount,
+      satisfiedRequestCount: summary.satisfiedRequestCount,
+      remainingReviewRounds: summary.remainingReviewRounds,
+    },
+    categories,
+  };
+}
+
+export async function getMaterialSupplementHistoryData(
+  applicationId: string,
+  filters?: SupplementHistoryFilters,
+): Promise<{
+  applicationId: string;
+  filters: { category: SupplementCategory | null; runNo: number | null };
+  items: SupplementHistoryItem[];
+}> {
+  const [categoryReviews, reviewRuns, requests, files] = await Promise.all([
+    listMaterialCategoryReviews(applicationId, {
+      ...(filters?.category === undefined ? {} : { category: filters.category }),
+    }),
+    listMaterialReviewRuns(applicationId),
+    listSupplementRequests(applicationId),
+    listSupplementFiles(applicationId),
+  ]);
+
+  const runNoById = new Map(reviewRuns.map((item) => [item.id, item.runNo]));
+
+  const items = categoryReviews
+    .filter((review) => {
+      if (filters?.runNo === undefined) {
+        return true;
+      }
+
+      return runNoById.get(review.reviewRunId) === filters.runNo;
+    })
+    .sort((left, right) => {
+      const runNoDiff =
+        (runNoById.get(right.reviewRunId) ?? 0) -
+        (runNoById.get(left.reviewRunId) ?? 0);
+      if (runNoDiff !== 0) {
+        return runNoDiff;
+      }
+
+      return byLatestSupplementTimestampDesc(left, right);
+    })
+    .map((review) => ({
+      reviewRunId: review.reviewRunId,
+      runNo: runNoById.get(review.reviewRunId) ?? 0,
+      category: review.category,
+      categoryReviewId: review.id,
+      status: review.status,
+      isLatest: review.isLatest,
+      reviewedAt:
+        getLatestSupplementTimestamp(review as MaterialCategoryReviewRecord)?.toISOString() ??
+        null,
+      aiMessage: review.aiMessage,
+      files: files
+        .filter(
+          (file) =>
+            file.reviewRunId === review.reviewRunId && file.category === review.category,
+        )
+        .map((file) => toSupplementFileSummary(file as SupplementFileRecord)),
+      requests: requests
+        .filter((request) => request.categoryReviewId === review.id)
+        .sort(byLatestSupplementTimestampDesc)
+        .map((request) => {
+          const summary = toSupplementRequestSummary(request as SupplementRequestRecord);
+          return {
+            id: summary.id,
+            title: summary.title,
+            reason: summary.reason,
+            aiMessage: summary.aiMessage,
+            status: summary.status,
+            isSatisfied: summary.isSatisfied,
+            updatedAt: summary.updatedAt,
+          };
+        }),
+    }));
+
+  return {
+    applicationId,
+    filters: {
+      category: filters?.category ?? null,
+      runNo: filters?.runNo ?? null,
+    },
+    items,
+  };
 }
 
 export async function findApplicationEventByIdempotency(input: {

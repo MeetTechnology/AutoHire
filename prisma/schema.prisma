@@ -70,6 +70,51 @@ enum MaterialCategory {
   PRODUCT
 }
 
+enum SupplementCategory {
+  IDENTITY
+  EDUCATION
+  EMPLOYMENT
+  PROJECT
+  PATENT
+  HONOR
+}
+
+enum MaterialReviewRunStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum MaterialReviewTriggerType {
+  INITIAL_SUBMISSION
+  SUPPLEMENT_UPLOAD
+  MANUAL_RETRY
+}
+
+enum MaterialCategoryReviewStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum SupplementRequestStatus {
+  PENDING
+  UPLOADED_WAITING_REVIEW
+  REVIEWING
+  SATISFIED
+  HISTORY_ONLY
+}
+
+enum SupplementUploadBatchStatus {
+  DRAFT
+  CONFIRMED
+  REVIEWING
+  COMPLETED
+  CANCELLED
+}
+
 enum AccessResult {
   VALID
   INVALID
@@ -156,6 +201,11 @@ model Application {
   secondaryAnalysisFieldValues SecondaryAnalysisFieldValue[]
   supplementalFields          SupplementalFieldSubmission[]
   materials                   ApplicationMaterial[]
+  materialReviewRuns          MaterialReviewRun[]
+  materialCategoryReviews     MaterialCategoryReview[]
+  supplementRequests          SupplementRequest[]
+  supplementUploadBatches     SupplementUploadBatch[]
+  supplementFiles             SupplementFile[]
   feedback                    ApplicationFeedback?
   events                      ApplicationEventLog[]
   accessLogs                  InviteAccessLog[]
@@ -325,6 +375,138 @@ model ApplicationMaterial {
 
   @@index([applicationId, category])
   @@index([applicationId, isDeleted, category])
+}
+
+model MaterialReviewRun {
+  id                String                    @id @default(cuid())
+  applicationId     String
+  runNo             Int
+  status            MaterialReviewRunStatus  @default(QUEUED)
+  triggerType       MaterialReviewTriggerType
+  triggeredCategory SupplementCategory?
+  externalRunId     String?
+  errorMessage      String?                   @db.Text
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  application            Application              @relation(fields: [applicationId], references: [id])
+  categoryReviews        MaterialCategoryReview[]
+  supplementRequests     SupplementRequest[]
+  supplementUploadBatches SupplementUploadBatch[]
+  supplementFiles        SupplementFile[]
+
+  @@unique([applicationId, runNo])
+  @@index([applicationId])
+  @@index([applicationId, status])
+  @@index([externalRunId])
+  @@index([createdAt])
+}
+
+model MaterialCategoryReview {
+  id           String                       @id @default(cuid())
+  reviewRunId  String
+  applicationId String
+  category     SupplementCategory
+  roundNo      Int
+  status       MaterialCategoryReviewStatus @default(QUEUED)
+  aiMessage    String?                      @db.Text
+  resultPayload Json?
+  isLatest     Boolean                      @default(true)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime                     @default(now())
+  updatedAt    DateTime                     @updatedAt
+
+  reviewRun          MaterialReviewRun   @relation(fields: [reviewRunId], references: [id])
+  application        Application         @relation(fields: [applicationId], references: [id])
+  supplementRequests SupplementRequest[]
+
+  @@unique([reviewRunId, category])
+  @@unique([applicationId, category, roundNo])
+  @@index([applicationId, category])
+  @@index([applicationId, category, isLatest])
+  @@index([reviewRunId])
+  @@index([status, updatedAt])
+}
+
+model SupplementRequest {
+  id               String                  @id @default(cuid())
+  applicationId    String
+  category         SupplementCategory
+  reviewRunId      String
+  categoryReviewId String
+  title            String
+  reason           String?                 @db.Text
+  suggestedMaterials Json?
+  aiMessage        String?                 @db.Text
+  status           SupplementRequestStatus @default(PENDING)
+  isLatest         Boolean                 @default(true)
+  isSatisfied      Boolean                 @default(false)
+  satisfiedAt      DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  application    Application            @relation(fields: [applicationId], references: [id])
+  reviewRun      MaterialReviewRun      @relation(fields: [reviewRunId], references: [id])
+  categoryReview MaterialCategoryReview @relation(fields: [categoryReviewId], references: [id])
+  files          SupplementFile[]
+
+  @@index([applicationId, category, isLatest])
+  @@index([applicationId, status])
+  @@index([applicationId, isSatisfied])
+  @@index([reviewRunId])
+  @@index([categoryReviewId])
+}
+
+model SupplementUploadBatch {
+  id            String                      @id @default(cuid())
+  applicationId String
+  category      SupplementCategory
+  status        SupplementUploadBatchStatus @default(DRAFT)
+  fileCount     Int                         @default(0)
+  reviewRunId   String?
+  confirmedAt   DateTime?
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+
+  application Application       @relation(fields: [applicationId], references: [id])
+  reviewRun   MaterialReviewRun? @relation(fields: [reviewRunId], references: [id])
+  files       SupplementFile[]
+
+  @@index([applicationId, category])
+  @@index([applicationId, status])
+  @@index([reviewRunId])
+  @@index([createdAt])
+}
+
+model SupplementFile {
+  id                  String              @id @default(cuid())
+  applicationId       String
+  category            SupplementCategory
+  supplementRequestId String?
+  uploadBatchId       String
+  reviewRunId         String?
+  fileName            String
+  objectKey           String
+  fileType            String
+  fileSize            Int
+  isDeleted           Boolean             @default(false)
+  deletedAt           DateTime?
+  uploadedAt          DateTime            @default(now())
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  application       Application        @relation(fields: [applicationId], references: [id])
+  supplementRequest SupplementRequest? @relation(fields: [supplementRequestId], references: [id])
+  uploadBatch       SupplementUploadBatch @relation(fields: [uploadBatchId], references: [id])
+  reviewRun         MaterialReviewRun? @relation(fields: [reviewRunId], references: [id])
+
+  @@index([applicationId, category])
+  @@index([applicationId, uploadBatchId])
+  @@index([reviewRunId])
+  @@index([supplementRequestId])
 }
 
 model ApplicationFeedback {
