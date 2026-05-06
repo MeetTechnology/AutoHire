@@ -27,6 +27,24 @@ describe("MaterialSupplementServiceError", () => {
       category: "EDUCATION",
     });
   });
+
+  it("supports the newly added supplement expert error codes", () => {
+    const error = new MaterialSupplementServiceError({
+      message: "The supplement review round limit has been reached.",
+      status: 409,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_ROUND_LIMIT_REACHED,
+      details: {
+        maxRounds: 3,
+      },
+    });
+
+    expect(error.code).toBe(
+      SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_ROUND_LIMIT_REACHED,
+    );
+    expect(SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_CATEGORY_UNSUPPORTED).toBe(
+      "SUPPLEMENT_CATEGORY_UNSUPPORTED",
+    );
+  });
 });
 
 describe("jsonSupplementError", () => {
