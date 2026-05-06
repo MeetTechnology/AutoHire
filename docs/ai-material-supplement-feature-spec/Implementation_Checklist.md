@@ -29,14 +29,14 @@
 
 ## 阶段 2：数据库与数据模型
 
-- [ ] 补件审查相关 schema 与 migration 已落地，且不复用 `ApplicationMaterial` 存储补件文件。
+- [x] 补件审查相关 schema 与 migration 已落地，且不复用 `ApplicationMaterial` 存储补件文件。
   - 验证：数据库结构能独立表达补件请求、补件批次、补件文件、审查运行或历史数据，并体现“补件独立于现有材料”的边界。
-- [ ] 数据访问层已支持补件主流程读写。
+- [x] 数据访问层已支持补件主流程读写。
   - 验证：存在稳定的数据访问接口，可完成摘要读取、历史读取、批次创建、文件确认、状态更新等核心操作。
-- [ ] 补件样例数据或构造能力已具备，后续 route test 与页面测试可直接复用。
+- [x] 补件样例数据或构造能力已具备，后续 route test 与页面测试可直接复用。
   - 验证：测试或开发环境中可快速构造补件请求、补件文件、历史记录、latest 记录等示例数据。
-- [ ] 补件状态推导与 latest 维护逻辑已建立。
-  - 验证：`materialSupplementStatus` 可由 latest run/latest request 推导；新版本请求通过新增记录表达，旧版本转为 history/latest=false，而不是原地覆盖。
+- [x] 补件状态推导与 latest 维护逻辑已建立。
+  - 验证：`materialSupplementStatus` 可由 latest run/latest request 推导；新版本请求通过新增记录表达，旧版本转为 history/latest=false，而不是原地覆盖；主视图默认隐藏已满足 latest request，history 仍保留可查。
 
 ## 阶段 3：核心 API
 
