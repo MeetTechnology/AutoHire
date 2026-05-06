@@ -59,20 +59,20 @@ describe("material supplement store", () => {
 
   it("marks older latest category reviews as non-latest when a new one is created", async () => {
     const created = await createMaterialCategoryReview({
-      reviewRunId: "mr_run_initial",
-      applicationId: "app_submitted",
+      reviewRunId: "mr_run_required_initial",
+      applicationId: "app_supplement_required",
       category: "EMPLOYMENT",
       roundNo: 2,
       status: "PROCESSING",
     });
 
     const latest = await getLatestMaterialCategoryReview(
-      "app_submitted",
+      "app_supplement_required",
       "EMPLOYMENT",
     );
     expect(latest?.id).toBe(created.id);
 
-    const history = await getMaterialSupplementHistoryData("app_submitted", {
+    const history = await getMaterialSupplementHistoryData("app_supplement_required", {
       category: "EMPLOYMENT",
     });
     expect(history.items).toHaveLength(2);
@@ -84,10 +84,10 @@ describe("material supplement store", () => {
 
   it("replaces latest supplement requests by historicalizing older ones", async () => {
     const created = await replaceLatestSupplementRequestsForCategory({
-      applicationId: "app_submitted",
+      applicationId: "app_supplement_required",
       category: "EMPLOYMENT",
-      reviewRunId: "mr_run_initial",
-      categoryReviewId: "mcr_employment_initial",
+      reviewRunId: "mr_run_required_initial",
+      categoryReviewId: "mcr_required_employment_initial",
       requests: [
         {
           title: "Upload payroll proof",
@@ -100,13 +100,13 @@ describe("material supplement store", () => {
     expect(created).toHaveLength(1);
 
     const latest = await listLatestSupplementRequests(
-      "app_submitted",
+      "app_supplement_required",
       "EMPLOYMENT",
     );
     expect(latest).toHaveLength(1);
     expect(latest[0]?.title).toBe("Upload payroll proof");
 
-    const history = await getMaterialSupplementHistoryData("app_submitted", {
+    const history = await getMaterialSupplementHistoryData("app_supplement_required", {
       category: "EMPLOYMENT",
       runNo: 1,
     });
@@ -118,16 +118,16 @@ describe("material supplement store", () => {
 
   it("historicalizes older latest requests when creating a new latest request directly", async () => {
     const created = await createSupplementRequest({
-      applicationId: "app_submitted",
+      applicationId: "app_supplement_required",
       category: "EMPLOYMENT",
-      reviewRunId: "mr_run_initial",
-      categoryReviewId: "mcr_employment_initial",
+      reviewRunId: "mr_run_required_initial",
+      categoryReviewId: "mcr_required_employment_initial",
       title: "Upload offer letter",
       reason: "Offer letter is also required.",
     });
 
     const latest = await listLatestSupplementRequests(
-      "app_submitted",
+      "app_supplement_required",
       "EMPLOYMENT",
     );
 
@@ -135,7 +135,7 @@ describe("material supplement store", () => {
     expect(latest).toHaveLength(1);
     expect(latest[0]?.id).toBe(created.id);
 
-    const history = await getMaterialSupplementHistoryData("app_submitted", {
+    const history = await getMaterialSupplementHistoryData("app_supplement_required", {
       category: "EMPLOYMENT",
       runNo: 1,
     });
@@ -146,38 +146,43 @@ describe("material supplement store", () => {
   });
 
   it("soft deletes draft supplement files and updates the batch file count", async () => {
-    const removed = await softDeleteSupplementFile("supp_file_employment_draft");
+    const removed = await softDeleteSupplementFile(
+      "supp_file_required_employment_draft",
+    );
     expect(removed?.isDeleted).toBe(true);
 
-    const batch = await getSupplementUploadBatchById("supp_batch_employment_draft");
+    const batch = await getSupplementUploadBatchById(
+      "supp_batch_required_employment_draft",
+    );
     expect(batch?.fileCount).toBe(0);
   });
 
   it("rejects deleting supplement files from a non-draft batch", async () => {
     await expect(
-      softDeleteSupplementFile("supp_file_identity_reviewing"),
+      softDeleteSupplementFile("supp_file_reviewing_identity_reviewing"),
     ).rejects.toThrow("Only draft supplement batch files can be deleted.");
   });
 
   it("detects active duplicate supplement files by category, name, and size", async () => {
     const duplicate = await findActiveSupplementFileDuplicate(
-      "app_submitted",
+      "app_supplement_required",
       "EMPLOYMENT",
       "employment-proof.pdf",
       2048,
     );
 
-    expect(duplicate?.id).toBe("supp_file_employment_draft");
+    expect(duplicate?.id).toBe("supp_file_required_employment_draft");
   });
 
   it("rejects creating a supplement file when the batch belongs to another category", async () => {
     await expect(
       createSupplementFile({
-        applicationId: "app_submitted",
+        applicationId: "app_supplement_required",
         category: "IDENTITY",
-        uploadBatchId: "supp_batch_employment_draft",
+        uploadBatchId: "supp_batch_required_employment_draft",
         fileName: "wrong-category.pdf",
-        objectKey: "applications/app_submitted/supplements/IDENTITY/wrong-category.pdf",
+        objectKey:
+          "applications/app_supplement_required/supplements/IDENTITY/wrong-category.pdf",
         fileType: "application/pdf",
         fileSize: 111,
       }),
@@ -188,18 +193,19 @@ describe("material supplement store", () => {
 
   it("rejects creating a supplement file when the request belongs to another category", async () => {
     const batch = await createSupplementUploadBatch({
-      applicationId: "app_submitted",
+      applicationId: "app_supplement_required",
       category: "IDENTITY",
     });
 
     await expect(
       createSupplementFile({
-        applicationId: "app_submitted",
+        applicationId: "app_supplement_required",
         category: "IDENTITY",
         uploadBatchId: batch.id,
-        supplementRequestId: "supp_req_employment_latest",
+        supplementRequestId: "supp_req_required_employment_latest",
         fileName: "wrong-request.pdf",
-        objectKey: "applications/app_submitted/supplements/IDENTITY/wrong-request.pdf",
+        objectKey:
+          "applications/app_supplement_required/supplements/IDENTITY/wrong-request.pdf",
         fileType: "application/pdf",
         fileSize: 222,
       }),
@@ -209,14 +215,22 @@ describe("material supplement store", () => {
   });
 
   it("returns snapshot data with latest requests, draft files, and waiting review files", async () => {
-    const snapshot = await getMaterialSupplementSnapshotData("app_submitted");
+    const requiredSnapshot = await getMaterialSupplementSnapshotData(
+      "app_supplement_required",
+    );
+    const reviewingSnapshot = await getMaterialSupplementSnapshotData(
+      "app_supplement_reviewing",
+    );
 
-    expect(snapshot.summary.pendingRequestCount).toBeGreaterThan(0);
+    expect(requiredSnapshot.summary.pendingRequestCount).toBeGreaterThan(0);
+    expect(reviewingSnapshot.summary.materialSupplementStatus).toBe("REVIEWING");
 
-    const employment = snapshot.categories.find(
+    const employment = requiredSnapshot.categories.find(
       (item) => item.category === "EMPLOYMENT",
     );
-    const identity = snapshot.categories.find((item) => item.category === "IDENTITY");
+    const identity = reviewingSnapshot.categories.find(
+      (item) => item.category === "IDENTITY",
+    );
 
     expect(employment?.requests[0]?.title).toBe("Upload recent employment proof");
     expect(employment?.draftFiles[0]?.fileName).toBe("employment-proof.pdf");
@@ -224,17 +238,25 @@ describe("material supplement store", () => {
   });
 
   it("returns history in descending order and supports category/run filters", async () => {
-    const fullHistory = await getMaterialSupplementHistoryData("app_submitted");
+    const fullHistory = await getMaterialSupplementHistoryData(
+      "app_supplement_reviewing",
+    );
     expect(fullHistory.items[0]?.runNo).toBe(2);
 
-    const runOneHistory = await getMaterialSupplementHistoryData("app_submitted", {
-      runNo: 1,
-    });
+    const runOneHistory = await getMaterialSupplementHistoryData(
+      "app_supplement_reviewing",
+      {
+        runNo: 1,
+      },
+    );
     expect(runOneHistory.items.every((item) => item.runNo === 1)).toBe(true);
 
-    const identityHistory = await getMaterialSupplementHistoryData("app_submitted", {
-      category: "IDENTITY",
-    });
+    const identityHistory = await getMaterialSupplementHistoryData(
+      "app_supplement_reviewing",
+      {
+        category: "IDENTITY",
+      },
+    );
     expect(identityHistory.items.every((item) => item.category === "IDENTITY")).toBe(
       true,
     );
@@ -242,21 +264,22 @@ describe("material supplement store", () => {
 
   it("attaches draft batch files to a review run and marks the batch reviewing", async () => {
     const batch = await createSupplementUploadBatch({
-      applicationId: "app_submitted",
+      applicationId: "app_supplement_required",
       category: "PATENT",
     });
     const run = await createMaterialReviewRun({
-      applicationId: "app_submitted",
+      applicationId: "app_supplement_required",
       runNo: 3,
       triggerType: "SUPPLEMENT_UPLOAD",
       triggeredCategory: "PATENT",
     });
     const file = await createSupplementFile({
-      applicationId: "app_submitted",
+      applicationId: "app_supplement_required",
       category: "PATENT",
       uploadBatchId: batch.id,
       fileName: "patent.pdf",
-      objectKey: "applications/app_submitted/supplements/PATENT/patent.pdf",
+      objectKey:
+        "applications/app_supplement_required/supplements/PATENT/patent.pdf",
       fileType: "application/pdf",
       fileSize: 5120,
     });
@@ -272,11 +295,11 @@ describe("material supplement store", () => {
 
   it("rejects attaching a batch to a review run from another category", async () => {
     const batch = await createSupplementUploadBatch({
-      applicationId: "app_submitted",
+      applicationId: "app_supplement_required",
       category: "PATENT",
     });
     const run = await createMaterialReviewRun({
-      applicationId: "app_submitted",
+      applicationId: "app_supplement_required",
       runNo: 3,
       triggerType: "SUPPLEMENT_UPLOAD",
       triggeredCategory: "IDENTITY",
@@ -289,7 +312,7 @@ describe("material supplement store", () => {
 
   it("rejects attaching a batch to a review run from another application", async () => {
     const batch = await createSupplementUploadBatch({
-      applicationId: "app_submitted",
+      applicationId: "app_supplement_required",
       category: "PATENT",
     });
     const run = await createMaterialReviewRun({

@@ -5,8 +5,10 @@ import { PrismaClient } from "@prisma/client";
 
 import {
   SAMPLE_TOKENS,
+  getSampleSubmittedApplicationRecords,
   getSampleInvitationSeeds,
 } from "@/lib/data/sample-data";
+import { getMaterialSupplementSampleFixtures } from "@/lib/material-supplement/fixtures";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -20,15 +22,92 @@ const prisma = new PrismaClient({
   }),
 });
 
+async function seedSubmittedApplication(
+  sample: ReturnType<typeof getSampleSubmittedApplicationRecords>[number],
+) {
+  const { application, resumeFile, analysisJob, analysisResult, material } = sample;
+
+  await prisma.application.create({
+    data: {
+      ...application,
+      resumeFiles: {
+        create: {
+          id: resumeFile.id,
+          fileName: resumeFile.fileName,
+          objectKey: resumeFile.objectKey,
+          fileType: resumeFile.fileType,
+          fileSize: resumeFile.fileSize,
+          versionNo: resumeFile.versionNo,
+          uploadedAt: resumeFile.uploadedAt,
+        },
+      },
+      analysisJobs: {
+        create: {
+          id: analysisJob.id,
+          resumeFileId: analysisJob.resumeFileId,
+          externalJobId: analysisJob.externalJobId,
+          jobType: analysisJob.jobType,
+          jobStatus: analysisJob.jobStatus,
+          stageText: "已完成简历分析",
+          errorMessage: analysisJob.errorMessage,
+          startedAt: analysisJob.startedAt,
+          finishedAt: analysisJob.finishedAt,
+        },
+      },
+      analysisResults: {
+        create: {
+          id: analysisResult.id,
+          analysisJobId: analysisResult.analysisJobId,
+          analysisRound: analysisResult.analysisRound,
+          eligibilityResult: analysisResult.eligibilityResult,
+          reasonText: "符合基本申报条件。",
+          displaySummary: "您已通过初步资格判断，请继续完成详细分析。",
+          extractedFields: {
+            "*姓名": application.screeningPassportFullName,
+            "最高学位": "博士",
+            "就职单位中文": analysisResult.extractedFields["就职单位中文"],
+          },
+          missingFields: analysisResult.missingFields,
+          createdAt: analysisResult.createdAt,
+        },
+      },
+      materials: {
+        create: {
+          id: material.id,
+          category: material.category,
+          fileName: material.fileName,
+          objectKey: material.objectKey,
+          fileType: material.fileType,
+          fileSize: material.fileSize,
+          uploadedAt: material.uploadedAt,
+          isDeleted: material.isDeleted,
+          deletedAt: material.deletedAt,
+        },
+      },
+    },
+  });
+}
+
 async function main() {
   const invitations = getSampleInvitationSeeds();
   const now = new Date();
+  const submittedApplicationRecords = getSampleSubmittedApplicationRecords(now);
+  const supplementFixtures = getMaterialSupplementSampleFixtures(now);
 
   await prisma.fileUploadAttempt.deleteMany();
   await prisma.inviteAccessLog.deleteMany();
   await prisma.applicationEventLog.deleteMany();
+  await prisma.applicationFeedback.deleteMany();
+  await prisma.supplementFile.deleteMany();
+  await prisma.supplementUploadBatch.deleteMany();
+  await prisma.supplementRequest.deleteMany();
+  await prisma.materialCategoryReview.deleteMany();
+  await prisma.materialReviewRun.deleteMany();
   await prisma.applicationMaterial.deleteMany();
+  await prisma.secondaryAnalysisFieldValue.deleteMany();
+  await prisma.secondaryAnalysisRun.deleteMany();
   await prisma.supplementalFieldSubmission.deleteMany();
+  await prisma.resumeExtractionReview.deleteMany();
   await prisma.resumeAnalysisResult.deleteMany();
   await prisma.resumeAnalysisJob.deleteMany();
   await prisma.resumeFile.deleteMany();
@@ -124,82 +203,9 @@ async function main() {
     },
   });
 
-  await prisma.application.create({
-    data: {
-      id: "app_submitted",
-      expertId: "expert_submitted",
-      invitationId: "invitation_submitted",
-      applicationStatus: "SUBMITTED",
-      currentStep: "materials",
-      eligibilityResult: "ELIGIBLE",
-      latestAnalysisJobId: "job_submitted",
-      firstAccessedAt: now,
-      lastAccessedAt: now,
-      introConfirmedAt: now,
-      resumeUploadStartedAt: now,
-      resumeUploadedAt: now,
-      analysisStartedAt: now,
-      analysisCompletedAt: now,
-      materialsEnteredAt: now,
-      submittedAt: now,
-      createdAt: now,
-      updatedAt: now,
-      resumeFiles: {
-        create: {
-          id: "resume_submitted",
-          fileName: "candidate-submitted.pdf",
-          objectKey: "applications/app_submitted/resume/candidate-submitted.pdf",
-          fileType: "application/pdf",
-          fileSize: 2048,
-          versionNo: 1,
-          uploadedAt: now,
-        },
-      },
-      analysisJobs: {
-        create: {
-          id: "job_submitted",
-          resumeFileId: "resume_submitted",
-          externalJobId: "mock:eligible:submitted",
-          jobType: "INITIAL",
-          jobStatus: "COMPLETED",
-          stageText: "已完成简历分析",
-          startedAt: now,
-          finishedAt: now,
-        },
-      },
-      analysisResults: {
-        create: {
-          id: "result_submitted",
-          analysisJobId: "job_submitted",
-          analysisRound: 1,
-          eligibilityResult: "ELIGIBLE",
-          reasonText: "符合基本申报条件。",
-          displaySummary: "您已通过初步资格判断，请继续完成详细分析。",
-          extractedFields: {
-            "*姓名": "Submitted Expert",
-            "最高学位": "博士",
-            "就职单位中文": "Example University",
-          },
-          missingFields: [],
-          createdAt: now,
-        },
-      },
-      materials: {
-        create: {
-          id: "mat_submitted_identity",
-          category: "IDENTITY",
-          fileName: "passport.pdf",
-          objectKey:
-            "applications/app_submitted/materials/IDENTITY/passport.pdf",
-          fileType: "application/pdf",
-          fileSize: 1000,
-          uploadedAt: now,
-          isDeleted: false,
-          deletedAt: null,
-        },
-      },
-    },
-  });
+  for (const sample of submittedApplicationRecords) {
+    await seedSubmittedApplication(sample);
+  }
 
   await prisma.application.create({
     data: {
@@ -262,6 +268,46 @@ async function main() {
       },
     },
   });
+
+  for (const run of supplementFixtures.materialReviewRuns) {
+    await prisma.materialReviewRun.create({
+      data: {
+        ...run,
+      },
+    });
+  }
+
+  for (const review of supplementFixtures.materialCategoryReviews) {
+    await prisma.materialCategoryReview.create({
+      data: {
+        ...review,
+      },
+    });
+  }
+
+  for (const request of supplementFixtures.supplementRequests) {
+    await prisma.supplementRequest.create({
+      data: {
+        ...request,
+      },
+    });
+  }
+
+  for (const batch of supplementFixtures.supplementUploadBatches) {
+    await prisma.supplementUploadBatch.create({
+      data: {
+        ...batch,
+      },
+    });
+  }
+
+  for (const file of supplementFixtures.supplementFiles) {
+    await prisma.supplementFile.create({
+      data: {
+        ...file,
+      },
+    });
+  }
 
   await prisma.inviteAccessLog.createMany({
     data: [
@@ -331,6 +377,9 @@ async function main() {
   console.log(`- init: ${SAMPLE_TOKENS.init}`);
   console.log(`- progress: ${SAMPLE_TOKENS.progress}`);
   console.log(`- submitted: ${SAMPLE_TOKENS.submitted}`);
+  console.log(`- supplement reviewing: ${SAMPLE_TOKENS.supplementReviewing}`);
+  console.log(`- supplement required: ${SAMPLE_TOKENS.supplementRequired}`);
+  console.log(`- supplement satisfied: ${SAMPLE_TOKENS.supplementSatisfied}`);
   console.log(`- secondary: ${SAMPLE_TOKENS.secondary}`);
 }
 
