@@ -21,21 +21,65 @@ describe("validateUpload", () => {
     });
   });
 
-  it("accepts any extension for non-product material categories within size cap", () => {
+  it("accepts any extension for original non-product material categories within size cap", () => {
     expect(
-      validateUpload("passport.jpg", MAX_FILE_SIZE_BYTES, {
-        category: "IDENTITY",
+      validateUpload("paper-scan.jpg", MAX_FILE_SIZE_BYTES, {
+        category: "PAPER",
       }),
     ).toEqual({ valid: true });
     expect(
-      validateUpload("clip.mov", 1024, { category: "EDUCATION" }),
+      validateUpload("book-video.mov", 1024, { category: "BOOK" }),
     ).toEqual({ valid: true });
   });
 
-  it("rejects files above standard cap for non-product material categories", () => {
+  it("accepts supplement categories when the file matches the shared allowlist", () => {
     expect(
-      validateUpload("passport.jpg", MAX_FILE_SIZE_BYTES + 1, {
-        category: "IDENTITY",
+      validateUpload("supplement.pdf", MAX_FILE_SIZE_BYTES, {
+        category: "PROJECT",
+      }),
+    ).toEqual({ valid: true });
+    expect(
+      validateUpload("records.zip", MAX_ARCHIVE_SIZE_BYTES, {
+        category: "HONOR",
+      }),
+    ).toEqual({ valid: true });
+  });
+
+  it("rejects supplement categories when the extension is outside the shared allowlist", () => {
+    expect(
+      validateUpload("supplement.mov", MAX_FILE_SIZE_BYTES, {
+        category: "PROJECT",
+      }),
+    ).toEqual({
+      valid: false,
+      reason: "UNSUPPORTED_FILE_TYPE",
+    });
+  });
+
+  it("rejects files above standard cap for original non-product material categories", () => {
+    expect(
+      validateUpload("paper-scan.jpg", MAX_FILE_SIZE_BYTES + 1, {
+        category: "PAPER",
+      }),
+    ).toEqual({
+      valid: false,
+      reason: "FILE_TOO_LARGE",
+    });
+  });
+
+  it("rejects supplement category files above the archive and standard caps", () => {
+    expect(
+      validateUpload("records.zip", MAX_ARCHIVE_SIZE_BYTES + 1, {
+        category: "PATENT",
+      }),
+    ).toEqual({
+      valid: false,
+      reason: "ARCHIVE_TOO_LARGE",
+    });
+
+    expect(
+      validateUpload("statement.pdf", MAX_FILE_SIZE_BYTES + 1, {
+        category: "EMPLOYMENT",
       }),
     ).toEqual({
       valid: false,
