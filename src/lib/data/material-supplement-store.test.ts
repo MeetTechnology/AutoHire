@@ -12,6 +12,7 @@ import {
   getMaterialReviewRunByApplicationAndRunNo,
   getMaterialSupplementHistoryData,
   getMaterialSupplementSnapshotData,
+  getMaterialSupplementSummaryData,
   getSupplementFileById,
   getSupplementUploadBatchById,
   listLatestSupplementRequests,
@@ -237,6 +238,17 @@ describe("material supplement store", () => {
     expect(identity?.waitingReviewFiles[0]?.fileName).toBe("passport-fullscan.pdf");
   });
 
+  it("keeps satisfied latest requests in summary counts but hides them from snapshot request lists", async () => {
+    const snapshot = await getMaterialSupplementSnapshotData("app_supplement_required");
+
+    expect(snapshot.summary.satisfiedRequestCount).toBe(1);
+
+    const identity = snapshot.categories.find((item) => item.category === "IDENTITY");
+    expect(identity?.status).toBe("SATISFIED");
+    expect(identity?.pendingRequestCount).toBe(0);
+    expect(identity?.requests).toEqual([]);
+  });
+
   it("returns history in descending order and supports category/run filters", async () => {
     const fullHistory = await getMaterialSupplementHistoryData(
       "app_supplement_reviewing",
@@ -260,6 +272,12 @@ describe("material supplement store", () => {
     expect(identityHistory.items.every((item) => item.category === "IDENTITY")).toBe(
       true,
     );
+  });
+
+  it("computes remaining review rounds from the application run count", async () => {
+    const summary = await getMaterialSupplementSummaryData("app_supplement_required");
+
+    expect(summary.remainingReviewRounds).toBe(1);
   });
 
   it("attaches draft batch files to a review run and marks the batch reviewing", async () => {

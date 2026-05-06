@@ -12,7 +12,6 @@ import type {
 } from "@/features/application/types";
 import {
   SUPPLEMENT_CATEGORY_LABELS,
-  SUPPLEMENT_REVIEW_MAX_ROUNDS,
   SUPPORTED_SUPPLEMENT_CATEGORIES,
 } from "@/features/material-supplement/constants";
 import type {
@@ -32,6 +31,15 @@ import {
   mergeStoredScreeningContactValuesIntoExtractedFields,
 } from "@/lib/application/screening-contact";
 import { enrichMissingFieldsWithRegistry } from "@/lib/resume-analysis/missing-field-registry";
+import {
+  countPendingSupplementRequests,
+  countSatisfiedSupplementRequests,
+  deriveMaterialSupplementStatus,
+  deriveSupplementCategoryState,
+  filterVisibleLatestSupplementRequests,
+  getRemainingSupplementReviewRounds,
+  toHistoricalSupplementRequestStatus,
+} from "@/lib/material-supplement/status";
 import { getRuntimeMode } from "@/lib/env";
 import {
   getSampleInvitationSeeds,
@@ -479,102 +487,6 @@ function normalizeSuggestedMaterials(
   }
 
   return null;
-}
-
-function isSupplementRequestPending(request: {
-  status: SupplementRequestStatus;
-  isSatisfied: boolean;
-}) {
-  return !request.isSatisfied && request.status !== "SATISFIED";
-}
-
-function isSupplementRequestSatisfied(request: {
-  status: SupplementRequestStatus;
-  isSatisfied: boolean;
-}) {
-  return request.isSatisfied || request.status === "SATISFIED";
-}
-
-function deriveMaterialSupplementStatus(input: {
-  latestRun: MaterialReviewRunRecord | null;
-  latestCategoryReviews: MaterialCategoryReviewRecord[];
-  latestRequests: SupplementRequestRecord[];
-}): MaterialSupplementStatus {
-  if (!input.latestRun) {
-    return "NOT_STARTED";
-  }
-
-  if (
-    input.latestRun.status === "QUEUED" ||
-    input.latestRun.status === "PROCESSING" ||
-    input.latestCategoryReviews.some(
-      (review) => review.status === "QUEUED" || review.status === "PROCESSING",
-    )
-  ) {
-    return "REVIEWING";
-  }
-
-  const pendingCount = input.latestRequests.filter(isSupplementRequestPending).length;
-  const satisfiedCount = input.latestRequests.filter(
-    isSupplementRequestSatisfied,
-  ).length;
-
-  if (pendingCount > 0 && satisfiedCount > 0) {
-    return "PARTIALLY_SATISFIED";
-  }
-
-  if (pendingCount > 0) {
-    return "SUPPLEMENT_REQUIRED";
-  }
-
-  if (satisfiedCount > 0) {
-    return "SATISFIED";
-  }
-
-  if (input.latestRun.status === "COMPLETED") {
-    return "NO_SUPPLEMENT_REQUIRED";
-  }
-
-  return "NOT_STARTED";
-}
-
-function deriveSupplementCategoryDisplayStatus(input: {
-  latestReview: MaterialCategoryReviewRecord | null;
-  latestRequests: SupplementRequestRecord[];
-}): SupplementCategoryDisplayStatus {
-  if (!input.latestReview) {
-    return "NOT_STARTED";
-  }
-
-  if (
-    input.latestReview.status === "QUEUED" ||
-    input.latestReview.status === "PROCESSING"
-  ) {
-    return "REVIEWING";
-  }
-
-  if (input.latestReview.status === "FAILED") {
-    return "REVIEW_FAILED";
-  }
-
-  const pendingCount = input.latestRequests.filter(isSupplementRequestPending).length;
-  const satisfiedCount = input.latestRequests.filter(
-    isSupplementRequestSatisfied,
-  ).length;
-
-  if (pendingCount > 0 && satisfiedCount > 0) {
-    return "PARTIALLY_SATISFIED";
-  }
-
-  if (pendingCount > 0) {
-    return "SUPPLEMENT_REQUIRED";
-  }
-
-  if (satisfiedCount > 0) {
-    return "SATISFIED";
-  }
-
-  return "NO_SUPPLEMENT_REQUIRED";
 }
 
 function buildSampleStore(): PersistedStore {
@@ -2123,16 +2035,6 @@ function matchesSupplementFileFilters(
   );
 }
 
-function toHistoricalSupplementRequestStatus(
-  request: Pick<SupplementRequestRecord, "isSatisfied" | "status">,
-) {
-  if (request.isSatisfied || request.status === "SATISFIED") {
-    return request.status;
-  }
-
-  return "HISTORY_ONLY" satisfies SupplementRequestStatus;
-}
-
 function validateSupplementFileBatchOwnership(input: {
   applicationId: string;
   category: SupplementCategory;
@@ -3449,12 +3351,9 @@ export async function getMaterialSupplementSummaryData(
     }),
     latestReviewRunId: latestRun?.id ?? null,
     latestReviewedAt: latestReviewedAt?.toISOString() ?? null,
-    pendingRequestCount: latestRequests.filter(isSupplementRequestPending).length,
-    satisfiedRequestCount: latestRequests.filter(isSupplementRequestSatisfied).length,
-    remainingReviewRounds: Math.max(
-      0,
-      SUPPLEMENT_REVIEW_MAX_ROUNDS - reviewRuns.length,
-    ),
+    pendingRequestCount: countPendingSupplementRequests(latestRequests),
+    satisfiedRequestCount: countSatisfiedSupplementRequests(latestRequests),
+    remainingReviewRounds: getRemainingSupplementReviewRounds(reviewRuns.length),
     supportedCategories: [...SUPPORTED_SUPPLEMENT_CATEGORIES],
     latestRunStatus: latestRun?.status ?? null,
     latestCategoryReviewStatuses,
@@ -3488,9 +3387,12 @@ export async function getMaterialSupplementSnapshotData(
   const categories = SUPPORTED_SUPPLEMENT_CATEGORIES.map((category) => {
     const latestReview =
       latestCategoryReviews.find((item) => item.category === category) ?? null;
-    const requests = latestRequests
+    const latestCategoryRequests = latestRequests
       .filter((item) => item.category === category)
       .sort(byLatestSupplementTimestampDesc);
+    const visibleRequests = filterVisibleLatestSupplementRequests(
+      latestCategoryRequests,
+    );
     const draftBatchIds = batches
       .filter((item) => item.category === category && item.status === "DRAFT")
       .map((item) => item.id);
@@ -3505,24 +3407,24 @@ export async function getMaterialSupplementSnapshotData(
     const waitingReviewFiles = files.filter((item) =>
       waitingBatchIds.includes(item.uploadBatchId),
     );
+    const derivedCategoryState = deriveSupplementCategoryState({
+      latestReview: latestReview as MaterialCategoryReviewRecord | null,
+      latestRequests: latestCategoryRequests as SupplementRequestRecord[],
+    });
 
     return {
       category,
       label: SUPPLEMENT_CATEGORY_LABELS[category],
-      status: deriveSupplementCategoryDisplayStatus({
-        latestReview: latestReview as MaterialCategoryReviewRecord | null,
-        latestRequests: requests as SupplementRequestRecord[],
-      }),
-      isReviewing:
-        latestReview?.status === "QUEUED" || latestReview?.status === "PROCESSING",
+      status: derivedCategoryState.status,
+      isReviewing: derivedCategoryState.isReviewing,
       latestCategoryReviewId: latestReview?.id ?? null,
       latestReviewedAt:
         getLatestSupplementTimestamp(
           (latestReview as MaterialCategoryReviewRecord | null) ?? {},
         )?.toISOString() ?? null,
       aiMessage: latestReview?.aiMessage ?? null,
-      pendingRequestCount: requests.filter(isSupplementRequestPending).length,
-      requests: requests.map((item) =>
+      pendingRequestCount: countPendingSupplementRequests(latestCategoryRequests),
+      requests: visibleRequests.map((item) =>
         toSupplementRequestSummary(item as SupplementRequestRecord),
       ),
       draftFiles: draftFiles.map((item) =>
