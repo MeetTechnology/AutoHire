@@ -51,6 +51,21 @@ export const supplementUploadIntentRequestSchema = z
   })
   .strict();
 
+export const supplementConfirmFileRequestSchema = z
+  .object({
+    uploadBatchId: trimmedNonEmptyString,
+    category: z.enum(SUPPORTED_SUPPLEMENT_CATEGORIES),
+    supplementRequestId: trimmedNonEmptyString.optional(),
+    fileName: trimmedNonEmptyString,
+    fileType: trimmedNonEmptyString,
+    fileSize: z.number().int().positive(),
+    objectKey: trimmedNonEmptyString,
+  })
+  .strict();
+
+export const supplementConfirmUploadBatchRequestSchema =
+  supplementUploadBatchRequestSchema;
+
 export const supplementCallbackHeadersSchema = z.object({
   "x-material-review-signature": trimmedNonEmptyString,
   "x-material-review-timestamp": trimmedIsoDatetimeString,

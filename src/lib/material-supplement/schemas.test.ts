@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   getSupplementCallbackHeaders,
+  supplementConfirmFileRequestSchema,
+  supplementConfirmUploadBatchRequestSchema,
   supplementCallbackHeadersSchema,
   supplementInitialReviewRequestSchema,
   supplementUploadBatchRequestSchema,
@@ -72,6 +74,88 @@ describe("supplement upload request schemas", () => {
         fileName: "degree.pdf",
         fileType: "application/pdf",
         fileSize: 0,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts file confirmation payloads with an optional supplement request", () => {
+    expect(
+      supplementConfirmFileRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+        objectKey: "applications/app_001/supplements/EDUCATION/batch_001/degree.pdf",
+      }).success,
+    ).toBe(true);
+    expect(
+      supplementConfirmFileRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "EDUCATION",
+        supplementRequestId: "req_001",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+        objectKey: "applications/app_001/supplements/EDUCATION/batch_001/degree.pdf",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects invalid file confirmation payloads", () => {
+    expect(
+      supplementConfirmFileRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "PRODUCT",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+        objectKey: "applications/app_001/supplements/PRODUCT/batch_001/degree.pdf",
+      }).success,
+    ).toBe(false);
+    expect(
+      supplementConfirmFileRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 0,
+        objectKey: "applications/app_001/supplements/EDUCATION/batch_001/degree.pdf",
+      }).success,
+    ).toBe(false);
+    expect(
+      supplementConfirmFileRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+        objectKey: "",
+      }).success,
+    ).toBe(false);
+    expect(
+      supplementConfirmFileRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+        objectKey: "applications/app_001/supplements/EDUCATION/batch_001/degree.pdf",
+        extra: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only category for upload batch confirmation", () => {
+    expect(
+      supplementConfirmUploadBatchRequestSchema.safeParse({
+        category: "EDUCATION",
+      }).success,
+    ).toBe(true);
+    expect(
+      supplementConfirmUploadBatchRequestSchema.safeParse({
+        category: "EDUCATION",
+        uploadBatchId: "batch_001",
       }).success,
     ).toBe(false);
   });

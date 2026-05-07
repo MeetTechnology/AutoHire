@@ -4,8 +4,11 @@ import {
   createMaterialReviewRun,
   createSupplementFile,
   createSupplementUploadBatch,
+  getLatestMaterialCategoryReview,
   getMaterialReviewRunByApplicationAndRunNo,
+  getSupplementUploadBatchById,
   listMaterialReviewRuns,
+  listSupplementFiles,
   updateSupplementUploadBatch,
   updateApplication,
 } from "@/lib/data/store";
@@ -20,8 +23,11 @@ import {
 import { MaterialSupplementServiceError } from "@/lib/material-supplement/errors";
 import { MaterialReviewClientError } from "@/lib/material-review/types";
 import {
+  confirmSupplementFileUpload,
+  confirmSupplementUploadBatch,
   createSupplementUploadBatchIntent,
   createSupplementUploadIntent,
+  deleteSupplementDraftFile,
 } from "@/lib/material-supplement/upload";
 import {
   MAX_ARCHIVE_SIZE_BYTES,
@@ -539,5 +545,427 @@ describe("material supplement upload intents", () => {
       status: 409,
       code: "SUPPLEMENT_FILE_DUPLICATE",
     });
+  });
+});
+
+describe("material supplement file and batch confirmation", () => {
+  beforeEach(() => {
+    process.env.APP_RUNTIME_MODE = "memory";
+    resetMemoryStore();
+    vi.restoreAllMocks();
+  });
+
+  it("confirms a supplement file and updates the draft batch count", async () => {
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+
+    await expect(
+      confirmSupplementFileUpload({
+        applicationId: "app_supplement_required",
+        uploadBatchId: batch.id,
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 1234,
+        objectKey: `applications/app_supplement_required/supplements/EDUCATION/${batch.id}/degree.pdf`,
+      }),
+    ).resolves.toMatchObject({
+      file: {
+        uploadBatchId: batch.id,
+        category: "EDUCATION",
+        supplementRequestId: null,
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 1234,
+        status: "DRAFT",
+      },
+    });
+
+    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject({
+      fileCount: 1,
+    });
+  });
+
+  it("rejects file confirmation for missing, non-draft, duplicate, and reviewing categories", async () => {
+    await expect(
+      confirmSupplementFileUpload({
+        applicationId: "app_supplement_required",
+        uploadBatchId: "missing_batch",
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 1234,
+        objectKey: "applications/app_supplement_required/supplements/EDUCATION/missing/degree.pdf",
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 404,
+      code: "SUPPLEMENT_UPLOAD_BATCH_NOT_FOUND",
+    });
+
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+    await updateSupplementUploadBatch(batch.id, { status: "CONFIRMED" });
+
+    await expect(
+      confirmSupplementFileUpload({
+        applicationId: "app_supplement_required",
+        uploadBatchId: batch.id,
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 1234,
+        objectKey: `applications/app_supplement_required/supplements/EDUCATION/${batch.id}/degree.pdf`,
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_UPLOAD_BATCH_NOT_DRAFT",
+    });
+
+    const duplicateBatch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+    await createSupplementFile({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      uploadBatchId: duplicateBatch.id,
+      fileName: "duplicate.pdf",
+      objectKey: `applications/app_supplement_required/supplements/EDUCATION/${duplicateBatch.id}/duplicate.pdf`,
+      fileType: "application/pdf",
+      fileSize: 4321,
+    });
+
+    await expect(
+      confirmSupplementFileUpload({
+        applicationId: "app_supplement_required",
+        uploadBatchId: duplicateBatch.id,
+        category: "EDUCATION",
+        fileName: "duplicate.pdf",
+        fileType: "application/pdf",
+        fileSize: 4321,
+        objectKey: `applications/app_supplement_required/supplements/EDUCATION/${duplicateBatch.id}/duplicate-copy.pdf`,
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_FILE_DUPLICATE",
+    });
+
+    await expect(
+      confirmSupplementFileUpload({
+        applicationId: "app_supplement_required",
+        uploadBatchId: duplicateBatch.id,
+        category: "EDUCATION",
+        fileName: "wrong-scope.pdf",
+        fileType: "application/pdf",
+        fileSize: 9876,
+        objectKey:
+          "applications/app_other/supplements/EDUCATION/some_batch/wrong-scope.pdf",
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 400,
+      code: "SUPPLEMENT_FILE_CONFIRM_FAILED",
+    });
+
+    await expect(
+      confirmSupplementFileUpload({
+        applicationId: "app_supplement_reviewing",
+        uploadBatchId: "supp_batch_reviewing_identity",
+        category: "IDENTITY",
+        fileName: "passport.pdf",
+        fileType: "application/pdf",
+        fileSize: 1234,
+        objectKey:
+          "applications/app_supplement_reviewing/supplements/IDENTITY/passport.pdf",
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_CATEGORY_REVIEWING",
+    });
+  });
+
+  it("deletes draft files and rejects missing or non-draft files", async () => {
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+    const file = await createSupplementFile({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      uploadBatchId: batch.id,
+      fileName: "degree.pdf",
+      objectKey: `applications/app_supplement_required/supplements/EDUCATION/${batch.id}/degree.pdf`,
+      fileType: "application/pdf",
+      fileSize: 1234,
+    });
+
+    await expect(
+      deleteSupplementDraftFile({
+        applicationId: "app_supplement_required",
+        fileId: file.id,
+      }),
+    ).resolves.toEqual({
+      deleted: true,
+      fileId: file.id,
+      uploadBatchId: batch.id,
+    });
+    await expect(listSupplementFiles("app_supplement_required", {
+      uploadBatchId: batch.id,
+    })).resolves.toHaveLength(0);
+    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject({
+      fileCount: 0,
+    });
+
+    await expect(
+      deleteSupplementDraftFile({
+        applicationId: "app_supplement_required",
+        fileId: "missing_file",
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 404,
+      code: "SUPPLEMENT_FILE_NOT_FOUND",
+    });
+
+    const confirmedBatch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+    const confirmedFile = await createSupplementFile({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      uploadBatchId: confirmedBatch.id,
+      fileName: "confirmed.pdf",
+      objectKey: `applications/app_supplement_required/supplements/EDUCATION/${confirmedBatch.id}/confirmed.pdf`,
+      fileType: "application/pdf",
+      fileSize: 5678,
+    });
+    await updateSupplementUploadBatch(confirmedBatch.id, { status: "CONFIRMED" });
+
+    await expect(
+      deleteSupplementDraftFile({
+        applicationId: "app_supplement_required",
+        fileId: confirmedFile.id,
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_FILE_NOT_DRAFT",
+    });
+  });
+
+  it("confirms a batch, locks the category, and treats duplicate confirmation as idempotent", async () => {
+    const reviewSpy = vi.spyOn(
+      materialReviewClient,
+      "createCategoryMaterialReview",
+    );
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+    await createSupplementFile({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      uploadBatchId: batch.id,
+      fileName: "degree.pdf",
+      objectKey: `applications/app_supplement_required/supplements/EDUCATION/${batch.id}/degree.pdf`,
+      fileType: "application/pdf",
+      fileSize: 1234,
+    });
+
+    const firstResult = await confirmSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      uploadBatchId: batch.id,
+      category: "EDUCATION",
+    });
+    const secondResult = await confirmSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      uploadBatchId: batch.id,
+      category: "EDUCATION",
+    });
+
+    expect(firstResult).toMatchObject({
+      uploadBatchId: batch.id,
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      fileCount: 1,
+      status: "REVIEWING",
+    });
+    expect(secondResult).toEqual(firstResult);
+    expect(reviewSpy).toHaveBeenCalledTimes(1);
+
+    const reviewRuns = await listMaterialReviewRuns("app_supplement_required");
+    expect(reviewRuns[0]).toMatchObject({
+      id: firstResult.reviewRunId,
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "PROCESSING",
+    });
+    await expect(
+      getLatestMaterialCategoryReview("app_supplement_required", "EDUCATION"),
+    ).resolves.toMatchObject({
+      reviewRunId: firstResult.reviewRunId,
+      status: "PROCESSING",
+      isLatest: true,
+    });
+    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject({
+      status: "REVIEWING",
+      reviewRunId: firstResult.reviewRunId,
+    });
+  });
+
+  it("does not double-trigger category review startup for concurrent batch confirmation", async () => {
+    let resolveReview:
+      | ((value: {
+          externalRunId: string;
+          status: "COMPLETED";
+          startedAt: string;
+          finishedAt: string;
+        }) => void)
+      | null = null;
+    const reviewStarted = new Promise<void>((resolve) => {
+      vi.spyOn(materialReviewClient, "createCategoryMaterialReview").mockImplementation(
+        async () => {
+          resolve();
+
+          return new Promise((innerResolve) => {
+            resolveReview = innerResolve;
+          });
+        },
+      );
+    });
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+    await createSupplementFile({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      uploadBatchId: batch.id,
+      fileName: "degree.pdf",
+      objectKey: `applications/app_supplement_required/supplements/EDUCATION/${batch.id}/degree.pdf`,
+      fileType: "application/pdf",
+      fileSize: 1234,
+    });
+
+    const firstAttempt = confirmSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      uploadBatchId: batch.id,
+      category: "EDUCATION",
+    });
+    await reviewStarted;
+    const secondResult = await confirmSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      uploadBatchId: batch.id,
+      category: "EDUCATION",
+    });
+
+    expect(secondResult).toMatchObject({
+      uploadBatchId: batch.id,
+      category: "EDUCATION",
+      status: "REVIEWING",
+    });
+    expect(materialReviewClient.createCategoryMaterialReview).toHaveBeenCalledTimes(1);
+
+    resolveReview?.({
+      externalRunId: "mock-material-review:category:EDUCATION:concurrent",
+      status: "COMPLETED",
+      startedAt: new Date("2026-05-07T03:00:00.000Z").toISOString(),
+      finishedAt: new Date("2026-05-07T03:00:01.000Z").toISOString(),
+    });
+
+    const firstResult = await firstAttempt;
+    expect(firstResult.reviewRunId).toBe(secondResult.reviewRunId);
+    await expect(listMaterialReviewRuns("app_supplement_required")).resolves.toHaveLength(
+      3,
+    );
+  });
+
+  it("rejects empty batch confirmation and category review startup failures", async () => {
+    const emptyBatch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+
+    await expect(
+      confirmSupplementUploadBatch({
+        applicationId: "app_supplement_required",
+        uploadBatchId: emptyBatch.id,
+        category: "EDUCATION",
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_UPLOAD_BATCH_EMPTY",
+    });
+
+    const failingBatch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+    await createSupplementFile({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      uploadBatchId: failingBatch.id,
+      fileName: "degree.pdf",
+      objectKey: `applications/app_supplement_required/supplements/EDUCATION/${failingBatch.id}/degree.pdf`,
+      fileType: "application/pdf",
+      fileSize: 1234,
+    });
+    const reviewSpy = vi
+      .spyOn(materialReviewClient, "createCategoryMaterialReview")
+      .mockRejectedValueOnce(
+        new MaterialReviewClientError({
+          message: "Backend unavailable.",
+          failureCode: "BACKEND_UNAVAILABLE",
+          retryable: true,
+          httpStatus: 503,
+        }),
+      )
+      .mockResolvedValueOnce({
+        externalRunId: "mock-material-review:category:EDUCATION:retry",
+        status: "COMPLETED",
+        startedAt: new Date("2026-05-07T04:00:00.000Z").toISOString(),
+        finishedAt: new Date("2026-05-07T04:00:01.000Z").toISOString(),
+      });
+
+    await expect(
+      confirmSupplementUploadBatch({
+        applicationId: "app_supplement_required",
+        uploadBatchId: failingBatch.id,
+        category: "EDUCATION",
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 503,
+      code: "MATERIAL_REVIEW_BACKEND_UNAVAILABLE",
+    });
+    await expect(getSupplementUploadBatchById(failingBatch.id)).resolves.toMatchObject({
+      status: "CONFIRMED",
+      reviewRunId: expect.any(String),
+    });
+
+    const failedRuns = await listMaterialReviewRuns("app_supplement_required");
+    const failedRun = failedRuns[0];
+    expect(failedRun).toMatchObject({
+      status: "FAILED",
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+    });
+
+    await expect(
+      confirmSupplementUploadBatch({
+        applicationId: "app_supplement_required",
+        uploadBatchId: failingBatch.id,
+        category: "EDUCATION",
+      }),
+    ).resolves.toMatchObject({
+      reviewRunId: failedRun.id,
+      status: "REVIEWING",
+    });
+    expect(reviewSpy).toHaveBeenCalledTimes(2);
+    await expect(listMaterialReviewRuns("app_supplement_required")).resolves.toHaveLength(
+      failedRuns.length,
+    );
   });
 });

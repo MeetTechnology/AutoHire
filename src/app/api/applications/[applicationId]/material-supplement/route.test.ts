@@ -6,7 +6,10 @@ import { GET as getHistoryRoute } from "@/app/api/applications/[applicationId]/m
 import { GET as getSummaryRoute } from "@/app/api/applications/[applicationId]/material-supplement/summary/route";
 import { POST as postInitialRoute } from "@/app/api/applications/[applicationId]/material-supplement/reviews/initial/route";
 import { POST as postUploadBatchRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-batches/route";
+import { POST as postUploadBatchConfirmRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-batches/[batchId]/confirm/route";
 import { POST as postUploadIntentRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-intent/route";
+import { POST as postFileRoute } from "@/app/api/applications/[applicationId]/material-supplement/files/route";
+import { DELETE as deleteFileRoute } from "@/app/api/applications/[applicationId]/material-supplement/files/[fileId]/route";
 import { createSessionToken, getSessionCookieName } from "@/lib/auth/session";
 import {
   getMaterialReviewRunByApplicationAndRunNo,
@@ -918,6 +921,289 @@ describe("material supplement routes", () => {
     expect(payload).toMatchObject({
       error: {
         code: "APPLICATION_NOT_SUBMITTED",
+      },
+    });
+  });
+
+  it("confirms a supplement file without exposing storage object keys", async () => {
+    const batchResponse = await postUploadBatchRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/upload-batches",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ category: "EDUCATION" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const batchPayload = await batchResponse.json();
+
+    const response = await postFileRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/files",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uploadBatchId: batchPayload.uploadBatchId,
+            category: "EDUCATION",
+            fileName: "phd-degree.pdf",
+            fileType: "application/pdf",
+            fileSize: 123456,
+            objectKey: `applications/app_supplement_required/supplements/EDUCATION/${batchPayload.uploadBatchId}/phd-degree.pdf`,
+          }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      file: {
+        uploadBatchId: batchPayload.uploadBatchId,
+        category: "EDUCATION",
+        supplementRequestId: null,
+        fileName: "phd-degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+        status: "DRAFT",
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain("objectKey");
+  });
+
+  it("deletes only draft supplement files", async () => {
+    const response = await deleteFileRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/files/supp_file_required_employment_draft",
+        {
+          method: "DELETE",
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+          fileId: "supp_file_required_employment_draft",
+        }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({
+      deleted: true,
+      fileId: "supp_file_required_employment_draft",
+      uploadBatchId: "supp_batch_required_employment_draft",
+    });
+
+    const snapshotResponse = await getSnapshotRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement",
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const snapshotPayload = await snapshotResponse.json();
+    const employment = snapshotPayload.categories.find(
+      (item: { category: string }) => item.category === "EMPLOYMENT",
+    );
+
+    expect(employment.draftFiles).toEqual([]);
+  });
+
+  it("confirms an upload batch, locks only that category, and is idempotent", async () => {
+    const reviewSpy = vi.spyOn(
+      materialReviewClient,
+      "createCategoryMaterialReview",
+    );
+    const batchResponse = await postUploadBatchRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/upload-batches",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ category: "EDUCATION" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const batchPayload = await batchResponse.json();
+
+    await postFileRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/files",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uploadBatchId: batchPayload.uploadBatchId,
+            category: "EDUCATION",
+            fileName: "phd-degree.pdf",
+            fileType: "application/pdf",
+            fileSize: 123456,
+            objectKey: `applications/app_supplement_required/supplements/EDUCATION/${batchPayload.uploadBatchId}/phd-degree.pdf`,
+          }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+
+    const firstResponse = await postUploadBatchConfirmRoute(
+      buildRequest(
+        `http://localhost/api/applications/app_supplement_required/material-supplement/upload-batches/${batchPayload.uploadBatchId}/confirm`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ category: "EDUCATION" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+          batchId: batchPayload.uploadBatchId,
+        }),
+      },
+    );
+    const firstPayload = await firstResponse.json();
+    const secondResponse = await postUploadBatchConfirmRoute(
+      buildRequest(
+        `http://localhost/api/applications/app_supplement_required/material-supplement/upload-batches/${batchPayload.uploadBatchId}/confirm`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ category: "EDUCATION" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+          batchId: batchPayload.uploadBatchId,
+        }),
+      },
+    );
+    const secondPayload = await secondResponse.json();
+
+    expect(firstResponse.status).toBe(200);
+    expect(firstPayload).toMatchObject({
+      uploadBatchId: batchPayload.uploadBatchId,
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      fileCount: 1,
+      status: "REVIEWING",
+    });
+    expect(secondResponse.status).toBe(200);
+    expect(secondPayload).toEqual(firstPayload);
+    expect(reviewSpy).toHaveBeenCalledTimes(1);
+
+    const snapshotResponse = await getSnapshotRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement",
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const snapshotPayload = await snapshotResponse.json();
+    const education = snapshotPayload.categories.find(
+      (item: { category: string }) => item.category === "EDUCATION",
+    );
+    const employment = snapshotPayload.categories.find(
+      (item: { category: string }) => item.category === "EMPLOYMENT",
+    );
+
+    expect(education).toMatchObject({
+      category: "EDUCATION",
+      status: "REVIEWING",
+      isReviewing: true,
+      waitingReviewFiles: [
+        {
+          fileName: "phd-degree.pdf",
+        },
+      ],
+    });
+    expect(employment.isReviewing).toBe(false);
+    expect(JSON.stringify(snapshotPayload)).not.toContain("objectKey");
+  });
+
+  it("rejects empty upload batch confirmation", async () => {
+    const batchResponse = await postUploadBatchRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/upload-batches",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ category: "EDUCATION" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const batchPayload = await batchResponse.json();
+
+    const response = await postUploadBatchConfirmRoute(
+      buildRequest(
+        `http://localhost/api/applications/app_supplement_required/material-supplement/upload-batches/${batchPayload.uploadBatchId}/confirm`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ category: "EDUCATION" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+          batchId: batchPayload.uploadBatchId,
+        }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload).toMatchObject({
+      error: {
+        code: "SUPPLEMENT_UPLOAD_BATCH_EMPTY",
       },
     });
   });

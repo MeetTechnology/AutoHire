@@ -2952,6 +2952,479 @@ export async function updateSupplementUploadBatch(
   });
 }
 
+export type ClaimSupplementUploadBatchReviewResult =
+  | {
+      status: "CLAIMED";
+      batch: SupplementUploadBatchRecord;
+      reviewRun: MaterialReviewRunRecord;
+      categoryReview: MaterialCategoryReviewRecord;
+      fileCount: number;
+    }
+  | {
+      status: "ALREADY_STARTED";
+      batch: SupplementUploadBatchRecord;
+      reviewRun: MaterialReviewRunRecord;
+      fileCount: number;
+    }
+  | {
+      status: "NOT_FOUND";
+    }
+  | {
+      status: "NOT_DRAFT";
+      batch: SupplementUploadBatchRecord;
+    }
+  | {
+      status: "EMPTY";
+      batch: SupplementUploadBatchRecord;
+    }
+  | {
+      status: "COUNT_EXCEEDED";
+      batch: SupplementUploadBatchRecord;
+      fileCount: number;
+    };
+
+export async function claimSupplementUploadBatchReview(input: {
+  applicationId: string;
+  category: SupplementCategory;
+  uploadBatchId: string;
+  maxFiles: number;
+}): Promise<ClaimSupplementUploadBatchReviewResult> {
+  const now = new Date();
+
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const batch = store.supplementUploadBatches.find(
+      (item) =>
+        item.id === input.uploadBatchId &&
+        item.applicationId === input.applicationId &&
+        item.category === input.category,
+    );
+
+    if (!batch) {
+      return { status: "NOT_FOUND" };
+    }
+
+    const activeFiles = store.supplementFiles.filter(
+      (item) => item.uploadBatchId === batch.id && !item.isDeleted,
+    );
+
+    if (activeFiles.length === 0) {
+      return { status: "EMPTY", batch };
+    }
+
+    if (activeFiles.length > input.maxFiles) {
+      return {
+        status: "COUNT_EXCEEDED",
+        batch,
+        fileCount: activeFiles.length,
+      };
+    }
+
+    if (batch.status === "REVIEWING" && batch.reviewRunId) {
+      const reviewRun = store.materialReviewRuns.find(
+        (item) => item.id === batch.reviewRunId,
+      );
+
+      if (!reviewRun) {
+        throw new Error("Material review run not found.");
+      }
+
+      return {
+        status: "ALREADY_STARTED",
+        batch,
+        reviewRun,
+        fileCount: activeFiles.length,
+      };
+    }
+
+    if (batch.status === "CONFIRMED" && batch.reviewRunId) {
+      const reviewRun = store.materialReviewRuns.find(
+        (item) => item.id === batch.reviewRunId,
+      );
+
+      if (!reviewRun) {
+        throw new Error("Material review run not found.");
+      }
+
+      if (reviewRun.externalRunId !== null || reviewRun.status === "PROCESSING") {
+        return {
+          status: "ALREADY_STARTED",
+          batch,
+          reviewRun,
+          fileCount: activeFiles.length,
+        };
+      }
+
+      if (reviewRun.status === "QUEUED" || reviewRun.status === "FAILED") {
+        reviewRun.status = "PROCESSING";
+        reviewRun.startedAt = now;
+        reviewRun.finishedAt = null;
+        reviewRun.errorMessage = null;
+        reviewRun.updatedAt = now;
+
+        let categoryReview =
+          store.materialCategoryReviews.find(
+            (item) =>
+              item.reviewRunId === reviewRun.id &&
+              item.category === input.category,
+          ) ?? null;
+
+        if (!categoryReview) {
+          for (const existing of store.materialCategoryReviews) {
+            if (
+              existing.applicationId === input.applicationId &&
+              existing.category === input.category &&
+              existing.isLatest
+            ) {
+              existing.isLatest = false;
+              existing.updatedAt = now;
+            }
+          }
+
+          categoryReview = {
+            id: createId("material_category_review"),
+            reviewRunId: reviewRun.id,
+            applicationId: input.applicationId,
+            category: input.category,
+            roundNo: reviewRun.runNo,
+            status: "PROCESSING",
+            aiMessage: "The uploaded supplement files are being reviewed.",
+            resultPayload: null,
+            isLatest: true,
+            startedAt: now,
+            finishedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          };
+          store.materialCategoryReviews.push(categoryReview);
+        } else {
+          categoryReview.status = "PROCESSING";
+          categoryReview.startedAt = now;
+          categoryReview.finishedAt = null;
+          categoryReview.updatedAt = now;
+        }
+
+        return {
+          status: "CLAIMED",
+          batch,
+          reviewRun,
+          categoryReview,
+          fileCount: activeFiles.length,
+        };
+      }
+
+      return {
+        status: "ALREADY_STARTED",
+        batch,
+        reviewRun,
+        fileCount: activeFiles.length,
+      };
+    }
+
+    if (batch.status !== "DRAFT") {
+      return { status: "NOT_DRAFT", batch };
+    }
+
+    const nextRunNo =
+      Math.max(
+        0,
+        ...store.materialReviewRuns
+          .filter((item) => item.applicationId === input.applicationId)
+          .map((item) => item.runNo),
+      ) + 1;
+    const reviewRun: MaterialReviewRunRecord = {
+      id: createId("material_review_run"),
+      applicationId: input.applicationId,
+      runNo: nextRunNo,
+      status: "PROCESSING",
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: input.category,
+      externalRunId: null,
+      errorMessage: null,
+      startedAt: now,
+      finishedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    for (const existing of store.materialCategoryReviews) {
+      if (
+        existing.applicationId === input.applicationId &&
+        existing.category === input.category &&
+        existing.isLatest
+      ) {
+        existing.isLatest = false;
+        existing.updatedAt = now;
+      }
+    }
+
+    const categoryReview: MaterialCategoryReviewRecord = {
+      id: createId("material_category_review"),
+      reviewRunId: reviewRun.id,
+      applicationId: input.applicationId,
+      category: input.category,
+      roundNo: nextRunNo,
+      status: "PROCESSING",
+      aiMessage: "The uploaded supplement files are being reviewed.",
+      resultPayload: null,
+      isLatest: true,
+      startedAt: now,
+      finishedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    store.materialReviewRuns.push(reviewRun);
+    store.materialCategoryReviews.push(categoryReview);
+    batch.status = "CONFIRMED";
+    batch.reviewRunId = reviewRun.id;
+    batch.confirmedAt = now;
+    batch.updatedAt = now;
+
+    return {
+      status: "CLAIMED",
+      batch,
+      reviewRun,
+      categoryReview,
+      fileCount: activeFiles.length,
+    };
+  }
+
+  const prisma = await getPrisma();
+  return prisma.$transaction(async (tx) => {
+    const batch = await tx.supplementUploadBatch.findFirst({
+      where: {
+        id: input.uploadBatchId,
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+      },
+    });
+
+    if (!batch) {
+      return { status: "NOT_FOUND" };
+    }
+
+    const fileCount = await tx.supplementFile.count({
+      where: { uploadBatchId: input.uploadBatchId, isDeleted: false },
+    });
+
+    if (fileCount === 0) {
+      return { status: "EMPTY", batch: batch as SupplementUploadBatchRecord };
+    }
+
+    if (fileCount > input.maxFiles) {
+      return {
+        status: "COUNT_EXCEEDED",
+        batch: batch as SupplementUploadBatchRecord,
+        fileCount,
+      };
+    }
+
+    if (
+      (batch.status === "REVIEWING" || batch.status === "CONFIRMED") &&
+      batch.reviewRunId
+    ) {
+      const reviewRun = await tx.materialReviewRun.findUnique({
+        where: { id: batch.reviewRunId },
+      });
+
+      if (!reviewRun) {
+        throw new Error("Material review run not found.");
+      }
+
+      if (batch.status === "REVIEWING" || reviewRun.externalRunId !== null) {
+        return {
+          status: "ALREADY_STARTED",
+          batch: batch as SupplementUploadBatchRecord,
+          reviewRun: reviewRun as MaterialReviewRunRecord,
+          fileCount,
+        };
+      }
+
+      const claim = await tx.materialReviewRun.updateMany({
+        where: {
+          id: reviewRun.id,
+          externalRunId: null,
+          status: { in: ["QUEUED", "FAILED"] },
+        },
+        data: {
+          status: "PROCESSING",
+          startedAt: now,
+          finishedAt: null,
+          errorMessage: null,
+        },
+      });
+
+      if (claim.count === 0) {
+        const currentRun = await tx.materialReviewRun.findUniqueOrThrow({
+          where: { id: reviewRun.id },
+        });
+
+        return {
+          status: "ALREADY_STARTED",
+          batch: batch as SupplementUploadBatchRecord,
+          reviewRun: currentRun as MaterialReviewRunRecord,
+          fileCount,
+        };
+      }
+
+      let categoryReview = await tx.materialCategoryReview.findUnique({
+        where: {
+          reviewRunId_category: {
+            reviewRunId: reviewRun.id,
+            category: input.category as PrismaSupplementCategory,
+          },
+        },
+      });
+
+      if (!categoryReview) {
+        await tx.materialCategoryReview.updateMany({
+          where: {
+            applicationId: input.applicationId,
+            category: input.category as PrismaSupplementCategory,
+            isLatest: true,
+          },
+          data: { isLatest: false },
+        });
+
+        categoryReview = await tx.materialCategoryReview.create({
+          data: {
+            reviewRunId: reviewRun.id,
+            applicationId: input.applicationId,
+            category: input.category as PrismaSupplementCategory,
+            roundNo: reviewRun.runNo,
+            status: "PROCESSING",
+            aiMessage: "The uploaded supplement files are being reviewed.",
+            resultPayload: Prisma.JsonNull,
+            isLatest: true,
+            startedAt: now,
+            finishedAt: null,
+          },
+        });
+      } else {
+        categoryReview = await tx.materialCategoryReview.update({
+          where: { id: categoryReview.id },
+          data: {
+            status: "PROCESSING",
+            startedAt: now,
+            finishedAt: null,
+          },
+        });
+      }
+
+      const claimedRun = await tx.materialReviewRun.findUniqueOrThrow({
+        where: { id: reviewRun.id },
+      });
+
+      return {
+        status: "CLAIMED",
+        batch: batch as SupplementUploadBatchRecord,
+        reviewRun: claimedRun as MaterialReviewRunRecord,
+        categoryReview: categoryReview as MaterialCategoryReviewRecord,
+        fileCount,
+      };
+    }
+
+    if (batch.status !== "DRAFT") {
+      return {
+        status: "NOT_DRAFT",
+        batch: batch as SupplementUploadBatchRecord,
+      };
+    }
+
+    const claimBatch = await tx.supplementUploadBatch.updateMany({
+      where: {
+        id: input.uploadBatchId,
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        status: "DRAFT",
+        reviewRunId: null,
+      },
+      data: {
+        status: "CONFIRMED",
+        confirmedAt: now,
+      },
+    });
+
+    if (claimBatch.count === 0) {
+      const currentBatch = await tx.supplementUploadBatch.findUniqueOrThrow({
+        where: { id: input.uploadBatchId },
+      });
+
+      if (currentBatch.reviewRunId) {
+        const reviewRun = await tx.materialReviewRun.findUniqueOrThrow({
+          where: { id: currentBatch.reviewRunId },
+        });
+
+        return {
+          status: "ALREADY_STARTED",
+          batch: currentBatch as SupplementUploadBatchRecord,
+          reviewRun: reviewRun as MaterialReviewRunRecord,
+          fileCount,
+        };
+      }
+
+      return {
+        status: "NOT_DRAFT",
+        batch: currentBatch as SupplementUploadBatchRecord,
+      };
+    }
+
+    const latestRun = await tx.materialReviewRun.findFirst({
+      where: { applicationId: input.applicationId },
+      orderBy: { runNo: "desc" },
+    });
+    const runNo = (latestRun?.runNo ?? 0) + 1;
+    const reviewRun = await tx.materialReviewRun.create({
+      data: {
+        applicationId: input.applicationId,
+        runNo,
+        status: "PROCESSING",
+        triggerType: "SUPPLEMENT_UPLOAD",
+        triggeredCategory: input.category as PrismaSupplementCategory,
+        startedAt: now,
+        finishedAt: null,
+      },
+    });
+
+    await tx.materialCategoryReview.updateMany({
+      where: {
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        isLatest: true,
+      },
+      data: { isLatest: false },
+    });
+
+    const categoryReview = await tx.materialCategoryReview.create({
+      data: {
+        reviewRunId: reviewRun.id,
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        roundNo: runNo,
+        status: "PROCESSING",
+        aiMessage: "The uploaded supplement files are being reviewed.",
+        resultPayload: Prisma.JsonNull,
+        isLatest: true,
+        startedAt: now,
+        finishedAt: null,
+      },
+    });
+    const updatedBatch = await tx.supplementUploadBatch.update({
+      where: { id: input.uploadBatchId },
+      data: { reviewRunId: reviewRun.id },
+    });
+
+    return {
+      status: "CLAIMED",
+      batch: updatedBatch as SupplementUploadBatchRecord,
+      reviewRun: reviewRun as MaterialReviewRunRecord,
+      categoryReview: categoryReview as MaterialCategoryReviewRecord,
+      fileCount,
+    };
+  });
+}
+
 export type ReserveSupplementUploadBatchFileSlotResult =
   | {
       status: "RESERVED";
