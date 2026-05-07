@@ -5,6 +5,8 @@ import { GET as getSnapshotRoute } from "@/app/api/applications/[applicationId]/
 import { GET as getHistoryRoute } from "@/app/api/applications/[applicationId]/material-supplement/history/route";
 import { GET as getSummaryRoute } from "@/app/api/applications/[applicationId]/material-supplement/summary/route";
 import { POST as postInitialRoute } from "@/app/api/applications/[applicationId]/material-supplement/reviews/initial/route";
+import { POST as postUploadBatchRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-batches/route";
+import { POST as postUploadIntentRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-intent/route";
 import { createSessionToken, getSessionCookieName } from "@/lib/auth/session";
 import {
   getMaterialReviewRunByApplicationAndRunNo,
@@ -61,6 +63,7 @@ describe("material supplement routes", () => {
     process.env = {
       ...originalEnv,
       APP_RUNTIME_MODE: "memory",
+      FILE_STORAGE_MODE: "mock",
       MATERIAL_REVIEW_MODE: "mock",
     };
     resetMemoryStore();
@@ -755,6 +758,167 @@ describe("material supplement routes", () => {
       applicationId: "app_secondary",
       runNo: 1,
       created: true,
+    });
+  });
+
+  it("creates a supplement upload batch for a submitted application", async () => {
+    const response = await postUploadBatchRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/upload-batches",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ category: "EDUCATION" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      status: "DRAFT",
+      fileCount: 0,
+    });
+    expect(payload.uploadBatchId).toBeTruthy();
+    expect(payload.createdAt).toBeTruthy();
+  });
+
+  it("creates a supplement upload intent with an independent supplement object key", async () => {
+    const batchResponse = await postUploadBatchRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/upload-batches",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ category: "EDUCATION" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const batchPayload = await batchResponse.json();
+
+    const response = await postUploadIntentRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/upload-intent",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uploadBatchId: batchPayload.uploadBatchId,
+            category: "EDUCATION",
+            supplementRequestId: "supp_req_required_employment_latest",
+            fileName: "phd degree.pdf",
+            fileType: "application/pdf",
+            fileSize: 123456,
+          }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/pdf",
+      },
+      deduped: false,
+    });
+    expect(payload.uploadId).toMatch(/^supplement_upload_/);
+    expect(decodeURIComponent(payload.uploadUrl)).toContain(payload.objectKey);
+    expect(payload.objectKey).toMatch(
+      /^applications\/app_supplement_required\/supplements\/EDUCATION\/.+\/supplement_upload_[a-f0-9]+-\d+-phd_degree\.pdf$/,
+    );
+    expect(payload.objectKey).not.toContain("/materials/");
+  });
+
+  it("returns unauthorized when creating an upload batch without a session", async () => {
+    const response = await postUploadBatchRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/upload-batches",
+        {
+          method: "POST",
+          session: false,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ category: "EDUCATION" }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+        }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload).toMatchObject({
+      error: {
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("returns application not submitted when creating an upload intent too early", async () => {
+    const response = await postUploadIntentRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_secondary/material-supplement/upload-intent",
+        {
+          method: "POST",
+          session: {
+            applicationId: "app_secondary",
+            invitationId: "invitation_secondary",
+            expertId: "expert_secondary",
+          },
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uploadBatchId: "batch_001",
+            category: "EDUCATION",
+            fileName: "degree.pdf",
+            fileType: "application/pdf",
+            fileSize: 123456,
+          }),
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_secondary",
+        }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload).toMatchObject({
+      error: {
+        code: "APPLICATION_NOT_SUBMITTED",
+      },
     });
   });
 });

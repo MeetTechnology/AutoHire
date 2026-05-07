@@ -4,6 +4,8 @@ import {
   getSupplementCallbackHeaders,
   supplementCallbackHeadersSchema,
   supplementInitialReviewRequestSchema,
+  supplementUploadBatchRequestSchema,
+  supplementUploadIntentRequestSchema,
   supplementReviewCallbackBodySchema,
 } from "@/lib/material-supplement/schemas";
 
@@ -12,6 +14,65 @@ describe("supplementInitialReviewRequestSchema", () => {
     expect(supplementInitialReviewRequestSchema.safeParse({}).success).toBe(true);
     expect(
       supplementInitialReviewRequestSchema.safeParse({ created: true }).success,
+    ).toBe(false);
+  });
+});
+
+describe("supplement upload request schemas", () => {
+  it("accepts only category for upload batch creation", () => {
+    expect(
+      supplementUploadBatchRequestSchema.safeParse({
+        category: "EDUCATION",
+      }).success,
+    ).toBe(true);
+    expect(
+      supplementUploadBatchRequestSchema.safeParse({
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts upload intent payloads and keeps supplement request optional", () => {
+    expect(
+      supplementUploadIntentRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+      }).success,
+    ).toBe(true);
+    expect(
+      supplementUploadIntentRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "EDUCATION",
+        supplementRequestId: "req_001",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects unsupported upload intent categories and invalid file sizes", () => {
+    expect(
+      supplementUploadIntentRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "PRODUCT",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+      }).success,
+    ).toBe(false);
+    expect(
+      supplementUploadIntentRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 0,
+      }).success,
     ).toBe(false);
   });
 });

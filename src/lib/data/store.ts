@@ -2952,6 +2952,107 @@ export async function updateSupplementUploadBatch(
   });
 }
 
+export type ReserveSupplementUploadBatchFileSlotResult =
+  | {
+      status: "RESERVED";
+      batch: SupplementUploadBatchRecord;
+    }
+  | {
+      status: "NOT_FOUND";
+    }
+  | {
+      status: "NOT_DRAFT";
+      batch: SupplementUploadBatchRecord;
+    }
+  | {
+      status: "COUNT_EXCEEDED";
+      batch: SupplementUploadBatchRecord;
+    };
+
+export async function reserveSupplementUploadBatchFileSlot(input: {
+  applicationId: string;
+  category: SupplementCategory;
+  uploadBatchId: string;
+  maxFiles: number;
+}): Promise<ReserveSupplementUploadBatchFileSlotResult> {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const batch = store.supplementUploadBatches.find(
+      (item) => item.id === input.uploadBatchId,
+    );
+
+    if (
+      !batch ||
+      batch.applicationId !== input.applicationId ||
+      batch.category !== input.category
+    ) {
+      return { status: "NOT_FOUND" };
+    }
+
+    if (batch.status !== "DRAFT") {
+      return { status: "NOT_DRAFT", batch };
+    }
+
+    if (batch.fileCount >= input.maxFiles) {
+      return { status: "COUNT_EXCEEDED", batch };
+    }
+
+    batch.fileCount += 1;
+    batch.updatedAt = new Date();
+    return { status: "RESERVED", batch };
+  }
+
+  const prisma = await getPrisma();
+
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.supplementUploadBatch.updateMany({
+      where: {
+        id: input.uploadBatchId,
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+        status: "DRAFT",
+        fileCount: { lt: input.maxFiles },
+      },
+      data: { fileCount: { increment: 1 } },
+    });
+
+    if (result.count === 1) {
+      const updated = await tx.supplementUploadBatch.findUniqueOrThrow({
+        where: { id: input.uploadBatchId },
+      });
+
+      return {
+        status: "RESERVED",
+        batch: updated as SupplementUploadBatchRecord,
+      };
+    }
+
+    const batch = await tx.supplementUploadBatch.findFirst({
+      where: {
+        id: input.uploadBatchId,
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+      },
+    });
+
+    if (!batch) {
+      return { status: "NOT_FOUND" };
+    }
+
+    if (batch.status !== "DRAFT") {
+      return {
+        status: "NOT_DRAFT",
+        batch: batch as SupplementUploadBatchRecord,
+      };
+    }
+
+    return {
+      status: "COUNT_EXCEEDED",
+      batch: batch as SupplementUploadBatchRecord,
+    };
+  });
+}
+
 export async function listSupplementFiles(
   applicationId: string,
   filters?: SupplementFileFilters,

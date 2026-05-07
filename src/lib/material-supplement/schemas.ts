@@ -34,6 +34,23 @@ export const supplementBatchParamsSchema = z.object({
 
 export const supplementInitialReviewRequestSchema = z.object({}).strict();
 
+export const supplementUploadBatchRequestSchema = z
+  .object({
+    category: z.enum(SUPPORTED_SUPPLEMENT_CATEGORIES),
+  })
+  .strict();
+
+export const supplementUploadIntentRequestSchema = z
+  .object({
+    uploadBatchId: trimmedNonEmptyString,
+    category: z.enum(SUPPORTED_SUPPLEMENT_CATEGORIES),
+    supplementRequestId: trimmedNonEmptyString.optional(),
+    fileName: trimmedNonEmptyString,
+    fileType: trimmedNonEmptyString,
+    fileSize: z.number().int().positive(),
+  })
+  .strict();
+
 export const supplementCallbackHeadersSchema = z.object({
   "x-material-review-signature": trimmedNonEmptyString,
   "x-material-review-timestamp": trimmedIsoDatetimeString,
