@@ -5,12 +5,15 @@ import {
 import type {
   MaterialCategoryReviewStatus,
   SupplementCategory,
+  SupplementSnapshot,
   SupplementSummary,
 } from "@/features/material-supplement/types";
 import {
   claimMaterialReviewRunStartup,
   getMaterialReviewRunByApplicationAndRunNo,
   getLatestMaterialCategoryReview,
+  getMaterialSupplementHistoryData,
+  getMaterialSupplementSnapshotData,
   getMaterialSupplementSummaryData,
   listMaterialReviewRuns,
   updateMaterialReviewRun,
@@ -107,6 +110,50 @@ export async function getSupplementSummary(applicationId: string) {
       message: "Failed to load the material supplement summary.",
       status: 500,
       code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_SUMMARY_LOAD_FAILED,
+      details: error instanceof Error ? { cause: error.message } : undefined,
+    });
+  }
+}
+
+export async function getSupplementSnapshot(applicationId: string) {
+  try {
+    return (await getMaterialSupplementSnapshotData(
+      applicationId,
+    )) satisfies SupplementSnapshot;
+  } catch (error) {
+    if (error instanceof MaterialSupplementServiceError) {
+      throw error;
+    }
+
+    throw new MaterialSupplementServiceError({
+      message: "Failed to load the material supplement snapshot.",
+      status: 500,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_SNAPSHOT_LOAD_FAILED,
+      details: error instanceof Error ? { cause: error.message } : undefined,
+    });
+  }
+}
+
+export type SupplementHistoryFilters = {
+  category?: SupplementCategory;
+  runNo?: number;
+};
+
+export async function getSupplementHistory(
+  applicationId: string,
+  filters?: SupplementHistoryFilters,
+) {
+  try {
+    return await getMaterialSupplementHistoryData(applicationId, filters);
+  } catch (error) {
+    if (error instanceof MaterialSupplementServiceError) {
+      throw error;
+    }
+
+    throw new MaterialSupplementServiceError({
+      message: "Failed to load the material supplement history.",
+      status: 500,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_HISTORY_LOAD_FAILED,
       details: error instanceof Error ? { cause: error.message } : undefined,
     });
   }
