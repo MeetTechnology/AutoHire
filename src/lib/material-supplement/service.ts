@@ -5,11 +5,21 @@ import {
 import type {
   MaterialCategoryReviewStatus,
   SupplementCategory,
+  SupplementSummary,
 } from "@/features/material-supplement/types";
 import {
+  claimMaterialReviewRunStartup,
+  getMaterialReviewRunByApplicationAndRunNo,
   getLatestMaterialCategoryReview,
+  getMaterialSupplementSummaryData,
   listMaterialReviewRuns,
+  updateMaterialReviewRun,
+  createMaterialReviewRun,
 } from "@/lib/data/store";
+import {
+  createInitialMaterialReview,
+} from "@/lib/material-review/client";
+import { MaterialReviewClientError } from "@/lib/material-review/types";
 import {
   MaterialSupplementServiceError,
   SUPPLEMENT_EXPERT_ERROR_CODES,
@@ -70,6 +80,171 @@ export async function assertReviewRoundLimit(input: { applicationId: string }) {
       details: {
         maxRounds: SUPPLEMENT_REVIEW_MAX_ROUNDS,
       },
+    });
+  }
+}
+
+export async function getSupplementSummary(applicationId: string) {
+  try {
+    const summary = await getMaterialSupplementSummaryData(applicationId);
+
+    return {
+      applicationId: summary.applicationId,
+      materialSupplementStatus: summary.materialSupplementStatus,
+      latestReviewRunId: summary.latestReviewRunId,
+      latestReviewedAt: summary.latestReviewedAt,
+      pendingRequestCount: summary.pendingRequestCount,
+      satisfiedRequestCount: summary.satisfiedRequestCount,
+      remainingReviewRounds: summary.remainingReviewRounds,
+      supportedCategories: summary.supportedCategories,
+    } satisfies SupplementSummary;
+  } catch (error) {
+    if (error instanceof MaterialSupplementServiceError) {
+      throw error;
+    }
+
+    throw new MaterialSupplementServiceError({
+      message: "Failed to load the material supplement summary.",
+      status: 500,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_SUMMARY_LOAD_FAILED,
+      details: error instanceof Error ? { cause: error.message } : undefined,
+    });
+  }
+}
+
+export type EnsureInitialSupplementReviewResult = {
+  applicationId: string;
+  reviewRunId: string;
+  runNo: number;
+  status: string;
+  created: boolean;
+};
+
+const INITIAL_SUPPLEMENT_REVIEW_RUN_NO = 1;
+const INITIAL_REVIEW_STARTUP_CLAIMABLE_STATUSES: ReadonlyArray<"QUEUED" | "FAILED"> =
+  ["QUEUED", "FAILED"];
+
+export async function ensureInitialSupplementReview(
+  applicationId: string,
+): Promise<EnsureInitialSupplementReviewResult> {
+  const existingRun = await getMaterialReviewRunByApplicationAndRunNo(
+    applicationId,
+    INITIAL_SUPPLEMENT_REVIEW_RUN_NO,
+  );
+  let reviewRun = existingRun;
+
+  if (!reviewRun) {
+    try {
+      reviewRun = await createMaterialReviewRun({
+        applicationId,
+        runNo: INITIAL_SUPPLEMENT_REVIEW_RUN_NO,
+        triggerType: "INITIAL_SUBMISSION",
+      });
+    } catch (error) {
+      throw new MaterialSupplementServiceError({
+        message: "Failed to create the initial supplement review run.",
+        status: 500,
+        code: SUPPLEMENT_EXPERT_ERROR_CODES.INITIAL_REVIEW_CREATE_FAILED,
+        details: error instanceof Error ? { cause: error.message } : undefined,
+      });
+    }
+  }
+
+  if (
+    reviewRun.externalRunId !== null ||
+    !INITIAL_REVIEW_STARTUP_CLAIMABLE_STATUSES.includes(
+      reviewRun.status as "QUEUED" | "FAILED",
+    )
+  ) {
+    return {
+      applicationId,
+      reviewRunId: reviewRun.id,
+      runNo: reviewRun.runNo,
+      status: reviewRun.status,
+      created: false,
+    };
+  }
+
+  const claimedRun = await claimMaterialReviewRunStartup(reviewRun.id, [
+    ...INITIAL_REVIEW_STARTUP_CLAIMABLE_STATUSES,
+  ]);
+
+  if (!claimedRun) {
+    const currentRun = await getMaterialReviewRunByApplicationAndRunNo(
+      applicationId,
+      INITIAL_SUPPLEMENT_REVIEW_RUN_NO,
+    );
+
+    if (!currentRun) {
+      throw new MaterialSupplementServiceError({
+        message: "Failed to create the initial supplement review run.",
+        status: 500,
+        code: SUPPLEMENT_EXPERT_ERROR_CODES.INITIAL_REVIEW_CREATE_FAILED,
+      });
+    }
+
+    return {
+      applicationId,
+      reviewRunId: currentRun.id,
+      runNo: currentRun.runNo,
+      status: currentRun.status,
+      created: false,
+    };
+  }
+
+  try {
+    const review = await createInitialMaterialReview({ applicationId });
+    const updatedRun = await updateMaterialReviewRun(claimedRun.id, {
+      status: review.status,
+      externalRunId: review.externalRunId,
+      startedAt: review.startedAt ? new Date(review.startedAt) : null,
+      finishedAt: review.finishedAt ? new Date(review.finishedAt) : null,
+      errorMessage: null,
+    });
+
+    if (!updatedRun) {
+      throw new MaterialSupplementServiceError({
+        message: "Failed to update the initial supplement review run.",
+        status: 500,
+        code: SUPPLEMENT_EXPERT_ERROR_CODES.INITIAL_REVIEW_CREATE_FAILED,
+      });
+    }
+
+    return {
+      applicationId,
+      reviewRunId: updatedRun.id,
+      runNo: updatedRun.runNo,
+      status: updatedRun.status,
+      created: true,
+    };
+  } catch (error) {
+    if (error instanceof MaterialSupplementServiceError) {
+      throw error;
+    }
+
+    if (error instanceof MaterialReviewClientError) {
+      await updateMaterialReviewRun(claimedRun.id, {
+        status: "FAILED",
+        errorMessage: error.message,
+        externalRunId: null,
+        finishedAt: null,
+      });
+
+      throw new MaterialSupplementServiceError({
+        message: "The material review backend is currently unavailable.",
+        status: 503,
+        code: SUPPLEMENT_EXPERT_ERROR_CODES.MATERIAL_REVIEW_BACKEND_UNAVAILABLE,
+        details: {
+          failureCode: error.failureCode,
+        },
+      });
+    }
+
+    throw new MaterialSupplementServiceError({
+      message: "Failed to create the initial supplement review run.",
+      status: 500,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.INITIAL_REVIEW_CREATE_FAILED,
+      details: error instanceof Error ? { cause: error.message } : undefined,
     });
   }
 }

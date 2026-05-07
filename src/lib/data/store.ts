@@ -2272,6 +2272,57 @@ export async function updateMaterialReviewRun(
   });
 }
 
+export async function claimMaterialReviewRunStartup(
+  reviewRunId: string,
+  allowedStatuses: MaterialReviewRunStatus[],
+) {
+  const startupAt = new Date();
+
+  if (getRuntimeMode() === "memory") {
+    const reviewRun = getMemoryStore().materialReviewRuns.find(
+      (item) => item.id === reviewRunId,
+    );
+
+    if (
+      !reviewRun ||
+      reviewRun.externalRunId !== null ||
+      !allowedStatuses.includes(reviewRun.status)
+    ) {
+      return null;
+    }
+
+    reviewRun.status = "PROCESSING";
+    reviewRun.startedAt = startupAt;
+    reviewRun.errorMessage = null;
+    reviewRun.updatedAt = startupAt;
+    return reviewRun;
+  }
+
+  const prisma = await getPrisma();
+  const result = await prisma.materialReviewRun.updateMany({
+    where: {
+      id: reviewRunId,
+      externalRunId: null,
+      status: {
+        in: allowedStatuses as PrismaMaterialReviewRunStatus[],
+      },
+    },
+    data: {
+      status: "PROCESSING",
+      startedAt: startupAt,
+      errorMessage: null,
+    },
+  });
+
+  if (result.count === 0) {
+    return null;
+  }
+
+  return prisma.materialReviewRun.findUnique({
+    where: { id: reviewRunId },
+  });
+}
+
 export async function getLatestMaterialCategoryReview(
   applicationId: string,
   category: SupplementCategory,

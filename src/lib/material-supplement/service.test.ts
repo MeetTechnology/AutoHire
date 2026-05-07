@@ -1,12 +1,20 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createMaterialReviewRun } from "@/lib/data/store";
+import {
+  createMaterialReviewRun,
+  getMaterialReviewRunByApplicationAndRunNo,
+  listMaterialReviewRuns,
+  updateApplication,
+} from "@/lib/data/store";
+import * as materialReviewClient from "@/lib/material-review/client";
 import {
   assertCategoryNotReviewing,
   assertReviewRoundLimit,
   assertSupportedSupplementCategory,
+  ensureInitialSupplementReview,
 } from "@/lib/material-supplement/service";
 import { MaterialSupplementServiceError } from "@/lib/material-supplement/errors";
+import { MaterialReviewClientError } from "@/lib/material-review/types";
 
 function resetMemoryStore() {
   (
@@ -18,6 +26,7 @@ function resetMemoryStore() {
 
 describe("material supplement service guards", () => {
   beforeEach(() => {
+    process.env.APP_RUNTIME_MODE = "memory";
     resetMemoryStore();
   });
 
@@ -86,5 +95,118 @@ describe("material supplement service guards", () => {
         maxRounds: 3,
       },
     });
+  });
+});
+
+describe("ensureInitialSupplementReview", () => {
+  beforeEach(() => {
+    process.env.APP_RUNTIME_MODE = "memory";
+    resetMemoryStore();
+    vi.restoreAllMocks();
+  });
+
+  it("allows only one caller to kick off the initial review under concurrency", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "SUBMITTED",
+    });
+
+    let resolveReview: ((value: {
+      externalRunId: string;
+      status: "COMPLETED";
+      startedAt: string;
+      finishedAt: string;
+    }) => void) | null = null;
+    const reviewStarted = new Promise<void>((resolve) => {
+      vi.spyOn(materialReviewClient, "createInitialMaterialReview").mockImplementation(
+        async () => {
+          resolve();
+
+          return new Promise((innerResolve) => {
+            resolveReview = innerResolve;
+          });
+        },
+      );
+    });
+
+    const firstAttempt = ensureInitialSupplementReview("app_secondary");
+    await reviewStarted;
+
+    const secondAttempt = await ensureInitialSupplementReview("app_secondary");
+
+    expect(secondAttempt).toMatchObject({
+      applicationId: "app_secondary",
+      runNo: 1,
+      status: "PROCESSING",
+      created: false,
+    });
+
+    resolveReview?.({
+      externalRunId: "mock-material-review:initial:concurrent",
+      status: "COMPLETED",
+      startedAt: new Date("2026-05-07T01:00:00.000Z").toISOString(),
+      finishedAt: new Date("2026-05-07T01:00:01.000Z").toISOString(),
+    });
+
+    await expect(firstAttempt).resolves.toMatchObject({
+      applicationId: "app_secondary",
+      runNo: 1,
+      status: "COMPLETED",
+      created: true,
+    });
+
+    expect(materialReviewClient.createInitialMaterialReview).toHaveBeenCalledTimes(1);
+    await expect(listMaterialReviewRuns("app_secondary")).resolves.toHaveLength(1);
+  });
+
+  it("retries a failed startup on the existing initial review run", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "SUBMITTED",
+    });
+
+    const reviewSpy = vi
+      .spyOn(materialReviewClient, "createInitialMaterialReview")
+      .mockRejectedValueOnce(
+        new MaterialReviewClientError({
+          message: "Backend unavailable.",
+          failureCode: "BACKEND_UNAVAILABLE",
+          retryable: true,
+          httpStatus: 503,
+        }),
+      )
+      .mockResolvedValueOnce({
+        externalRunId: "mock-material-review:initial:retry",
+        status: "COMPLETED",
+        startedAt: new Date("2026-05-07T02:00:00.000Z").toISOString(),
+        finishedAt: new Date("2026-05-07T02:00:01.000Z").toISOString(),
+      });
+
+    await expect(
+      ensureInitialSupplementReview("app_secondary"),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 503,
+      code: "MATERIAL_REVIEW_BACKEND_UNAVAILABLE",
+    });
+
+    const failedRun = await getMaterialReviewRunByApplicationAndRunNo(
+      "app_secondary",
+      1,
+    );
+    expect(failedRun).toMatchObject({
+      status: "FAILED",
+      externalRunId: null,
+    });
+
+    await expect(
+      ensureInitialSupplementReview("app_secondary"),
+    ).resolves.toMatchObject({
+      applicationId: "app_secondary",
+      reviewRunId: failedRun?.id,
+      runNo: 1,
+      status: "COMPLETED",
+      created: true,
+    });
+
+    expect(reviewSpy).toHaveBeenCalledTimes(2);
+    await expect(listMaterialReviewRuns("app_secondary")).resolves.toHaveLength(1);
   });
 });
