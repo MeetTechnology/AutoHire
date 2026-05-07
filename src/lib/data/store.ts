@@ -650,7 +650,8 @@ function buildSampleStore(): PersistedStore {
         id: "resume_extraction",
         applicationId: "app_extraction",
         fileName: "candidate-extraction.pdf",
-        objectKey: "applications/app_extraction/resume/candidate-extraction.pdf",
+        objectKey:
+          "applications/app_extraction/resume/candidate-extraction.pdf",
         fileType: "application/pdf",
         fileSize: 2048,
         versionNo: 1,
@@ -726,17 +727,18 @@ function buildSampleStore(): PersistedStore {
         analysisJobId: "job_progress",
         analysisRound: 1,
         eligibilityResult: "INSUFFICIENT_INFO",
-        reasonText: "The highest degree and current employer are still missing.",
+        reasonText:
+          "The highest degree and current employer are still missing.",
         displaySummary:
           "The system cannot make a final eligibility decision yet because key information is missing.",
         extractedFields: {
           "*姓名": "Progress Expert",
-          "性别": "Female",
+          性别: "Female",
           "*出生日期（无则1900-01-01）": "1900-01-01",
-          "最高学位": "",
-          "就职单位中文": "",
+          最高学位: "",
+          就职单位中文: "",
           "（省/国）入选信息": "National talent program (2021)",
-          "备注": "Internal field not shown to experts",
+          备注: "Internal field not shown to experts",
           __rawReasoning:
             "The system identified part of the background information, but key eligibility fields are still missing.",
         },
@@ -772,9 +774,9 @@ function buildSampleStore(): PersistedStore {
           "Your profile meets the basic application requirements for this talent program. Please proceed to the next step to provide the required documents.",
         extractedFields: {
           "*姓名": "Secondary Expert",
-          "最高学位": "Doctorate",
-          "就职单位中文": "Example Institute",
-          "研究方向": "Marine biotechnology",
+          最高学位: "Doctorate",
+          就职单位中文: "Example Institute",
+          研究方向: "Marine biotechnology",
         },
         missingFields: [],
         createdAt: now,
@@ -1035,7 +1037,8 @@ export async function upsertApplicationFeedbackDraft(input: {
       existing.status = "DRAFT";
       existing.rating =
         input.rating !== undefined ? input.rating : existing.rating;
-      existing.comment = nextComment !== undefined ? nextComment : existing.comment;
+      existing.comment =
+        nextComment !== undefined ? nextComment : existing.comment;
       existing.contextData =
         input.contextData !== undefined
           ? ((input.contextData as ApplicationFeedbackContext | null) ?? null)
@@ -1051,7 +1054,8 @@ export async function upsertApplicationFeedbackDraft(input: {
       status: "DRAFT",
       rating: input.rating ?? null,
       comment: nextComment ?? null,
-      contextData: (input.contextData as ApplicationFeedbackContext | null) ?? null,
+      contextData:
+        (input.contextData as ApplicationFeedbackContext | null) ?? null,
       draftSavedAt: now,
       submittedAt: null,
       createdAt: now,
@@ -1184,7 +1188,8 @@ export async function submitApplicationFeedbackRecord(input: {
       status: "SUBMITTED",
       rating: input.rating ?? null,
       comment: nextComment ?? null,
-      contextData: (input.contextData as ApplicationFeedbackContext | null) ?? null,
+      contextData:
+        (input.contextData as ApplicationFeedbackContext | null) ?? null,
       draftSavedAt: now,
       submittedAt: now,
       createdAt: now,
@@ -1566,7 +1571,9 @@ export async function getLatestExtractionReview(applicationId: string) {
   if (getRuntimeMode() === "memory") {
     return (
       getMemoryStore()
-        .extractionReviews.filter((item) => item.applicationId === applicationId)
+        .extractionReviews.filter(
+          (item) => item.applicationId === applicationId,
+        )
         .sort(byDateDesc)[0] ?? null
     );
   }
@@ -1578,7 +1585,9 @@ export async function getLatestExtractionReview(applicationId: string) {
   });
 }
 
-export async function getExtractionReviewByAnalysisJobId(analysisJobId: string) {
+export async function getExtractionReviewByAnalysisJobId(
+  analysisJobId: string,
+) {
   if (getRuntimeMode() === "memory") {
     return (
       getMemoryStore().extractionReviews.find(
@@ -1622,7 +1631,9 @@ export async function getLatestSecondaryAnalysisRun(applicationId: string) {
   if (getRuntimeMode() === "memory") {
     return (
       getMemoryStore()
-        .secondaryAnalysisRuns.filter((item) => item.applicationId === applicationId)
+        .secondaryAnalysisRuns.filter(
+          (item) => item.applicationId === applicationId,
+        )
         .sort(byDateDesc)[0] ?? null
     );
   }
@@ -1729,8 +1740,10 @@ export async function upsertSecondaryAnalysisRun(input: {
 
 export async function listSecondaryAnalysisFieldValues(secondaryRunId: string) {
   if (getRuntimeMode() === "memory") {
-    return getMemoryStore().secondaryAnalysisFieldValues
-      .filter((item) => item.secondaryRunId === secondaryRunId)
+    return getMemoryStore()
+      .secondaryAnalysisFieldValues.filter(
+        (item) => item.secondaryRunId === secondaryRunId,
+      )
       .sort((left, right) => left.no - right.no);
   }
 
@@ -1953,6 +1966,31 @@ type ReplaceLatestSupplementRequestsInput = {
   }>;
 };
 
+type SaveMaterialReviewResultCategoryInput = {
+  category: SupplementCategory;
+  status: MaterialCategoryReviewStatus;
+  aiMessage: string | null;
+  resultPayload: Record<string, unknown> | null;
+  requests: Array<{
+    title: string;
+    reason?: string | null;
+    suggestedMaterials?: string[] | string | null;
+    aiMessage?: string | null;
+    status?: SupplementRequestStatus;
+    isSatisfied?: boolean;
+    satisfiedAt?: Date | null;
+  }>;
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
+};
+
+function isPrismaUniqueConstraintError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
+
 export type MaterialSupplementSummaryData = SupplementSummary & {
   latestRunStatus: MaterialReviewRunStatus | null;
   latestCategoryReviewStatuses: Partial<
@@ -1993,7 +2031,8 @@ function matchesMaterialCategoryReviewFilters(
 
   return (
     (filters.category === undefined || item.category === filters.category) &&
-    (filters.reviewRunId === undefined || item.reviewRunId === filters.reviewRunId) &&
+    (filters.reviewRunId === undefined ||
+      item.reviewRunId === filters.reviewRunId) &&
     (filters.isLatest === undefined || item.isLatest === filters.isLatest)
   );
 }
@@ -2008,7 +2047,8 @@ function matchesSupplementRequestFilters(
 
   return (
     (filters.category === undefined || item.category === filters.category) &&
-    (filters.reviewRunId === undefined || item.reviewRunId === filters.reviewRunId) &&
+    (filters.reviewRunId === undefined ||
+      item.reviewRunId === filters.reviewRunId) &&
     (filters.categoryReviewId === undefined ||
       item.categoryReviewId === filters.categoryReviewId) &&
     (filters.isLatest === undefined || item.isLatest === filters.isLatest) &&
@@ -2028,7 +2068,8 @@ function matchesSupplementFileFilters(
     (filters.category === undefined || item.category === filters.category) &&
     (filters.uploadBatchId === undefined ||
       item.uploadBatchId === filters.uploadBatchId) &&
-    (filters.reviewRunId === undefined || item.reviewRunId === filters.reviewRunId) &&
+    (filters.reviewRunId === undefined ||
+      item.reviewRunId === filters.reviewRunId) &&
     (filters.supplementRequestId === undefined ||
       item.supplementRequestId === filters.supplementRequestId) &&
     (filters.includeDeleted === true || !item.isDeleted)
@@ -2041,11 +2082,15 @@ function validateSupplementFileBatchOwnership(input: {
   batch: Pick<SupplementUploadBatchRecord, "applicationId" | "category">;
 }) {
   if (input.batch.applicationId !== input.applicationId) {
-    throw new Error("Supplement upload batch does not belong to the application.");
+    throw new Error(
+      "Supplement upload batch does not belong to the application.",
+    );
   }
 
   if (input.batch.category !== input.category) {
-    throw new Error("Supplement upload batch category does not match the file category.");
+    throw new Error(
+      "Supplement upload batch category does not match the file category.",
+    );
   }
 }
 
@@ -2099,7 +2144,9 @@ export async function getLatestMaterialReviewRun(applicationId: string) {
   if (getRuntimeMode() === "memory") {
     return (
       getMemoryStore()
-        .materialReviewRuns.filter((item) => item.applicationId === applicationId)
+        .materialReviewRuns.filter(
+          (item) => item.applicationId === applicationId,
+        )
         .sort((left, right) => right.runNo - left.runNo)[0] ?? null
     );
   }
@@ -2114,8 +2161,9 @@ export async function getLatestMaterialReviewRun(applicationId: string) {
 export async function getMaterialReviewRunById(reviewRunId: string) {
   if (getRuntimeMode() === "memory") {
     return (
-      getMemoryStore().materialReviewRuns.find((item) => item.id === reviewRunId) ??
-      null
+      getMemoryStore().materialReviewRuns.find(
+        (item) => item.id === reviewRunId,
+      ) ?? null
     );
   }
 
@@ -2143,8 +2191,8 @@ export async function getMaterialReviewRunByApplicationAndRunNo(
 
 export async function listMaterialReviewRuns(applicationId: string) {
   if (getRuntimeMode() === "memory") {
-    return getMemoryStore().materialReviewRuns
-      .filter((item) => item.applicationId === applicationId)
+    return getMemoryStore()
+      .materialReviewRuns.filter((item) => item.applicationId === applicationId)
       .sort((left, right) => right.runNo - left.runNo);
   }
 
@@ -2169,7 +2217,8 @@ export async function createMaterialReviewRun(input: {
   if (getRuntimeMode() === "memory") {
     const existing = getMemoryStore().materialReviewRuns.find(
       (item) =>
-        item.applicationId === input.applicationId && item.runNo === input.runNo,
+        item.applicationId === input.applicationId &&
+        item.runNo === input.runNo,
     );
 
     if (existing) {
@@ -2210,7 +2259,8 @@ export async function createMaterialReviewRun(input: {
       runNo: input.runNo,
       status: (input.status ?? "QUEUED") as PrismaMaterialReviewRunStatus,
       triggerType: input.triggerType as PrismaMaterialReviewTriggerType,
-      triggeredCategory: (input.triggeredCategory ?? null) as PrismaSupplementCategory | null,
+      triggeredCategory: (input.triggeredCategory ??
+        null) as PrismaSupplementCategory | null,
       externalRunId: input.externalRunId ?? null,
       errorMessage: input.errorMessage ?? null,
       startedAt: input.startedAt ?? null,
@@ -2340,7 +2390,11 @@ export async function getLatestMaterialCategoryReview(
 
   const prisma = await getPrisma();
   return prisma.materialCategoryReview.findFirst({
-    where: { applicationId, category: category as PrismaSupplementCategory, isLatest: true },
+    where: {
+      applicationId,
+      category: category as PrismaSupplementCategory,
+      isLatest: true,
+    },
   });
 }
 
@@ -2349,8 +2403,8 @@ export async function listMaterialCategoryReviews(
   filters?: MaterialCategoryReviewFilters,
 ) {
   if (getRuntimeMode() === "memory") {
-    return getMemoryStore().materialCategoryReviews
-      .filter(
+    return getMemoryStore()
+      .materialCategoryReviews.filter(
         (item) =>
           item.applicationId === applicationId &&
           matchesMaterialCategoryReviewFilters(item, filters),
@@ -2374,7 +2428,9 @@ export async function listMaterialCategoryReviews(
       ...(filters?.reviewRunId === undefined
         ? {}
         : { reviewRunId: filters.reviewRunId }),
-      ...(filters?.isLatest === undefined ? {} : { isLatest: filters.isLatest }),
+      ...(filters?.isLatest === undefined
+        ? {}
+        : { isLatest: filters.isLatest }),
     },
     orderBy: [{ roundNo: "desc" }, { updatedAt: "desc" }],
   });
@@ -2443,9 +2499,12 @@ export async function createMaterialCategoryReview(input: {
         applicationId: input.applicationId,
         category: input.category as PrismaSupplementCategory,
         roundNo: input.roundNo,
-        status: (input.status ?? "QUEUED") as PrismaMaterialCategoryReviewStatus,
+        status: (input.status ??
+          "QUEUED") as PrismaMaterialCategoryReviewStatus,
         aiMessage: input.aiMessage ?? null,
-        resultPayload: (input.resultPayload ?? null) as Prisma.InputJsonValue | Prisma.JsonNull,
+        resultPayload: (input.resultPayload ?? null) as
+          | Prisma.InputJsonValue
+          | Prisma.JsonNull,
         isLatest: true,
         startedAt: input.startedAt ?? null,
         finishedAt: input.finishedAt ?? null,
@@ -2516,8 +2575,8 @@ export async function listSupplementRequests(
   filters?: SupplementRequestFilters,
 ) {
   if (getRuntimeMode() === "memory") {
-    return getMemoryStore().supplementRequests
-      .filter(
+    return getMemoryStore()
+      .supplementRequests.filter(
         (item) =>
           item.applicationId === applicationId &&
           matchesSupplementRequestFilters(item, filters),
@@ -2538,7 +2597,9 @@ export async function listSupplementRequests(
       ...(filters?.categoryReviewId === undefined
         ? {}
         : { categoryReviewId: filters.categoryReviewId }),
-      ...(filters?.isLatest === undefined ? {} : { isLatest: filters.isLatest }),
+      ...(filters?.isLatest === undefined
+        ? {}
+        : { isLatest: filters.isLatest }),
       ...(filters?.status === undefined
         ? {}
         : { status: filters.status as PrismaSupplementRequestStatus }),
@@ -2566,8 +2627,9 @@ export async function createSupplementRequest(input: {
   );
   const derivedIsSatisfied =
     input.isSatisfied ?? (input.status === "SATISFIED" ? true : false);
-  const satisfiedAt =
-    derivedIsSatisfied ? input.satisfiedAt ?? new Date() : input.satisfiedAt ?? null;
+  const satisfiedAt = derivedIsSatisfied
+    ? (input.satisfiedAt ?? new Date())
+    : (input.satisfiedAt ?? null);
   const shouldBeLatest = input.isLatest ?? true;
 
   if (getRuntimeMode() === "memory") {
@@ -2689,12 +2751,16 @@ export async function replaceLatestSupplementRequestsForCategory(
         categoryReviewId: input.categoryReviewId,
         title: request.title,
         reason: request.reason ?? null,
-        suggestedMaterials: normalizeSuggestedMaterials(request.suggestedMaterials),
+        suggestedMaterials: normalizeSuggestedMaterials(
+          request.suggestedMaterials,
+        ),
         aiMessage: request.aiMessage ?? null,
         status: request.status ?? "PENDING",
         isLatest: true,
         isSatisfied,
-        satisfiedAt: isSatisfied ? request.satisfiedAt ?? now : request.satisfiedAt ?? null,
+        satisfiedAt: isSatisfied
+          ? (request.satisfiedAt ?? now)
+          : (request.satisfiedAt ?? null),
         createdAt: now,
         updatedAt: now,
       };
@@ -2733,7 +2799,8 @@ export async function replaceLatestSupplementRequestsForCategory(
       );
     }
 
-    const created: Awaited<ReturnType<typeof tx.supplementRequest.create>>[] = [];
+    const created: Awaited<ReturnType<typeof tx.supplementRequest.create>>[] =
+      [];
     for (const request of input.requests) {
       const isSatisfied =
         request.isSatisfied ?? (request.status === "SATISFIED" ? true : false);
@@ -2754,12 +2821,13 @@ export async function replaceLatestSupplementRequestsForCategory(
                     request.suggestedMaterials,
                   ) as Prisma.InputJsonValue),
             aiMessage: request.aiMessage ?? null,
-            status: (request.status ?? "PENDING") as PrismaSupplementRequestStatus,
+            status: (request.status ??
+              "PENDING") as PrismaSupplementRequestStatus,
             isLatest: true,
             isSatisfied,
             satisfiedAt: isSatisfied
-              ? request.satisfiedAt ?? new Date()
-              : request.satisfiedAt ?? null,
+              ? (request.satisfiedAt ?? new Date())
+              : (request.satisfiedAt ?? null),
           },
         }),
       );
@@ -2797,13 +2865,19 @@ export async function updateSupplementRequest(
       ...(data.suggestedMaterials === undefined
         ? {}
         : {
-            suggestedMaterials: normalizeSuggestedMaterials(data.suggestedMaterials),
+            suggestedMaterials: normalizeSuggestedMaterials(
+              data.suggestedMaterials,
+            ),
           }),
       ...(data.aiMessage === undefined ? {} : { aiMessage: data.aiMessage }),
       ...(data.status === undefined ? {} : { status: data.status }),
       ...(data.isLatest === undefined ? {} : { isLatest: data.isLatest }),
-      ...(data.isSatisfied === undefined ? {} : { isSatisfied: data.isSatisfied }),
-      ...(data.satisfiedAt === undefined ? {} : { satisfiedAt: data.satisfiedAt }),
+      ...(data.isSatisfied === undefined
+        ? {}
+        : { isSatisfied: data.isSatisfied }),
+      ...(data.satisfiedAt === undefined
+        ? {}
+        : { satisfiedAt: data.satisfiedAt }),
       updatedAt: new Date(),
     });
 
@@ -2831,8 +2905,12 @@ export async function updateSupplementRequest(
         ? {}
         : { status: data.status as PrismaSupplementRequestStatus }),
       ...(data.isLatest === undefined ? {} : { isLatest: data.isLatest }),
-      ...(data.isSatisfied === undefined ? {} : { isSatisfied: data.isSatisfied }),
-      ...(data.satisfiedAt === undefined ? {} : { satisfiedAt: data.satisfiedAt }),
+      ...(data.isSatisfied === undefined
+        ? {}
+        : { isSatisfied: data.isSatisfied }),
+      ...(data.satisfiedAt === undefined
+        ? {}
+        : { satisfiedAt: data.satisfiedAt }),
     },
   });
 }
@@ -2879,8 +2957,9 @@ export async function createSupplementUploadBatch(input: {
 export async function getSupplementUploadBatchById(batchId: string) {
   if (getRuntimeMode() === "memory") {
     return (
-      getMemoryStore().supplementUploadBatches.find((item) => item.id === batchId) ??
-      null
+      getMemoryStore().supplementUploadBatches.find(
+        (item) => item.id === batchId,
+      ) ?? null
     );
   }
 
@@ -2894,8 +2973,8 @@ export async function getLatestDraftSupplementUploadBatch(
 ) {
   if (getRuntimeMode() === "memory") {
     return (
-      getMemoryStore().supplementUploadBatches
-        .filter(
+      getMemoryStore()
+        .supplementUploadBatches.filter(
           (item) =>
             item.applicationId === applicationId &&
             item.category === category &&
@@ -2946,8 +3025,12 @@ export async function updateSupplementUploadBatch(
         ? {}
         : { status: data.status as PrismaSupplementUploadBatchStatus }),
       ...(data.fileCount === undefined ? {} : { fileCount: data.fileCount }),
-      ...(data.reviewRunId === undefined ? {} : { reviewRunId: data.reviewRunId }),
-      ...(data.confirmedAt === undefined ? {} : { confirmedAt: data.confirmedAt }),
+      ...(data.reviewRunId === undefined
+        ? {}
+        : { reviewRunId: data.reviewRunId }),
+      ...(data.confirmedAt === undefined
+        ? {}
+        : { confirmedAt: data.confirmedAt }),
     },
   });
 }
@@ -3046,7 +3129,10 @@ export async function claimSupplementUploadBatchReview(input: {
         throw new Error("Material review run not found.");
       }
 
-      if (reviewRun.externalRunId !== null || reviewRun.status === "PROCESSING") {
+      if (
+        reviewRun.externalRunId !== null ||
+        reviewRun.status === "PROCESSING"
+      ) {
         return {
           status: "ALREADY_STARTED",
           batch,
@@ -3531,8 +3617,8 @@ export async function listSupplementFiles(
   filters?: SupplementFileFilters,
 ) {
   if (getRuntimeMode() === "memory") {
-    return getMemoryStore().supplementFiles
-      .filter(
+    return getMemoryStore()
+      .supplementFiles.filter(
         (item) =>
           item.applicationId === applicationId &&
           matchesSupplementFileFilters(item, filters),
@@ -3565,7 +3651,8 @@ export async function listSupplementFiles(
 export async function getSupplementFileById(fileId: string) {
   if (getRuntimeMode() === "memory") {
     return (
-      getMemoryStore().supplementFiles.find((item) => item.id === fileId) ?? null
+      getMemoryStore().supplementFiles.find((item) => item.id === fileId) ??
+      null
     );
   }
 
@@ -3639,7 +3726,8 @@ export async function createSupplementFile(input: {
     });
 
     const supplementRequest =
-      input.supplementRequestId === undefined || input.supplementRequestId === null
+      input.supplementRequestId === undefined ||
+      input.supplementRequestId === null
         ? null
         : (store.supplementRequests.find(
             (item) => item.id === input.supplementRequestId,
@@ -3712,7 +3800,8 @@ export async function createSupplementFile(input: {
     });
 
     const supplementRequest =
-      input.supplementRequestId === undefined || input.supplementRequestId === null
+      input.supplementRequestId === undefined ||
+      input.supplementRequestId === null
         ? null
         : await tx.supplementRequest.findUnique({
             where: { id: input.supplementRequestId },
@@ -3861,7 +3950,9 @@ export async function attachSupplementFilesToReviewRun(
       throw new Error("Supplement upload batch not found.");
     }
 
-    const reviewRun = store.materialReviewRuns.find((item) => item.id === reviewRunId);
+    const reviewRun = store.materialReviewRuns.find(
+      (item) => item.id === reviewRunId,
+    );
 
     if (!reviewRun) {
       throw new Error("Material review run not found.");
@@ -3945,14 +4036,327 @@ export async function attachSupplementFilesToReviewRun(
   });
 }
 
+export async function saveMaterialReviewResult(input: {
+  applicationId: string;
+  reviewRunId: string;
+  status: MaterialReviewRunStatus;
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
+  categories: SaveMaterialReviewResultCategoryInput[];
+  retryOnUniqueConflict?: boolean;
+}) {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const now = new Date();
+    const reviewRun = store.materialReviewRuns.find(
+      (item) =>
+        item.id === input.reviewRunId &&
+        item.applicationId === input.applicationId,
+    );
+
+    if (!reviewRun) {
+      return null;
+    }
+
+    const updatedCategories: SupplementCategory[] = [];
+
+    for (const categoryResult of input.categories) {
+      const existingForRun = store.materialCategoryReviews.find(
+        (item) =>
+          item.reviewRunId === input.reviewRunId &&
+          item.category === categoryResult.category,
+      );
+
+      if (existingForRun) {
+        continue;
+      }
+
+      const latestReview = store.materialCategoryReviews.find(
+        (item) =>
+          item.applicationId === input.applicationId &&
+          item.category === categoryResult.category &&
+          item.isLatest,
+      );
+      const latestRun = latestReview
+        ? store.materialReviewRuns.find(
+            (item) => item.id === latestReview.reviewRunId,
+          )
+        : null;
+
+      if (latestRun && latestRun.runNo > reviewRun.runNo) {
+        continue;
+      }
+
+      for (const existing of store.materialCategoryReviews) {
+        if (
+          existing.applicationId === input.applicationId &&
+          existing.category === categoryResult.category &&
+          existing.isLatest
+        ) {
+          existing.isLatest = false;
+          existing.updatedAt = now;
+        }
+      }
+
+      for (const existing of store.supplementRequests) {
+        if (
+          existing.applicationId === input.applicationId &&
+          existing.category === categoryResult.category &&
+          existing.isLatest
+        ) {
+          existing.isLatest = false;
+          existing.status = toHistoricalSupplementRequestStatus(existing);
+          existing.updatedAt = now;
+        }
+      }
+
+      const categoryReview: MaterialCategoryReviewRecord = {
+        id: createId("material_category_review"),
+        reviewRunId: input.reviewRunId,
+        applicationId: input.applicationId,
+        category: categoryResult.category,
+        roundNo: reviewRun.runNo,
+        status: categoryResult.status,
+        aiMessage: categoryResult.aiMessage,
+        resultPayload: categoryResult.resultPayload,
+        isLatest: true,
+        startedAt: categoryResult.startedAt ?? input.startedAt ?? null,
+        finishedAt: categoryResult.finishedAt ?? input.finishedAt ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      store.materialCategoryReviews.push(categoryReview);
+
+      for (const request of categoryResult.requests) {
+        const isSatisfied =
+          request.isSatisfied ??
+          (request.status === "SATISFIED" ? true : false);
+        store.supplementRequests.push({
+          id: createId("supplement_request"),
+          applicationId: input.applicationId,
+          category: categoryResult.category,
+          reviewRunId: input.reviewRunId,
+          categoryReviewId: categoryReview.id,
+          title: request.title,
+          reason: request.reason ?? null,
+          suggestedMaterials: normalizeSuggestedMaterials(
+            request.suggestedMaterials,
+          ),
+          aiMessage: request.aiMessage ?? categoryResult.aiMessage,
+          status: request.status ?? "PENDING",
+          isLatest: true,
+          isSatisfied,
+          satisfiedAt: isSatisfied
+            ? (request.satisfiedAt ?? now)
+            : (request.satisfiedAt ?? null),
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      updatedCategories.push(categoryResult.category);
+    }
+
+    reviewRun.status = input.status;
+    reviewRun.startedAt = input.startedAt ?? reviewRun.startedAt;
+    reviewRun.finishedAt = input.finishedAt ?? reviewRun.finishedAt;
+    reviewRun.errorMessage = null;
+    reviewRun.updatedAt = now;
+
+    if (input.status === "COMPLETED" && updatedCategories.length > 0) {
+      for (const batch of store.supplementUploadBatches) {
+        if (
+          batch.reviewRunId === input.reviewRunId &&
+          batch.status === "REVIEWING"
+        ) {
+          batch.status = "COMPLETED";
+          batch.updatedAt = now;
+        }
+      }
+    }
+
+    return { reviewRun, updatedCategories };
+  }
+
+  const prisma = await getPrisma();
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const reviewRun = await tx.materialReviewRun.findFirst({
+        where: {
+          id: input.reviewRunId,
+          applicationId: input.applicationId,
+        },
+      });
+
+      if (!reviewRun) {
+        return null;
+      }
+
+      const updatedCategories: SupplementCategory[] = [];
+
+      for (const categoryResult of input.categories) {
+        const existingForRun = await tx.materialCategoryReview.findUnique({
+          where: {
+            reviewRunId_category: {
+              reviewRunId: input.reviewRunId,
+              category: categoryResult.category as PrismaSupplementCategory,
+            },
+          },
+        });
+
+        if (existingForRun) {
+          continue;
+        }
+
+        const latestReview = await tx.materialCategoryReview.findFirst({
+          where: {
+            applicationId: input.applicationId,
+            category: categoryResult.category as PrismaSupplementCategory,
+            isLatest: true,
+          },
+          include: { reviewRun: true },
+        });
+
+        if (latestReview && latestReview.reviewRun.runNo > reviewRun.runNo) {
+          continue;
+        }
+
+        await tx.materialCategoryReview.updateMany({
+          where: {
+            applicationId: input.applicationId,
+            category: categoryResult.category as PrismaSupplementCategory,
+            isLatest: true,
+          },
+          data: { isLatest: false },
+        });
+
+        const currentLatestRequests = await tx.supplementRequest.findMany({
+          where: {
+            applicationId: input.applicationId,
+            category: categoryResult.category as PrismaSupplementCategory,
+            isLatest: true,
+          },
+        });
+
+        await Promise.all(
+          currentLatestRequests.map((request) =>
+            tx.supplementRequest.update({
+              where: { id: request.id },
+              data: {
+                isLatest: false,
+                status: toHistoricalSupplementRequestStatus({
+                  isSatisfied: request.isSatisfied,
+                  status: request.status as SupplementRequestStatus,
+                }) as PrismaSupplementRequestStatus,
+              },
+            }),
+          ),
+        );
+
+        const categoryReview = await tx.materialCategoryReview.create({
+          data: {
+            reviewRunId: input.reviewRunId,
+            applicationId: input.applicationId,
+            category: categoryResult.category as PrismaSupplementCategory,
+            roundNo: reviewRun.runNo,
+            status: categoryResult.status as PrismaMaterialCategoryReviewStatus,
+            aiMessage: categoryResult.aiMessage,
+            resultPayload:
+              categoryResult.resultPayload === null
+                ? Prisma.JsonNull
+                : (categoryResult.resultPayload as Prisma.InputJsonValue),
+            isLatest: true,
+            startedAt: categoryResult.startedAt ?? input.startedAt ?? null,
+            finishedAt: categoryResult.finishedAt ?? input.finishedAt ?? null,
+          },
+        });
+
+        for (const request of categoryResult.requests) {
+          const normalizedSuggestedMaterials = normalizeSuggestedMaterials(
+            request.suggestedMaterials,
+          );
+          const isSatisfied =
+            request.isSatisfied ??
+            (request.status === "SATISFIED" ? true : false);
+
+          await tx.supplementRequest.create({
+            data: {
+              applicationId: input.applicationId,
+              category: categoryResult.category as PrismaSupplementCategory,
+              reviewRunId: input.reviewRunId,
+              categoryReviewId: categoryReview.id,
+              title: request.title,
+              reason: request.reason ?? null,
+              suggestedMaterials:
+                normalizedSuggestedMaterials === null
+                  ? Prisma.JsonNull
+                  : (normalizedSuggestedMaterials as Prisma.InputJsonValue),
+              aiMessage: request.aiMessage ?? categoryResult.aiMessage,
+              status: (request.status ??
+                "PENDING") as PrismaSupplementRequestStatus,
+              isLatest: true,
+              isSatisfied,
+              satisfiedAt: isSatisfied
+                ? (request.satisfiedAt ?? new Date())
+                : (request.satisfiedAt ?? null),
+            },
+          });
+        }
+
+        updatedCategories.push(categoryResult.category);
+      }
+
+      const updatedRun = await tx.materialReviewRun.update({
+        where: { id: input.reviewRunId },
+        data: {
+          status: input.status as PrismaMaterialReviewRunStatus,
+          ...(input.startedAt === undefined
+            ? {}
+            : { startedAt: input.startedAt }),
+          ...(input.finishedAt === undefined
+            ? {}
+            : { finishedAt: input.finishedAt }),
+          errorMessage: null,
+        },
+      });
+
+      if (input.status === "COMPLETED" && updatedCategories.length > 0) {
+        await tx.supplementUploadBatch.updateMany({
+          where: {
+            reviewRunId: input.reviewRunId,
+            status: "REVIEWING",
+          },
+          data: { status: "COMPLETED" },
+        });
+      }
+
+      return { reviewRun: updatedRun, updatedCategories };
+    });
+  } catch (error) {
+    if (
+      input.retryOnUniqueConflict !== false &&
+      isPrismaUniqueConstraintError(error)
+    ) {
+      return saveMaterialReviewResult({
+        ...input,
+        retryOnUniqueConflict: false,
+      });
+    }
+
+    throw error;
+  }
+}
+
 export async function getMaterialSupplementSummaryData(
   applicationId: string,
 ): Promise<MaterialSupplementSummaryData> {
-  const [reviewRuns, latestCategoryReviews, latestRequests] = await Promise.all([
-    listMaterialReviewRuns(applicationId),
-    listMaterialCategoryReviews(applicationId, { isLatest: true }),
-    listLatestSupplementRequests(applicationId),
-  ]);
+  const [reviewRuns, latestCategoryReviews, latestRequests] = await Promise.all(
+    [
+      listMaterialReviewRuns(applicationId),
+      listMaterialCategoryReviews(applicationId, { isLatest: true }),
+      listLatestSupplementRequests(applicationId),
+    ],
+  );
 
   const latestRun = reviewRuns[0] ?? null;
   const latestReviewedAt =
@@ -3971,14 +4375,17 @@ export async function getMaterialSupplementSummaryData(
     applicationId,
     materialSupplementStatus: deriveMaterialSupplementStatus({
       latestRun: latestRun as MaterialReviewRunRecord | null,
-      latestCategoryReviews: latestCategoryReviews as MaterialCategoryReviewRecord[],
+      latestCategoryReviews:
+        latestCategoryReviews as MaterialCategoryReviewRecord[],
       latestRequests: latestRequests as SupplementRequestRecord[],
     }),
     latestReviewRunId: latestRun?.id ?? null,
     latestReviewedAt: latestReviewedAt?.toISOString() ?? null,
     pendingRequestCount: countPendingSupplementRequests(latestRequests),
     satisfiedRequestCount: countSatisfiedSupplementRequests(latestRequests),
-    remainingReviewRounds: getRemainingSupplementReviewRounds(reviewRuns.length),
+    remainingReviewRounds: getRemainingSupplementReviewRounds(
+      reviewRuns.length,
+    ),
     supportedCategories: [...SUPPORTED_SUPPLEMENT_CATEGORIES],
     latestRunStatus: latestRun?.status ?? null,
     latestCategoryReviewStatuses,
@@ -3996,8 +4403,10 @@ export async function getMaterialSupplementSnapshotData(
       listSupplementFiles(applicationId),
       (async () => {
         if (getRuntimeMode() === "memory") {
-          return getMemoryStore().supplementUploadBatches
-            .filter((item) => item.applicationId === applicationId)
+          return getMemoryStore()
+            .supplementUploadBatches.filter(
+              (item) => item.applicationId === applicationId,
+            )
             .sort(byLatestSupplementTimestampDesc);
         }
 
@@ -4028,7 +4437,9 @@ export async function getMaterialSupplementSnapshotData(
           (item.status === "CONFIRMED" || item.status === "REVIEWING"),
       )
       .map((item) => item.id);
-    const draftFiles = files.filter((item) => draftBatchIds.includes(item.uploadBatchId));
+    const draftFiles = files.filter((item) =>
+      draftBatchIds.includes(item.uploadBatchId),
+    );
     const waitingReviewFiles = files.filter((item) =>
       waitingBatchIds.includes(item.uploadBatchId),
     );
@@ -4048,7 +4459,9 @@ export async function getMaterialSupplementSnapshotData(
           (latestReview as MaterialCategoryReviewRecord | null) ?? {},
         )?.toISOString() ?? null,
       aiMessage: latestReview?.aiMessage ?? null,
-      pendingRequestCount: countPendingSupplementRequests(latestCategoryRequests),
+      pendingRequestCount: countPendingSupplementRequests(
+        latestCategoryRequests,
+      ),
       requests: visibleRequests.map((item) =>
         toSupplementRequestSummary(item as SupplementRequestRecord),
       ),
@@ -4085,7 +4498,9 @@ export async function getMaterialSupplementHistoryData(
 }> {
   const [categoryReviews, reviewRuns, requests, files] = await Promise.all([
     listMaterialCategoryReviews(applicationId, {
-      ...(filters?.category === undefined ? {} : { category: filters.category }),
+      ...(filters?.category === undefined
+        ? {}
+        : { category: filters.category }),
     }),
     listMaterialReviewRuns(applicationId),
     listSupplementRequests(applicationId),
@@ -4120,20 +4535,24 @@ export async function getMaterialSupplementHistoryData(
       status: review.status,
       isLatest: review.isLatest,
       reviewedAt:
-        getLatestSupplementTimestamp(review as MaterialCategoryReviewRecord)?.toISOString() ??
-        null,
+        getLatestSupplementTimestamp(
+          review as MaterialCategoryReviewRecord,
+        )?.toISOString() ?? null,
       aiMessage: review.aiMessage,
       files: files
         .filter(
           (file) =>
-            file.reviewRunId === review.reviewRunId && file.category === review.category,
+            file.reviewRunId === review.reviewRunId &&
+            file.category === review.category,
         )
         .map((file) => toSupplementFileSummary(file as SupplementFileRecord)),
       requests: requests
         .filter((request) => request.categoryReviewId === review.id)
         .sort(byLatestSupplementTimestampDesc)
         .map((request) => {
-          const summary = toSupplementRequestSummary(request as SupplementRequestRecord);
+          const summary = toSupplementRequestSummary(
+            request as SupplementRequestRecord,
+          );
           return {
             id: summary.id,
             title: summary.title,
@@ -4435,14 +4854,20 @@ export async function upsertFileUploadAttempt(input: {
     where: { uploadId: input.uploadId },
   });
   const mergedTimes = {
-    intentCreatedAt: nextTimes.intentCreatedAt ?? existing?.intentCreatedAt ?? null,
-    uploadStartedAt: nextTimes.uploadStartedAt ?? existing?.uploadStartedAt ?? null,
+    intentCreatedAt:
+      nextTimes.intentCreatedAt ?? existing?.intentCreatedAt ?? null,
+    uploadStartedAt:
+      nextTimes.uploadStartedAt ?? existing?.uploadStartedAt ?? null,
     uploadConfirmedAt:
       nextTimes.uploadConfirmedAt ?? existing?.uploadConfirmedAt ?? null,
-    uploadFailedAt: nextTimes.uploadFailedAt ?? existing?.uploadFailedAt ?? null,
+    uploadFailedAt:
+      nextTimes.uploadFailedAt ?? existing?.uploadFailedAt ?? null,
   };
   const durationMs =
-    input.durationMs ?? computeUploadDurationMs(mergedTimes) ?? existing?.durationMs ?? null;
+    input.durationMs ??
+    computeUploadDurationMs(mergedTimes) ??
+    existing?.durationMs ??
+    null;
 
   return prisma.fileUploadAttempt.upsert({
     where: { uploadId: input.uploadId },
@@ -4458,7 +4883,8 @@ export async function upsertFileUploadAttempt(input: {
       uploadConfirmedAt: mergedTimes.uploadConfirmedAt,
       uploadFailedAt: mergedTimes.uploadFailedAt,
       failureCode: input.failureCode ?? undefined,
-      failureStage: (input.failureStage ?? null) as PrismaUploadFailureStage | null,
+      failureStage: (input.failureStage ??
+        null) as PrismaUploadFailureStage | null,
       durationMs,
       objectKey: input.objectKey ?? undefined,
       sessionId: input.sessionId ?? undefined,
@@ -4477,7 +4903,8 @@ export async function upsertFileUploadAttempt(input: {
       uploadConfirmedAt: mergedTimes.uploadConfirmedAt,
       uploadFailedAt: mergedTimes.uploadFailedAt,
       failureCode: input.failureCode ?? null,
-      failureStage: (input.failureStage ?? null) as PrismaUploadFailureStage | null,
+      failureStage: (input.failureStage ??
+        null) as PrismaUploadFailureStage | null,
       durationMs,
       objectKey: input.objectKey ?? null,
       sessionId: input.sessionId ?? null,
@@ -4516,9 +4943,11 @@ function computeUploadDurationMs(input: {
 
 export async function listApplicationEvents(applicationId: string) {
   if (getRuntimeMode() === "memory") {
-    return getMemoryStore().events
-      .filter((item) => item.applicationId === applicationId)
-      .sort((left, right) => right.eventTime.getTime() - left.eventTime.getTime());
+    return getMemoryStore()
+      .events.filter((item) => item.applicationId === applicationId)
+      .sort(
+        (left, right) => right.eventTime.getTime() - left.eventTime.getTime(),
+      );
   }
 
   const prisma = await getPrisma();
@@ -4543,9 +4972,13 @@ export async function listInviteAccessLogs() {
 
 export async function listFileUploadAttempts(applicationId?: string) {
   if (getRuntimeMode() === "memory") {
-    return getMemoryStore().fileUploadAttempts
-      .filter((item) => !applicationId || item.applicationId === applicationId)
-      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+    return getMemoryStore()
+      .fileUploadAttempts.filter(
+        (item) => !applicationId || item.applicationId === applicationId,
+      )
+      .sort(
+        (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+      );
   }
 
   const prisma = await getPrisma();
@@ -4670,7 +5103,8 @@ function toSnapshotFromMemory(
           displaySummary: latestResult.displaySummary,
           reasonText: latestResult.reasonText,
           missingFields: enrichMissingFieldsWithRegistry(mergedMissingFields),
-          extractedFields: mergedExtractedFields ?? latestResult.extractedFields,
+          extractedFields:
+            mergedExtractedFields ?? latestResult.extractedFields,
         }
       : null,
     uploadedMaterialsSummary: {
@@ -4709,44 +5143,45 @@ export async function buildApplicationSnapshot(
     latestResult,
     latestExtractionReview,
     materials,
-  ] =
-    await Promise.all([
-      prisma.resumeFile.findFirst({
-        where: { applicationId },
-        orderBy: { uploadedAt: "desc" },
-      }),
-      prisma.resumeAnalysisJob.findFirst({
-        where: { applicationId },
-        orderBy: { startedAt: "desc" },
-      }),
-      prisma.resumeAnalysisResult.findFirst({
-        where: { applicationId },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.resumeExtractionReview.findFirst({
-        where: { applicationId },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.applicationMaterial.findMany({
-        where: { applicationId, isDeleted: false },
-      }),
-    ]);
+  ] = await Promise.all([
+    prisma.resumeFile.findFirst({
+      where: { applicationId },
+      orderBy: { uploadedAt: "desc" },
+    }),
+    prisma.resumeAnalysisJob.findFirst({
+      where: { applicationId },
+      orderBy: { startedAt: "desc" },
+    }),
+    prisma.resumeAnalysisResult.findFirst({
+      where: { applicationId },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.resumeExtractionReview.findFirst({
+      where: { applicationId },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.applicationMaterial.findMany({
+      where: { applicationId, isDeleted: false },
+    }),
+  ]);
 
   const applicationRow = application as ApplicationRecord;
   const latestResultMissingFields =
     (latestResult?.missingFields as MissingField[] | null) ?? [];
   const latestResultExtractedFields =
     (latestResult?.extractedFields as Record<string, unknown> | null) ?? {};
-  const mergedExtractedFields = mergeStoredScreeningContactValuesIntoExtractedFields(
-    latestResultExtractedFields,
-    applicationRow,
-  );
-  const mergedMissingFields = mergeMissingFieldsWithScreeningContactRequirements(
-    latestResultMissingFields,
-    application.eligibilityResult,
-    mergedExtractedFields,
-    applicationRow,
-  );
+  const mergedExtractedFields =
+    mergeStoredScreeningContactValuesIntoExtractedFields(
+      latestResultExtractedFields,
+      applicationRow,
+    );
+  const mergedMissingFields =
+    mergeMissingFieldsWithScreeningContactRequirements(
+      latestResultMissingFields,
+      application.eligibilityResult,
+      mergedExtractedFields,
+      applicationRow,
+    );
 
   return {
     applicationId: application.id,
@@ -4756,8 +5191,7 @@ export async function buildApplicationSnapshot(
     currentStep: application.currentStep,
     eligibilityResult: application.eligibilityResult,
     latestAnalysisJobId: application.latestAnalysisJobId,
-    screeningPassportFullName:
-      applicationRow.screeningPassportFullName ?? null,
+    screeningPassportFullName: applicationRow.screeningPassportFullName ?? null,
     screeningContactEmail: applicationRow.screeningContactEmail ?? null,
     screeningWorkEmail: applicationRow.screeningWorkEmail ?? null,
     screeningPhoneNumber: applicationRow.screeningPhoneNumber ?? null,
@@ -4778,7 +5212,8 @@ export async function buildApplicationSnapshot(
         ? {
             ...latestExtractionReview,
             extractedFields: latestExtractionReview.extractedFields,
-            status: latestExtractionReview.status as ResumeExtractionReviewStatus,
+            status:
+              latestExtractionReview.status as ResumeExtractionReviewStatus,
           }
         : null,
     ),

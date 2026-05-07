@@ -1,9 +1,11 @@
 import {
+  SUPPLEMENT_CATEGORY_LABELS,
   SUPPLEMENT_REVIEW_MAX_ROUNDS,
   isSupplementCategory,
 } from "@/features/material-supplement/constants";
 import type {
   MaterialCategoryReviewStatus,
+  MaterialReviewRunStatus,
   SupplementCategory,
   SupplementSnapshot,
   SupplementSummary,
@@ -11,18 +13,27 @@ import type {
 import {
   claimMaterialReviewRunStartup,
   getMaterialReviewRunByApplicationAndRunNo,
+  getMaterialReviewRunById,
   getLatestMaterialCategoryReview,
   getMaterialSupplementHistoryData,
   getMaterialSupplementSnapshotData,
   getMaterialSupplementSummaryData,
+  listMaterialCategoryReviews,
   listMaterialReviewRuns,
+  saveMaterialReviewResult,
   updateMaterialReviewRun,
   createMaterialReviewRun,
 } from "@/lib/data/store";
 import {
   createInitialMaterialReview,
+  getMaterialReviewResult,
 } from "@/lib/material-review/client";
-import { MaterialReviewClientError } from "@/lib/material-review/types";
+import {
+  MaterialReviewClientError,
+  type MaterialCategoryReviewResult,
+  type MaterialReviewJobStatus,
+  type MaterialReviewResultPayload,
+} from "@/lib/material-review/types";
 import {
   MaterialSupplementServiceError,
   SUPPLEMENT_EXPERT_ERROR_CODES,
@@ -159,6 +170,279 @@ export async function getSupplementHistory(
   }
 }
 
+export type SupplementReviewRunResult = {
+  reviewRunId: string;
+  applicationId: string;
+  runNo: number;
+  status: MaterialReviewRunStatus;
+  triggerType: string;
+  triggeredCategory: SupplementCategory | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  categories: Array<{
+    category: SupplementCategory;
+    status: MaterialCategoryReviewStatus;
+    isLatest: boolean;
+  }>;
+};
+
+export type SyncSupplementReviewRunResult = {
+  reviewRunId: string;
+  status: MaterialReviewRunStatus;
+  synced: boolean;
+  updatedCategories: SupplementCategory[];
+};
+
+function toIsoString(value: Date | string | null | undefined) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return value instanceof Date
+    ? value.toISOString()
+    : new Date(value).toISOString();
+}
+
+function assertKnownReviewStatus(
+  status: MaterialReviewJobStatus,
+): MaterialReviewRunStatus {
+  if (
+    status !== "QUEUED" &&
+    status !== "PROCESSING" &&
+    status !== "COMPLETED" &&
+    status !== "FAILED"
+  ) {
+    throw new MaterialSupplementServiceError({
+      message: "The material review result status is invalid.",
+      status: 502,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_RESULT_INVALID,
+    });
+  }
+
+  return status;
+}
+
+function toRecordPayload(
+  payload: MaterialReviewResultPayload,
+): Record<string, unknown> {
+  return {
+    supplementRequired: payload.supplementRequired,
+    requests: payload.requests,
+  };
+}
+
+function mapCategoryResultToSaveInput(result: MaterialCategoryReviewResult) {
+  if (!isSupplementCategory(result.category)) {
+    throw new MaterialSupplementServiceError({
+      message: "The material review result category is unsupported.",
+      status: 502,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_RESULT_INVALID,
+      details: { category: result.category },
+    });
+  }
+
+  const category = result.category;
+  const status = assertKnownReviewStatus(result.status);
+
+  if (
+    typeof result.resultPayload?.supplementRequired !== "boolean" ||
+    !Array.isArray(result.resultPayload.requests)
+  ) {
+    throw new MaterialSupplementServiceError({
+      message: "The material review result payload is invalid.",
+      status: 502,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_RESULT_INVALID,
+      details: { category },
+    });
+  }
+
+  const requests = result.resultPayload.supplementRequired
+    ? result.resultPayload.requests.map((request) => ({
+        title: request.title,
+        reason: request.reason,
+        suggestedMaterials: request.suggestedMaterials,
+        aiMessage: result.aiMessage,
+        status: "PENDING" as const,
+        isSatisfied: false,
+      }))
+    : [
+        {
+          title: `${SUPPLEMENT_CATEGORY_LABELS[category]} complete`,
+          reason: `No supplement is required for ${SUPPLEMENT_CATEGORY_LABELS[category]}.`,
+          suggestedMaterials: null,
+          aiMessage: result.aiMessage,
+          status: "SATISFIED" as const,
+          isSatisfied: true,
+        },
+      ];
+
+  return {
+    category,
+    status,
+    aiMessage: result.aiMessage,
+    resultPayload: toRecordPayload(result.resultPayload),
+    requests,
+  };
+}
+
+function mapMaterialReviewClientError(error: MaterialReviewClientError) {
+  if (error.failureCode === "RESULT_INVALID") {
+    return new MaterialSupplementServiceError({
+      message: "The material review result payload is invalid.",
+      status: 502,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_RESULT_INVALID,
+      details: { failureCode: error.failureCode },
+    });
+  }
+
+  if (
+    error.failureCode === "CONFIG_ERROR" ||
+    error.failureCode === "BACKEND_UNAVAILABLE" ||
+    error.failureCode === "NETWORK_ERROR" ||
+    error.failureCode === "TIMEOUT" ||
+    error.failureCode === "HTTP_ERROR" ||
+    error.failureCode === "RESULT_NOT_READY"
+  ) {
+    return new MaterialSupplementServiceError({
+      message: "The material review backend is currently unavailable.",
+      status: 503,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.MATERIAL_REVIEW_BACKEND_UNAVAILABLE,
+      details: { failureCode: error.failureCode },
+    });
+  }
+
+  return new MaterialSupplementServiceError({
+    message: "Failed to sync the supplement review result.",
+    status: 500,
+    code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_SYNC_FAILED,
+    details: { failureCode: error.failureCode },
+  });
+}
+
+export async function getSupplementReviewRun(
+  applicationId: string,
+  reviewRunId: string,
+): Promise<SupplementReviewRunResult> {
+  try {
+    const reviewRun = await getMaterialReviewRunById(reviewRunId);
+
+    if (!reviewRun || reviewRun.applicationId !== applicationId) {
+      throw new MaterialSupplementServiceError({
+        message: "The supplement review run could not be found.",
+        status: 404,
+        code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_RUN_NOT_FOUND,
+        details: { reviewRunId },
+      });
+    }
+
+    const categories = await listMaterialCategoryReviews(applicationId, {
+      reviewRunId,
+    });
+
+    return {
+      reviewRunId: reviewRun.id,
+      applicationId: reviewRun.applicationId,
+      runNo: reviewRun.runNo,
+      status: reviewRun.status as MaterialReviewRunStatus,
+      triggerType: reviewRun.triggerType,
+      triggeredCategory:
+        (reviewRun.triggeredCategory as SupplementCategory | null) ?? null,
+      startedAt: toIsoString(reviewRun.startedAt),
+      finishedAt: toIsoString(reviewRun.finishedAt),
+      categories: categories.map((category) => ({
+        category: category.category as SupplementCategory,
+        status: category.status as MaterialCategoryReviewStatus,
+        isLatest: category.isLatest,
+      })),
+    };
+  } catch (error) {
+    if (error instanceof MaterialSupplementServiceError) {
+      throw error;
+    }
+
+    throw new MaterialSupplementServiceError({
+      message: "Failed to load the supplement review run status.",
+      status: 500,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_STATUS_LOAD_FAILED,
+      details: error instanceof Error ? { cause: error.message } : undefined,
+    });
+  }
+}
+
+export async function syncSupplementReviewRun(
+  applicationId: string,
+  reviewRunId: string,
+): Promise<SyncSupplementReviewRunResult> {
+  const reviewRun = await getMaterialReviewRunById(reviewRunId);
+
+  if (!reviewRun || reviewRun.applicationId !== applicationId) {
+    throw new MaterialSupplementServiceError({
+      message: "The supplement review run could not be found.",
+      status: 404,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_RUN_NOT_FOUND,
+      details: { reviewRunId },
+    });
+  }
+
+  if (!reviewRun.externalRunId) {
+    throw new MaterialSupplementServiceError({
+      message: "The supplement review run has no external review task.",
+      status: 409,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_SYNC_FAILED,
+      details: { reviewRunId },
+    });
+  }
+
+  try {
+    const result = await getMaterialReviewResult({
+      externalRunId: reviewRun.externalRunId,
+    });
+    const status = assertKnownReviewStatus(result.status);
+    const syncedResult = await saveMaterialReviewResult({
+      applicationId,
+      reviewRunId,
+      status,
+      startedAt: result.startedAt ? new Date(result.startedAt) : undefined,
+      finishedAt: result.finishedAt ? new Date(result.finishedAt) : undefined,
+      categories:
+        status === "COMPLETED"
+          ? result.categories.map(mapCategoryResultToSaveInput)
+          : [],
+    });
+
+    if (!syncedResult) {
+      throw new MaterialSupplementServiceError({
+        message: "The supplement review run could not be found.",
+        status: 404,
+        code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_RUN_NOT_FOUND,
+        details: { reviewRunId },
+      });
+    }
+
+    return {
+      reviewRunId,
+      status: syncedResult.reviewRun.status as MaterialReviewRunStatus,
+      synced: syncedResult.updatedCategories.length > 0,
+      updatedCategories: syncedResult.updatedCategories,
+    };
+  } catch (error) {
+    if (error instanceof MaterialSupplementServiceError) {
+      throw error;
+    }
+
+    if (error instanceof MaterialReviewClientError) {
+      throw mapMaterialReviewClientError(error);
+    }
+
+    throw new MaterialSupplementServiceError({
+      message: "Failed to sync the supplement review result.",
+      status: 500,
+      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_SYNC_FAILED,
+      details: error instanceof Error ? { cause: error.message } : undefined,
+    });
+  }
+}
+
 export type EnsureInitialSupplementReviewResult = {
   applicationId: string;
   reviewRunId: string;
@@ -168,8 +452,9 @@ export type EnsureInitialSupplementReviewResult = {
 };
 
 const INITIAL_SUPPLEMENT_REVIEW_RUN_NO = 1;
-const INITIAL_REVIEW_STARTUP_CLAIMABLE_STATUSES: ReadonlyArray<"QUEUED" | "FAILED"> =
-  ["QUEUED", "FAILED"];
+const INITIAL_REVIEW_STARTUP_CLAIMABLE_STATUSES: ReadonlyArray<
+  "QUEUED" | "FAILED"
+> = ["QUEUED", "FAILED"];
 
 export async function ensureInitialSupplementReview(
   applicationId: string,

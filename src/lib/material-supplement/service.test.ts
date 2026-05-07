@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createMaterialReviewRun,
+  createMaterialCategoryReview,
   createSupplementFile,
   createSupplementUploadBatch,
   getLatestMaterialCategoryReview,
   getMaterialReviewRunByApplicationAndRunNo,
   getSupplementUploadBatchById,
+  listMaterialCategoryReviews,
   listMaterialReviewRuns,
+  listSupplementRequests,
   listSupplementFiles,
   updateSupplementUploadBatch,
   updateApplication,
@@ -19,6 +22,8 @@ import {
   assertReviewRoundLimit,
   assertSupportedSupplementCategory,
   ensureInitialSupplementReview,
+  getSupplementReviewRun,
+  syncSupplementReviewRun,
 } from "@/lib/material-supplement/service";
 import { MaterialSupplementServiceError } from "@/lib/material-supplement/errors";
 import { MaterialReviewClientError } from "@/lib/material-review/types";
@@ -128,22 +133,25 @@ describe("ensureInitialSupplementReview", () => {
       applicationStatus: "SUBMITTED",
     });
 
-    let resolveReview: ((value: {
-      externalRunId: string;
-      status: "COMPLETED";
-      startedAt: string;
-      finishedAt: string;
-    }) => void) | null = null;
+    let resolveReview:
+      | ((value: {
+          externalRunId: string;
+          status: "COMPLETED";
+          startedAt: string;
+          finishedAt: string;
+        }) => void)
+      | null = null;
     const reviewStarted = new Promise<void>((resolve) => {
-      vi.spyOn(materialReviewClient, "createInitialMaterialReview").mockImplementation(
-        async () => {
-          resolve();
+      vi.spyOn(
+        materialReviewClient,
+        "createInitialMaterialReview",
+      ).mockImplementation(async () => {
+        resolve();
 
-          return new Promise((innerResolve) => {
-            resolveReview = innerResolve;
-          });
-        },
-      );
+        return new Promise((innerResolve) => {
+          resolveReview = innerResolve;
+        });
+      });
     });
 
     const firstAttempt = ensureInitialSupplementReview("app_secondary");
@@ -172,8 +180,12 @@ describe("ensureInitialSupplementReview", () => {
       created: true,
     });
 
-    expect(materialReviewClient.createInitialMaterialReview).toHaveBeenCalledTimes(1);
-    await expect(listMaterialReviewRuns("app_secondary")).resolves.toHaveLength(1);
+    expect(
+      materialReviewClient.createInitialMaterialReview,
+    ).toHaveBeenCalledTimes(1);
+    await expect(listMaterialReviewRuns("app_secondary")).resolves.toHaveLength(
+      1,
+    );
   });
 
   it("retries a failed startup on the existing initial review run", async () => {
@@ -225,7 +237,288 @@ describe("ensureInitialSupplementReview", () => {
     });
 
     expect(reviewSpy).toHaveBeenCalledTimes(2);
-    await expect(listMaterialReviewRuns("app_secondary")).resolves.toHaveLength(1);
+    await expect(listMaterialReviewRuns("app_secondary")).resolves.toHaveLength(
+      1,
+    );
+  });
+});
+
+describe("material supplement review run sync", () => {
+  beforeEach(() => {
+    process.env.APP_RUNTIME_MODE = "memory";
+    process.env.MATERIAL_REVIEW_MODE = "mock";
+    resetMemoryStore();
+    vi.restoreAllMocks();
+  });
+
+  it("returns a review run status with category states", async () => {
+    await expect(
+      getSupplementReviewRun(
+        "app_supplement_required",
+        "mr_run_required_identity_resolved",
+      ),
+    ).resolves.toMatchObject({
+      reviewRunId: "mr_run_required_identity_resolved",
+      applicationId: "app_supplement_required",
+      runNo: 2,
+      status: "COMPLETED",
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "IDENTITY",
+      categories: [
+        {
+          category: "IDENTITY",
+          status: "COMPLETED",
+          isLatest: true,
+        },
+      ],
+    });
+  });
+
+  it("rejects missing and foreign review runs", async () => {
+    await expect(
+      getSupplementReviewRun("app_supplement_required", "missing_run"),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 404,
+      code: "SUPPLEMENT_REVIEW_RUN_NOT_FOUND",
+    });
+
+    await expect(
+      getSupplementReviewRun(
+        "app_secondary",
+        "mr_run_required_identity_resolved",
+      ),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 404,
+      code: "SUPPLEMENT_REVIEW_RUN_NOT_FOUND",
+    });
+  });
+
+  it("syncs a mock initial run into category reviews and requests", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "SUBMITTED",
+    });
+    const initial = await ensureInitialSupplementReview("app_secondary");
+
+    const firstSync = await syncSupplementReviewRun(
+      "app_secondary",
+      initial.reviewRunId,
+    );
+    const secondSync = await syncSupplementReviewRun(
+      "app_secondary",
+      initial.reviewRunId,
+    );
+
+    expect(firstSync).toMatchObject({
+      reviewRunId: initial.reviewRunId,
+      status: "COMPLETED",
+      synced: true,
+    });
+    expect(firstSync.updatedCategories).toEqual([
+      "IDENTITY",
+      "EDUCATION",
+      "EMPLOYMENT",
+      "PROJECT",
+      "PATENT",
+      "HONOR",
+    ]);
+    expect(secondSync).toEqual({
+      reviewRunId: initial.reviewRunId,
+      status: "COMPLETED",
+      synced: false,
+      updatedCategories: [],
+    });
+
+    await expect(
+      listMaterialCategoryReviews("app_secondary", {
+        reviewRunId: initial.reviewRunId,
+      }),
+    ).resolves.toHaveLength(6);
+    await expect(listSupplementRequests("app_secondary")).resolves.toHaveLength(
+      6,
+    );
+  });
+
+  it("syncs a mock category run and completes related upload batches", async () => {
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "PROCESSING",
+      externalRunId: "mock-material-review:category:EDUCATION:sync",
+      startedAt: new Date("2026-05-07T05:00:00.000Z"),
+    });
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      status: "REVIEWING",
+      fileCount: 1,
+      reviewRunId: reviewRun.id,
+      confirmedAt: new Date("2026-05-07T05:00:00.000Z"),
+    });
+
+    await expect(
+      syncSupplementReviewRun("app_supplement_required", reviewRun.id),
+    ).resolves.toEqual({
+      reviewRunId: reviewRun.id,
+      status: "COMPLETED",
+      synced: true,
+      updatedCategories: ["EDUCATION"],
+    });
+    await expect(
+      getLatestMaterialCategoryReview("app_supplement_required", "EDUCATION"),
+    ).resolves.toMatchObject({
+      reviewRunId: reviewRun.id,
+      status: "COMPLETED",
+      isLatest: true,
+    });
+    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject(
+      {
+        status: "COMPLETED",
+      },
+    );
+  });
+
+  it("does not complete upload batches for non-final sync statuses", async () => {
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "PROCESSING",
+      externalRunId: "mock-material-review:category:EDUCATION:pending",
+      startedAt: new Date("2026-05-07T05:00:00.000Z"),
+    });
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      status: "REVIEWING",
+      fileCount: 1,
+      reviewRunId: reviewRun.id,
+      confirmedAt: new Date("2026-05-07T05:00:00.000Z"),
+    });
+
+    vi.spyOn(materialReviewClient, "getMaterialReviewResult").mockResolvedValue(
+      {
+        externalRunId: reviewRun.externalRunId ?? "",
+        status: "PROCESSING",
+        categories: [],
+      },
+    );
+
+    await expect(
+      syncSupplementReviewRun("app_supplement_required", reviewRun.id),
+    ).resolves.toEqual({
+      reviewRunId: reviewRun.id,
+      status: "PROCESSING",
+      synced: false,
+      updatedCategories: [],
+    });
+    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject(
+      {
+        status: "REVIEWING",
+      },
+    );
+  });
+
+  it("does not let a stale run overwrite a newer latest category review", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "SUBMITTED",
+    });
+    const staleRun = await createMaterialReviewRun({
+      applicationId: "app_secondary",
+      runNo: 1,
+      triggerType: "INITIAL_SUBMISSION",
+      status: "PROCESSING",
+      externalRunId: "mock-material-review:category:HONOR:stale",
+    });
+    const newerRun = await createMaterialReviewRun({
+      applicationId: "app_secondary",
+      runNo: 2,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "HONOR",
+      status: "COMPLETED",
+      externalRunId: "mock-material-review:category:HONOR:newer",
+    });
+    const newerReview = await createMaterialCategoryReview({
+      applicationId: "app_secondary",
+      reviewRunId: newerRun.id,
+      category: "HONOR",
+      roundNo: 2,
+      status: "COMPLETED",
+      aiMessage: "Honor is already complete.",
+      resultPayload: { supplementRequired: false, requests: [] },
+      finishedAt: new Date("2026-05-07T06:00:00.000Z"),
+    });
+
+    await expect(
+      syncSupplementReviewRun("app_secondary", staleRun.id),
+    ).resolves.toEqual({
+      reviewRunId: staleRun.id,
+      status: "COMPLETED",
+      synced: false,
+      updatedCategories: [],
+    });
+    await expect(
+      getLatestMaterialCategoryReview("app_secondary", "HONOR"),
+    ).resolves.toMatchObject({
+      id: newerReview.id,
+      reviewRunId: newerRun.id,
+      isLatest: true,
+    });
+  });
+
+  it("maps backend unavailable and invalid results to supplement errors", async () => {
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "PROCESSING",
+      externalRunId: "mock-material-review:category:EDUCATION:error",
+    });
+
+    vi.spyOn(
+      materialReviewClient,
+      "getMaterialReviewResult",
+    ).mockRejectedValueOnce(
+      new MaterialReviewClientError({
+        message: "Backend unavailable.",
+        failureCode: "BACKEND_UNAVAILABLE",
+        retryable: true,
+        httpStatus: 503,
+      }),
+    );
+
+    await expect(
+      syncSupplementReviewRun("app_supplement_required", reviewRun.id),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 503,
+      code: "MATERIAL_REVIEW_BACKEND_UNAVAILABLE",
+    });
+
+    vi.spyOn(
+      materialReviewClient,
+      "getMaterialReviewResult",
+    ).mockResolvedValueOnce({
+      externalRunId: reviewRun.externalRunId ?? "",
+      status: "COMPLETED",
+      categories: [
+        {
+          category: "EDUCATION",
+          status: "COMPLETED",
+          aiMessage: "Invalid payload.",
+          resultPayload: null as never,
+        },
+      ],
+    });
+
+    await expect(
+      syncSupplementReviewRun("app_supplement_required", reviewRun.id),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 502,
+      code: "SUPPLEMENT_REVIEW_RESULT_INVALID",
+    });
   });
 });
 
@@ -583,9 +876,11 @@ describe("material supplement file and batch confirmation", () => {
       },
     });
 
-    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject({
-      fileCount: 1,
-    });
+    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject(
+      {
+        fileCount: 1,
+      },
+    );
   });
 
   it("rejects file confirmation for missing, non-draft, duplicate, and reviewing categories", async () => {
@@ -597,7 +892,8 @@ describe("material supplement file and batch confirmation", () => {
         fileName: "degree.pdf",
         fileType: "application/pdf",
         fileSize: 1234,
-        objectKey: "applications/app_supplement_required/supplements/EDUCATION/missing/degree.pdf",
+        objectKey:
+          "applications/app_supplement_required/supplements/EDUCATION/missing/degree.pdf",
       }),
     ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
       status: 404,
@@ -712,12 +1008,16 @@ describe("material supplement file and batch confirmation", () => {
       fileId: file.id,
       uploadBatchId: batch.id,
     });
-    await expect(listSupplementFiles("app_supplement_required", {
-      uploadBatchId: batch.id,
-    })).resolves.toHaveLength(0);
-    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject({
-      fileCount: 0,
-    });
+    await expect(
+      listSupplementFiles("app_supplement_required", {
+        uploadBatchId: batch.id,
+      }),
+    ).resolves.toHaveLength(0);
+    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject(
+      {
+        fileCount: 0,
+      },
+    );
 
     await expect(
       deleteSupplementDraftFile({
@@ -742,7 +1042,9 @@ describe("material supplement file and batch confirmation", () => {
       fileType: "application/pdf",
       fileSize: 5678,
     });
-    await updateSupplementUploadBatch(confirmedBatch.id, { status: "CONFIRMED" });
+    await updateSupplementUploadBatch(confirmedBatch.id, {
+      status: "CONFIRMED",
+    });
 
     await expect(
       deleteSupplementDraftFile({
@@ -810,10 +1112,12 @@ describe("material supplement file and batch confirmation", () => {
       status: "PROCESSING",
       isLatest: true,
     });
-    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject({
-      status: "REVIEWING",
-      reviewRunId: firstResult.reviewRunId,
-    });
+    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject(
+      {
+        status: "REVIEWING",
+        reviewRunId: firstResult.reviewRunId,
+      },
+    );
   });
 
   it("does not double-trigger category review startup for concurrent batch confirmation", async () => {
@@ -826,15 +1130,16 @@ describe("material supplement file and batch confirmation", () => {
         }) => void)
       | null = null;
     const reviewStarted = new Promise<void>((resolve) => {
-      vi.spyOn(materialReviewClient, "createCategoryMaterialReview").mockImplementation(
-        async () => {
-          resolve();
+      vi.spyOn(
+        materialReviewClient,
+        "createCategoryMaterialReview",
+      ).mockImplementation(async () => {
+        resolve();
 
-          return new Promise((innerResolve) => {
-            resolveReview = innerResolve;
-          });
-        },
-      );
+        return new Promise((innerResolve) => {
+          resolveReview = innerResolve;
+        });
+      });
     });
     const batch = await createSupplementUploadBatch({
       applicationId: "app_supplement_required",
@@ -867,7 +1172,9 @@ describe("material supplement file and batch confirmation", () => {
       category: "EDUCATION",
       status: "REVIEWING",
     });
-    expect(materialReviewClient.createCategoryMaterialReview).toHaveBeenCalledTimes(1);
+    expect(
+      materialReviewClient.createCategoryMaterialReview,
+    ).toHaveBeenCalledTimes(1);
 
     resolveReview?.({
       externalRunId: "mock-material-review:category:EDUCATION:concurrent",
@@ -878,9 +1185,9 @@ describe("material supplement file and batch confirmation", () => {
 
     const firstResult = await firstAttempt;
     expect(firstResult.reviewRunId).toBe(secondResult.reviewRunId);
-    await expect(listMaterialReviewRuns("app_supplement_required")).resolves.toHaveLength(
-      3,
-    );
+    await expect(
+      listMaterialReviewRuns("app_supplement_required"),
+    ).resolves.toHaveLength(3);
   });
 
   it("rejects empty batch confirmation and category review startup failures", async () => {
@@ -940,7 +1247,9 @@ describe("material supplement file and batch confirmation", () => {
       status: 503,
       code: "MATERIAL_REVIEW_BACKEND_UNAVAILABLE",
     });
-    await expect(getSupplementUploadBatchById(failingBatch.id)).resolves.toMatchObject({
+    await expect(
+      getSupplementUploadBatchById(failingBatch.id),
+    ).resolves.toMatchObject({
       status: "CONFIRMED",
       reviewRunId: expect.any(String),
     });
@@ -964,8 +1273,8 @@ describe("material supplement file and batch confirmation", () => {
       status: "REVIEWING",
     });
     expect(reviewSpy).toHaveBeenCalledTimes(2);
-    await expect(listMaterialReviewRuns("app_supplement_required")).resolves.toHaveLength(
-      failedRuns.length,
-    );
+    await expect(
+      listMaterialReviewRuns("app_supplement_required"),
+    ).resolves.toHaveLength(failedRuns.length);
   });
 });

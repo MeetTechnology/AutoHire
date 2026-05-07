@@ -3,8 +3,10 @@ import { NextRequest } from "next/server";
 
 import { GET as getSnapshotRoute } from "@/app/api/applications/[applicationId]/material-supplement/route";
 import { GET as getHistoryRoute } from "@/app/api/applications/[applicationId]/material-supplement/history/route";
+import { GET as getReviewRunRoute } from "@/app/api/applications/[applicationId]/material-supplement/reviews/[reviewRunId]/route";
 import { GET as getSummaryRoute } from "@/app/api/applications/[applicationId]/material-supplement/summary/route";
 import { POST as postInitialRoute } from "@/app/api/applications/[applicationId]/material-supplement/reviews/initial/route";
+import { POST as postReviewRunSyncRoute } from "@/app/api/applications/[applicationId]/material-supplement/reviews/[reviewRunId]/sync/route";
 import { POST as postUploadBatchRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-batches/route";
 import { POST as postUploadBatchConfirmRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-batches/[batchId]/confirm/route";
 import { POST as postUploadIntentRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-intent/route";
@@ -444,7 +446,9 @@ describe("material supplement routes", () => {
     });
     expect(payload.items).toHaveLength(2);
     expect(
-      payload.items.every((item: { category: string }) => item.category === "IDENTITY"),
+      payload.items.every(
+        (item: { category: string }) => item.category === "IDENTITY",
+      ),
     ).toBe(true);
   });
 
@@ -665,7 +669,10 @@ describe("material supplement routes", () => {
       applicationStatus: "SUBMITTED",
     });
 
-    vi.spyOn(materialReviewClient, "createInitialMaterialReview").mockRejectedValue(
+    vi.spyOn(
+      materialReviewClient,
+      "createInitialMaterialReview",
+    ).mockRejectedValue(
       new MaterialReviewClientError({
         message: "Live backend unavailable.",
         failureCode: "BACKEND_UNAVAILABLE",
@@ -761,6 +768,283 @@ describe("material supplement routes", () => {
       applicationId: "app_secondary",
       runNo: 1,
       created: true,
+    });
+  });
+
+  it("returns a material supplement review run status", async () => {
+    const response = await getReviewRunRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/reviews/mr_run_required_identity_resolved",
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+          reviewRunId: "mr_run_required_identity_resolved",
+        }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      reviewRunId: "mr_run_required_identity_resolved",
+      applicationId: "app_supplement_required",
+      runNo: 2,
+      status: "COMPLETED",
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "IDENTITY",
+      categories: [
+        {
+          category: "IDENTITY",
+          status: "COMPLETED",
+          isLatest: true,
+        },
+      ],
+    });
+  });
+
+  it("returns review run route auth and not found errors", async () => {
+    const unauthorized = await getReviewRunRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/reviews/mr_run_required_identity_resolved",
+        { session: false },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+          reviewRunId: "mr_run_required_identity_resolved",
+        }),
+      },
+    );
+    const foreign = await getReviewRunRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/reviews/mr_run_required_identity_resolved",
+        {
+          session: {
+            applicationId: "app_intro",
+            invitationId: "invitation_init",
+            expertId: "expert_init",
+          },
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+          reviewRunId: "mr_run_required_identity_resolved",
+        }),
+      },
+    );
+    const notSubmitted = await getReviewRunRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_secondary/material-supplement/reviews/missing_run",
+        {
+          session: {
+            applicationId: "app_secondary",
+            invitationId: "invitation_secondary",
+            expertId: "expert_secondary",
+          },
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_secondary",
+          reviewRunId: "missing_run",
+        }),
+      },
+    );
+    const missing = await getReviewRunRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_supplement_required/material-supplement/reviews/missing_run",
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_supplement_required",
+          reviewRunId: "missing_run",
+        }),
+      },
+    );
+
+    await expect(unauthorized.json()).resolves.toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+    });
+    await expect(foreign.json()).resolves.toMatchObject({
+      error: { code: "FORBIDDEN" },
+    });
+    await expect(notSubmitted.json()).resolves.toMatchObject({
+      error: { code: "APPLICATION_NOT_SUBMITTED" },
+    });
+    await expect(missing.json()).resolves.toMatchObject({
+      error: { code: "SUPPLEMENT_REVIEW_RUN_NOT_FOUND" },
+    });
+    expect(unauthorized.status).toBe(401);
+    expect(foreign.status).toBe(403);
+    expect(notSubmitted.status).toBe(409);
+    expect(missing.status).toBe(404);
+  });
+
+  it("syncs a material supplement review run and is idempotent", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "SUBMITTED",
+    });
+    const initialResponse = await postInitialRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_secondary/material-supplement/reviews/initial",
+        {
+          method: "POST",
+          session: {
+            applicationId: "app_secondary",
+            invitationId: "invitation_secondary",
+            expertId: "expert_secondary",
+          },
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_secondary",
+        }),
+      },
+    );
+    const initialPayload = await initialResponse.json();
+
+    const firstResponse = await postReviewRunSyncRoute(
+      buildRequest(
+        `http://localhost/api/applications/app_secondary/material-supplement/reviews/${initialPayload.reviewRunId}/sync`,
+        {
+          method: "POST",
+          session: {
+            applicationId: "app_secondary",
+            invitationId: "invitation_secondary",
+            expertId: "expert_secondary",
+          },
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_secondary",
+          reviewRunId: initialPayload.reviewRunId,
+        }),
+      },
+    );
+    const firstPayload = await firstResponse.json();
+    const secondResponse = await postReviewRunSyncRoute(
+      buildRequest(
+        `http://localhost/api/applications/app_secondary/material-supplement/reviews/${initialPayload.reviewRunId}/sync`,
+        {
+          method: "POST",
+          session: {
+            applicationId: "app_secondary",
+            invitationId: "invitation_secondary",
+            expertId: "expert_secondary",
+          },
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_secondary",
+          reviewRunId: initialPayload.reviewRunId,
+        }),
+      },
+    );
+    const secondPayload = await secondResponse.json();
+
+    expect(firstResponse.status).toBe(200);
+    expect(firstPayload).toMatchObject({
+      reviewRunId: initialPayload.reviewRunId,
+      status: "COMPLETED",
+      synced: true,
+    });
+    expect(firstPayload.updatedCategories).toHaveLength(6);
+    expect(secondResponse.status).toBe(200);
+    expect(secondPayload).toEqual({
+      reviewRunId: initialPayload.reviewRunId,
+      status: "COMPLETED",
+      synced: false,
+      updatedCategories: [],
+    });
+  });
+
+  it("returns sync route backend unavailable and missing run errors", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "SUBMITTED",
+    });
+    const initialResponse = await postInitialRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_secondary/material-supplement/reviews/initial",
+        {
+          method: "POST",
+          session: {
+            applicationId: "app_secondary",
+            invitationId: "invitation_secondary",
+            expertId: "expert_secondary",
+          },
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_secondary",
+        }),
+      },
+    );
+    const initialPayload = await initialResponse.json();
+
+    vi.spyOn(
+      materialReviewClient,
+      "getMaterialReviewResult",
+    ).mockRejectedValueOnce(
+      new MaterialReviewClientError({
+        message: "Backend unavailable.",
+        failureCode: "BACKEND_UNAVAILABLE",
+        retryable: true,
+        httpStatus: 503,
+      }),
+    );
+
+    const unavailable = await postReviewRunSyncRoute(
+      buildRequest(
+        `http://localhost/api/applications/app_secondary/material-supplement/reviews/${initialPayload.reviewRunId}/sync`,
+        {
+          method: "POST",
+          session: {
+            applicationId: "app_secondary",
+            invitationId: "invitation_secondary",
+            expertId: "expert_secondary",
+          },
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_secondary",
+          reviewRunId: initialPayload.reviewRunId,
+        }),
+      },
+    );
+    const missing = await postReviewRunSyncRoute(
+      buildRequest(
+        "http://localhost/api/applications/app_secondary/material-supplement/reviews/missing_run/sync",
+        {
+          method: "POST",
+          session: {
+            applicationId: "app_secondary",
+            invitationId: "invitation_secondary",
+            expertId: "expert_secondary",
+          },
+        },
+      ),
+      {
+        params: Promise.resolve({
+          applicationId: "app_secondary",
+          reviewRunId: "missing_run",
+        }),
+      },
+    );
+
+    expect(unavailable.status).toBe(503);
+    await expect(unavailable.json()).resolves.toMatchObject({
+      error: { code: "MATERIAL_REVIEW_BACKEND_UNAVAILABLE" },
+    });
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toMatchObject({
+      error: { code: "SUPPLEMENT_REVIEW_RUN_NOT_FOUND" },
     });
   });
 
