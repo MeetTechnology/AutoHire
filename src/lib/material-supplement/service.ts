@@ -37,8 +37,11 @@ import {
 import {
   MaterialSupplementServiceError,
   SUPPLEMENT_EXPERT_ERROR_CODES,
+  SUPPLEMENT_INTERNAL_ERROR_CODES,
 } from "@/lib/material-supplement/errors";
 import { getRemainingSupplementReviewRounds } from "@/lib/material-supplement/status";
+import type { supplementReviewCallbackBodySchema } from "@/lib/material-supplement/schemas";
+import type { z } from "zod";
 
 const REVIEW_PROCESSING_STATUSES: ReadonlySet<MaterialCategoryReviewStatus> =
   new Set(["QUEUED", "PROCESSING"]);
@@ -193,6 +196,17 @@ export type SyncSupplementReviewRunResult = {
   updatedCategories: SupplementCategory[];
 };
 
+export type AcceptSupplementReviewCallbackResult = {
+  reviewRunId: string;
+  accepted: true;
+  status: MaterialReviewRunStatus;
+  updatedCategories: SupplementCategory[];
+};
+
+type SupplementReviewCallbackBody = z.infer<
+  typeof supplementReviewCallbackBodySchema
+>;
+
 function toIsoString(value: Date | string | null | undefined) {
   if (value === null || value === undefined) {
     return null;
@@ -282,6 +296,41 @@ function mapCategoryResultToSaveInput(result: MaterialCategoryReviewResult) {
     aiMessage: result.aiMessage,
     resultPayload: toRecordPayload(result.resultPayload),
     requests,
+  };
+}
+
+function mapCallbackCategoryResultToSaveInput(
+  result: SupplementReviewCallbackBody["categories"][number],
+) {
+  const category = assertSupportedSupplementCategory(result.category);
+  const status = assertKnownReviewStatus(result.status);
+  const requests = result.resultPayload.supplementRequired
+    ? result.resultPayload.requests.map((request) => ({
+        title: request.title,
+        reason: request.reason ?? null,
+        suggestedMaterials: request.suggestedMaterials ?? null,
+        aiMessage: request.aiMessage ?? result.aiMessage ?? null,
+        status: request.status,
+        isSatisfied: request.status === "SATISFIED",
+      }))
+    : [
+        {
+          title: `${SUPPLEMENT_CATEGORY_LABELS[category]} complete`,
+          reason: `No supplement is required for ${SUPPLEMENT_CATEGORY_LABELS[category]}.`,
+          suggestedMaterials: null,
+          aiMessage: result.aiMessage ?? null,
+          status: "SATISFIED" as const,
+          isSatisfied: true,
+        },
+      ];
+
+  return {
+    category,
+    status,
+    aiMessage: result.aiMessage ?? null,
+    resultPayload: toRecordPayload(result.resultPayload),
+    requests,
+    finishedAt: result.reviewedAt ? new Date(result.reviewedAt) : null,
   };
 }
 
@@ -438,6 +487,119 @@ export async function syncSupplementReviewRun(
       message: "Failed to sync the supplement review result.",
       status: 500,
       code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_SYNC_FAILED,
+      details: error instanceof Error ? { cause: error.message } : undefined,
+    });
+  }
+}
+
+export async function acceptSupplementReviewCallback(
+  reviewRunId: string,
+  payload: SupplementReviewCallbackBody,
+): Promise<AcceptSupplementReviewCallbackResult> {
+  const reviewRun = await getMaterialReviewRunById(reviewRunId);
+
+  if (!reviewRun) {
+    throw new MaterialSupplementServiceError({
+      message: "The supplement review run could not be found.",
+      status: 404,
+      code: SUPPLEMENT_INTERNAL_ERROR_CODES.SUPPLEMENT_REVIEW_RUN_NOT_FOUND,
+      details: { reviewRunId },
+    });
+  }
+
+  if (
+    reviewRun.externalRunId !== null &&
+    reviewRun.externalRunId !== payload.externalRunId
+  ) {
+    throw new MaterialSupplementServiceError({
+      message: "The supplement review callback is stale.",
+      status: 409,
+      code: SUPPLEMENT_INTERNAL_ERROR_CODES.SUPPLEMENT_REVIEW_CALLBACK_STALE,
+      details: {
+        reviewRunId,
+        externalRunId: payload.externalRunId,
+      },
+    });
+  }
+
+  const status = assertKnownReviewStatus(payload.status);
+  const externalRunIdPatch =
+    reviewRun.externalRunId === null
+      ? { externalRunId: payload.externalRunId }
+      : {};
+
+  try {
+    if (status !== "COMPLETED") {
+      if (reviewRun.status === "COMPLETED") {
+        return {
+          reviewRunId,
+          accepted: true,
+          status: "COMPLETED",
+          updatedCategories: [],
+        };
+      }
+
+      const updatedRun = await updateMaterialReviewRun(reviewRunId, {
+        ...externalRunIdPatch,
+        status,
+        finishedAt: payload.finishedAt ? new Date(payload.finishedAt) : null,
+        errorMessage:
+          status === "FAILED" ? "Callback marked run failed." : null,
+      });
+
+      if (!updatedRun) {
+        throw new MaterialSupplementServiceError({
+          message: "The supplement review run could not be found.",
+          status: 404,
+          code: SUPPLEMENT_INTERNAL_ERROR_CODES.SUPPLEMENT_REVIEW_RUN_NOT_FOUND,
+          details: { reviewRunId },
+        });
+      }
+
+      return {
+        reviewRunId,
+        accepted: true,
+        status: updatedRun.status as MaterialReviewRunStatus,
+        updatedCategories: [],
+      };
+    }
+
+    if (reviewRun.externalRunId === null) {
+      await updateMaterialReviewRun(reviewRunId, externalRunIdPatch);
+    }
+
+    const savedResult = await saveMaterialReviewResult({
+      applicationId: reviewRun.applicationId,
+      reviewRunId,
+      status,
+      finishedAt: payload.finishedAt ? new Date(payload.finishedAt) : null,
+      categories: payload.categories.map(mapCallbackCategoryResultToSaveInput),
+    });
+
+    if (!savedResult) {
+      throw new MaterialSupplementServiceError({
+        message: "The supplement review run could not be found.",
+        status: 404,
+        code: SUPPLEMENT_INTERNAL_ERROR_CODES.SUPPLEMENT_REVIEW_RUN_NOT_FOUND,
+        details: { reviewRunId },
+      });
+    }
+
+    return {
+      reviewRunId,
+      accepted: true,
+      status: savedResult.reviewRun.status as MaterialReviewRunStatus,
+      updatedCategories: savedResult.updatedCategories,
+    };
+  } catch (error) {
+    if (error instanceof MaterialSupplementServiceError) {
+      throw error;
+    }
+
+    throw new MaterialSupplementServiceError({
+      message: "Failed to save the supplement review callback result.",
+      status: 500,
+      code: SUPPLEMENT_INTERNAL_ERROR_CODES.SUPPLEMENT_REVIEW_RESULT_SAVE_FAILED,
       details: error instanceof Error ? { cause: error.message } : undefined,
     });
   }

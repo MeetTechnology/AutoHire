@@ -7,6 +7,7 @@ import { GET as getReviewRunRoute } from "@/app/api/applications/[applicationId]
 import { GET as getSummaryRoute } from "@/app/api/applications/[applicationId]/material-supplement/summary/route";
 import { POST as postInitialRoute } from "@/app/api/applications/[applicationId]/material-supplement/reviews/initial/route";
 import { POST as postReviewRunSyncRoute } from "@/app/api/applications/[applicationId]/material-supplement/reviews/[reviewRunId]/sync/route";
+import { POST as postReviewRunCallbackRoute } from "@/app/api/internal/material-supplement/reviews/[reviewRunId]/callback/route";
 import { POST as postUploadBatchRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-batches/route";
 import { POST as postUploadBatchConfirmRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-batches/[batchId]/confirm/route";
 import { POST as postUploadIntentRoute } from "@/app/api/applications/[applicationId]/material-supplement/upload-intent/route";
@@ -14,10 +15,14 @@ import { POST as postFileRoute } from "@/app/api/applications/[applicationId]/ma
 import { DELETE as deleteFileRoute } from "@/app/api/applications/[applicationId]/material-supplement/files/[fileId]/route";
 import { createSessionToken, getSessionCookieName } from "@/lib/auth/session";
 import {
+  createMaterialReviewRun,
   getMaterialReviewRunByApplicationAndRunNo,
+  listMaterialCategoryReviews,
   listMaterialReviewRuns,
+  listSupplementRequests,
   updateApplication,
 } from "@/lib/data/store";
+import { createMaterialReviewCallbackSignature } from "@/lib/material-supplement/internal-auth";
 import * as materialReviewClient from "@/lib/material-review/client";
 import { MaterialReviewClientError } from "@/lib/material-review/types";
 
@@ -62,6 +67,65 @@ function buildRequest(
     duplex: init?.body ? ("half" as const) : undefined,
   });
 }
+
+function buildCallbackRequest(
+  url: string,
+  body: unknown,
+  init?: {
+    secret?: string;
+    timestamp?: string;
+    signature?: string;
+  },
+) {
+  const rawBody = typeof body === "string" ? body : JSON.stringify(body);
+  const timestamp = init?.timestamp ?? new Date().toISOString();
+  const secret = init?.secret ?? "callback-test-secret";
+  const signature =
+    init?.signature ??
+    createMaterialReviewCallbackSignature({
+      secret,
+      timestamp,
+      rawBody,
+    });
+
+  return new NextRequest(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Material-Review-Signature": signature,
+      "X-Material-Review-Timestamp": timestamp,
+    },
+    body: rawBody,
+    duplex: "half",
+  });
+}
+
+const validCallbackPayload = {
+  externalRunId: "external-callback-education",
+  status: "COMPLETED",
+  finishedAt: "2026-05-07T08:00:00.000Z",
+  categories: [
+    {
+      category: "EDUCATION",
+      status: "COMPLETED",
+      reviewedAt: "2026-05-07T08:00:00.000Z",
+      aiMessage: "Please upload proof of your doctoral degree.",
+      resultPayload: {
+        supplementRequired: true,
+        requests: [
+          {
+            title: "Doctoral degree proof required",
+            reason: "The submitted documents do not prove the doctoral degree.",
+            suggestedMaterials: ["Doctoral degree certificate"],
+            aiMessage: "Please upload proof of your doctoral degree.",
+            status: "PENDING",
+          },
+        ],
+      },
+      rawResultPayload: null,
+    },
+  ],
+} as const;
 
 describe("material supplement routes", () => {
   beforeEach(() => {
@@ -1045,6 +1109,226 @@ describe("material supplement routes", () => {
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toMatchObject({
       error: { code: "SUPPLEMENT_REVIEW_RUN_NOT_FOUND" },
+    });
+  });
+
+  it("accepts an internal material review callback and is idempotent", async () => {
+    process.env.MATERIAL_REVIEW_CALLBACK_SECRET = "callback-test-secret";
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "PROCESSING",
+      externalRunId: validCallbackPayload.externalRunId,
+    });
+
+    const firstResponse = await postReviewRunCallbackRoute(
+      buildCallbackRequest(
+        `http://localhost/api/internal/material-supplement/reviews/${reviewRun.id}/callback`,
+        validCallbackPayload,
+      ),
+      {
+        params: Promise.resolve({
+          reviewRunId: reviewRun.id,
+        }),
+      },
+    );
+    const firstPayload = await firstResponse.json();
+    const secondResponse = await postReviewRunCallbackRoute(
+      buildCallbackRequest(
+        `http://localhost/api/internal/material-supplement/reviews/${reviewRun.id}/callback`,
+        validCallbackPayload,
+      ),
+      {
+        params: Promise.resolve({
+          reviewRunId: reviewRun.id,
+        }),
+      },
+    );
+    const secondPayload = await secondResponse.json();
+
+    expect(firstResponse.status).toBe(200);
+    expect(firstPayload).toEqual({
+      reviewRunId: reviewRun.id,
+      accepted: true,
+      status: "COMPLETED",
+      updatedCategories: ["EDUCATION"],
+    });
+    expect(secondResponse.status).toBe(200);
+    expect(secondPayload).toEqual({
+      reviewRunId: reviewRun.id,
+      accepted: true,
+      status: "COMPLETED",
+      updatedCategories: [],
+    });
+    await expect(
+      listMaterialCategoryReviews("app_supplement_required", {
+        reviewRunId: reviewRun.id,
+      }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      listSupplementRequests("app_supplement_required", {
+        reviewRunId: reviewRun.id,
+      }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("does not downgrade a completed review run from a delayed internal callback", async () => {
+    process.env.MATERIAL_REVIEW_CALLBACK_SECRET = "callback-test-secret";
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "COMPLETED",
+      externalRunId: validCallbackPayload.externalRunId,
+      finishedAt: new Date("2026-05-07T08:00:00.000Z"),
+    });
+
+    const delayedPayload = {
+      ...validCallbackPayload,
+      status: "PROCESSING",
+      finishedAt: null,
+      categories: [],
+    };
+    const response = await postReviewRunCallbackRoute(
+      buildCallbackRequest(
+        `http://localhost/api/internal/material-supplement/reviews/${reviewRun.id}/callback`,
+        delayedPayload,
+      ),
+      {
+        params: Promise.resolve({
+          reviewRunId: reviewRun.id,
+        }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({
+      reviewRunId: reviewRun.id,
+      accepted: true,
+      status: "COMPLETED",
+      updatedCategories: [],
+    });
+    await expect(
+      getMaterialReviewRunByApplicationAndRunNo(
+        "app_supplement_required",
+        3,
+      ),
+    ).resolves.toMatchObject({
+      status: "COMPLETED",
+    });
+  });
+
+  it("rejects internal callbacks without valid authentication", async () => {
+    process.env.MATERIAL_REVIEW_CALLBACK_SECRET = "callback-test-secret";
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "PROCESSING",
+      externalRunId: validCallbackPayload.externalRunId,
+    });
+
+    const missingHeaders = await postReviewRunCallbackRoute(
+      new NextRequest(
+        `http://localhost/api/internal/material-supplement/reviews/${reviewRun.id}/callback`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(validCallbackPayload),
+          duplex: "half",
+        },
+      ),
+      {
+        params: Promise.resolve({
+          reviewRunId: reviewRun.id,
+        }),
+      },
+    );
+    const badSignature = await postReviewRunCallbackRoute(
+      buildCallbackRequest(
+        `http://localhost/api/internal/material-supplement/reviews/${reviewRun.id}/callback`,
+        validCallbackPayload,
+        { signature: "bad-signature" },
+      ),
+      {
+        params: Promise.resolve({
+          reviewRunId: reviewRun.id,
+        }),
+      },
+    );
+    const expired = await postReviewRunCallbackRoute(
+      buildCallbackRequest(
+        `http://localhost/api/internal/material-supplement/reviews/${reviewRun.id}/callback`,
+        validCallbackPayload,
+        { timestamp: "2026-05-07T00:00:00.000Z" },
+      ),
+      {
+        params: Promise.resolve({
+          reviewRunId: reviewRun.id,
+        }),
+      },
+    );
+
+    expect(missingHeaders.status).toBe(401);
+    expect(badSignature.status).toBe(401);
+    expect(expired.status).toBe(401);
+    await expect(missingHeaders.json()).resolves.toMatchObject({
+      error: { code: "INTERNAL_UNAUTHORIZED" },
+    });
+    await expect(badSignature.json()).resolves.toMatchObject({
+      error: { code: "INTERNAL_SIGNATURE_INVALID" },
+    });
+    await expect(expired.json()).resolves.toMatchObject({
+      error: { code: "INTERNAL_TIMESTAMP_INVALID" },
+    });
+  });
+
+  it("returns internal callback missing run and invalid payload errors", async () => {
+    process.env.MATERIAL_REVIEW_CALLBACK_SECRET = "callback-test-secret";
+
+    const missingRun = await postReviewRunCallbackRoute(
+      buildCallbackRequest(
+        "http://localhost/api/internal/material-supplement/reviews/missing_run/callback",
+        validCallbackPayload,
+      ),
+      {
+        params: Promise.resolve({
+          reviewRunId: "missing_run",
+        }),
+      },
+    );
+    const invalidPayload = await postReviewRunCallbackRoute(
+      buildCallbackRequest(
+        "http://localhost/api/internal/material-supplement/reviews/missing_run/callback",
+        {
+          ...validCallbackPayload,
+          categories: [
+            {
+              ...validCallbackPayload.categories[0],
+              resultPayload: null,
+            },
+          ],
+        },
+      ),
+      {
+        params: Promise.resolve({
+          reviewRunId: "missing_run",
+        }),
+      },
+    );
+
+    expect(missingRun.status).toBe(404);
+    await expect(missingRun.json()).resolves.toMatchObject({
+      error: { code: "SUPPLEMENT_REVIEW_RUN_NOT_FOUND" },
+    });
+    expect(invalidPayload.status).toBe(400);
+    await expect(invalidPayload.json()).resolves.toMatchObject({
+      error: { code: "SUPPLEMENT_REVIEW_RESULT_INVALID" },
     });
   });
 

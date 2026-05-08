@@ -21,6 +21,7 @@ import {
   assertCategoryNotReviewing,
   assertReviewRoundLimit,
   assertSupportedSupplementCategory,
+  acceptSupplementReviewCallback,
   ensureInitialSupplementReview,
   getSupplementReviewRun,
   syncSupplementReviewRun,
@@ -518,6 +519,227 @@ describe("material supplement review run sync", () => {
     ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
       status: 502,
       code: "SUPPLEMENT_REVIEW_RESULT_INVALID",
+    });
+  });
+
+  it("accepts a completed callback and preserves latest/history behavior", async () => {
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "PROCESSING",
+      externalRunId: "callback-review-education",
+    });
+
+    await expect(
+      acceptSupplementReviewCallback(reviewRun.id, {
+        externalRunId: "callback-review-education",
+        status: "COMPLETED",
+        finishedAt: "2026-05-07T09:00:00.000Z",
+        categories: [
+          {
+            category: "EDUCATION",
+            status: "COMPLETED",
+            reviewedAt: "2026-05-07T09:00:00.000Z",
+            aiMessage: "Education proof is complete.",
+            resultPayload: {
+              supplementRequired: false,
+              requests: [],
+            },
+            rawResultPayload: null,
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      reviewRunId: reviewRun.id,
+      accepted: true,
+      status: "COMPLETED",
+      updatedCategories: ["EDUCATION"],
+    });
+
+    await expect(
+      getLatestMaterialCategoryReview("app_supplement_required", "EDUCATION"),
+    ).resolves.toMatchObject({
+      reviewRunId: reviewRun.id,
+      status: "COMPLETED",
+      isLatest: true,
+    });
+    const requests = await listSupplementRequests("app_supplement_required", {
+      category: "EDUCATION",
+    });
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reviewRunId: reviewRun.id,
+          status: "SATISFIED",
+          isLatest: true,
+          isSatisfied: true,
+        }),
+      ]),
+    );
+  });
+
+  it("does not let a completed stale callback overwrite a newer latest review", async () => {
+    await updateApplication("app_secondary", {
+      applicationStatus: "SUBMITTED",
+    });
+    const staleRun = await createMaterialReviewRun({
+      applicationId: "app_secondary",
+      runNo: 1,
+      triggerType: "INITIAL_SUBMISSION",
+      status: "PROCESSING",
+      externalRunId: "callback-review-honor-stale",
+    });
+    const newerRun = await createMaterialReviewRun({
+      applicationId: "app_secondary",
+      runNo: 2,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "HONOR",
+      status: "COMPLETED",
+      externalRunId: "callback-review-honor-newer",
+    });
+    const newerReview = await createMaterialCategoryReview({
+      applicationId: "app_secondary",
+      reviewRunId: newerRun.id,
+      category: "HONOR",
+      roundNo: 2,
+      status: "COMPLETED",
+      aiMessage: "Honor is already complete.",
+      resultPayload: { supplementRequired: false, requests: [] },
+      finishedAt: new Date("2026-05-07T09:00:00.000Z"),
+    });
+
+    await expect(
+      acceptSupplementReviewCallback(staleRun.id, {
+        externalRunId: "callback-review-honor-stale",
+        status: "COMPLETED",
+        finishedAt: "2026-05-07T09:01:00.000Z",
+        categories: [
+          {
+            category: "HONOR",
+            status: "COMPLETED",
+            reviewedAt: "2026-05-07T09:01:00.000Z",
+            aiMessage: "Honor needs an award certificate.",
+            resultPayload: {
+              supplementRequired: true,
+              requests: [
+                {
+                  title: "Award certificate required",
+                  reason: "The submitted documents do not prove the honor.",
+                  suggestedMaterials: ["Award certificate"],
+                  aiMessage: "Honor needs an award certificate.",
+                  status: "PENDING",
+                },
+              ],
+            },
+            rawResultPayload: null,
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      reviewRunId: staleRun.id,
+      accepted: true,
+      status: "COMPLETED",
+      updatedCategories: [],
+    });
+    await expect(
+      getLatestMaterialCategoryReview("app_secondary", "HONOR"),
+    ).resolves.toMatchObject({
+      id: newerReview.id,
+      reviewRunId: newerRun.id,
+      isLatest: true,
+    });
+  });
+
+  it("accepts a non-completed callback without creating category reviews", async () => {
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "QUEUED",
+      externalRunId: null,
+    });
+
+    await expect(
+      acceptSupplementReviewCallback(reviewRun.id, {
+        externalRunId: "callback-review-education-pending",
+        status: "PROCESSING",
+        finishedAt: null,
+        categories: [],
+      }),
+    ).resolves.toEqual({
+      reviewRunId: reviewRun.id,
+      accepted: true,
+      status: "PROCESSING",
+      updatedCategories: [],
+    });
+    await expect(
+      getMaterialReviewRunByApplicationAndRunNo("app_supplement_required", 3),
+    ).resolves.toMatchObject({
+      externalRunId: "callback-review-education-pending",
+      status: "PROCESSING",
+    });
+    await expect(
+      listMaterialCategoryReviews("app_supplement_required", {
+        reviewRunId: reviewRun.id,
+      }),
+    ).resolves.toHaveLength(0);
+  });
+
+  it("does not downgrade a completed run when a stale non-completed callback arrives", async () => {
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "COMPLETED",
+      externalRunId: "callback-review-education-completed",
+      finishedAt: new Date("2026-05-07T09:00:00.000Z"),
+    });
+
+    await expect(
+      acceptSupplementReviewCallback(reviewRun.id, {
+        externalRunId: "callback-review-education-completed",
+        status: "PROCESSING",
+        finishedAt: null,
+        categories: [],
+      }),
+    ).resolves.toEqual({
+      reviewRunId: reviewRun.id,
+      accepted: true,
+      status: "COMPLETED",
+      updatedCategories: [],
+    });
+    await expect(
+      getMaterialReviewRunByApplicationAndRunNo("app_supplement_required", 3),
+    ).resolves.toMatchObject({
+      externalRunId: "callback-review-education-completed",
+      status: "COMPLETED",
+    });
+  });
+
+  it("rejects callbacks whose external run id does not match the local run", async () => {
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EDUCATION",
+      status: "PROCESSING",
+      externalRunId: "callback-review-education-current",
+    });
+
+    await expect(
+      acceptSupplementReviewCallback(reviewRun.id, {
+        externalRunId: "callback-review-education-old",
+        status: "PROCESSING",
+        finishedAt: null,
+        categories: [],
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_REVIEW_CALLBACK_STALE",
     });
   });
 });

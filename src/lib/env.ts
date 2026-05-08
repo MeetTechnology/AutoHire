@@ -26,6 +26,7 @@ const envSchema = z.object({
   MATERIAL_REVIEW_MODE: z.enum(["mock", "live"]).default("mock"),
   MATERIAL_REVIEW_BASE_URL: z.string().optional(),
   MATERIAL_REVIEW_API_KEY: z.string().optional(),
+  MATERIAL_REVIEW_CALLBACK_SECRET: z.string().optional(),
   SENTRY_DSN: z.string().optional().default(""),
 });
 
