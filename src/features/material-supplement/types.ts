@@ -51,6 +51,7 @@ export type SupplementCategoryDisplayStatus =
 
 export type SupplementFileSummary = {
   id: string;
+  uploadBatchId: string;
   fileName: string;
   fileType: string;
   fileSize: number;

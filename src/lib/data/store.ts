@@ -2001,6 +2001,7 @@ export type MaterialSupplementSummaryData = SupplementSummary & {
 function toSupplementFileSummary(file: SupplementFileRecord) {
   return {
     id: file.id,
+    uploadBatchId: file.uploadBatchId,
     fileName: file.fileName,
     fileType: file.fileType,
     fileSize: file.fileSize,

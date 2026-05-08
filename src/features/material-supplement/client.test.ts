@@ -18,6 +18,7 @@ import {
   fetchSupplementSnapshot,
   fetchSupplementSummary,
   syncSupplementReviewRun,
+  uploadSupplementBinary,
 } from "@/features/material-supplement/client";
 
 describe("material supplement client", () => {
@@ -429,6 +430,67 @@ describe("material supplement client", () => {
       "/api/applications/app_001/material-supplement/upload-batches/batch_001/confirm",
     );
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe("POST");
+  });
+
+  it("uploads supplement binary files to the presigned URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const file = new File(["proof"], "proof.pdf", {
+      type: "application/pdf",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      uploadSupplementBinary(
+        {
+          uploadId: "upload_001",
+          uploadUrl: "https://storage.example.com/presigned-url",
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/pdf",
+          },
+          objectKey: "applications/app_001/supplements/EDUCATION/batch_001/proof.pdf",
+          deduped: false,
+        },
+        file,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://storage.example.com/presigned-url",
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/pdf",
+        },
+        body: file,
+      },
+    );
+  });
+
+  it("throws when supplement binary upload fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("upload failed", {
+        status: 500,
+      }),
+    );
+    const file = new File(["proof"], "proof.pdf", {
+      type: "application/pdf",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      uploadSupplementBinary(
+        {
+          uploadId: "upload_001",
+          uploadUrl: "https://storage.example.com/presigned-url",
+          method: "PUT",
+          headers: {},
+          objectKey: "applications/app_001/supplements/EDUCATION/batch_001/proof.pdf",
+          deduped: false,
+        },
+        file,
+      ),
+    ).rejects.toThrow("Supplement file upload failed.");
   });
 
   it("throws a typed client error for API spec failures", async () => {

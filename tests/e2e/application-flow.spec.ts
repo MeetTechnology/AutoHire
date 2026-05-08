@@ -265,3 +265,60 @@ test("submitted token restores submitted materials page", async ({ page }) => {
     page.getByRole("heading", { name: "Leave us a message" }),
   ).toBeVisible();
 });
+
+test("submitted expert can review supplement history and filters", async ({
+  page,
+}) => {
+  await initializeBrowserSession(page, "sample-supplement-satisfied-token");
+  await page.goto("/apply/supplement/history");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Supplement Review History",
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Run 1 - Honor Documents")).toBeVisible();
+  await expect(page.getByText("Honor evidence is already sufficient.")).toBeVisible();
+  await expect(page.getByText("Honor materials complete")).toBeVisible();
+  await expect(page.getByText("satisfied").first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Employment Documents" }).click();
+  await expect(page).toHaveURL(/\/apply\/supplement\/history\?category=EMPLOYMENT/);
+  await page.getByRole("button", { name: /Run 1 - Employment Documents/i }).click();
+  await expect(page.getByText("employment-proof-final.pdf")).toBeVisible();
+  await expect(page.getByText("Upload recent employment proof")).toBeVisible();
+
+  await page.goto("/apply/supplement/history?category=BAD&runNo=oops");
+  await expect(
+    page.getByRole("heading", {
+      name: "Supplement Review History",
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Run 1 - Honor Documents")).toBeVisible();
+  await expect(page.getByText("Run 1 - Employment Documents")).toBeVisible();
+});
+
+test("category history links from the supplement workspace", async ({ page }) => {
+  await initializeBrowserSession(page, "sample-supplement-required-token");
+  await page.goto("/apply/supplement");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Supplement Materials",
+      level: 1,
+    }),
+  ).toBeVisible();
+  const identityCategory = page
+    .getByRole("button", { name: /Identity Documents/i })
+    .locator("xpath=..");
+  await identityCategory
+    .getByRole("button", { name: /Identity Documents/i })
+    .click();
+  await identityCategory.getByRole("link", { name: "View history" }).click();
+
+  await expect(page).toHaveURL(/\/apply\/supplement\/history\?category=IDENTITY/);
+  await expect(page.getByText("Run 2 - Identity Documents")).toBeVisible();
+  await expect(page.getByText("Upload a clearer passport scan")).toBeVisible();
+});

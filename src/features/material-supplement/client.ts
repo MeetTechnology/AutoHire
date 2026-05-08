@@ -376,3 +376,18 @@ export async function confirmSupplementUploadBatch(
     response,
   );
 }
+
+export async function uploadSupplementBinary(
+  intent: SupplementUploadIntentResponse,
+  file: File,
+) {
+  const response = await fetch(intent.uploadUrl, {
+    method: intent.method,
+    headers: intent.headers,
+    body: file,
+  });
+
+  if (!response.ok) {
+    throw new Error("Supplement file upload failed.");
+  }
+}
