@@ -1,6 +1,8 @@
 import { buildTrackedRequestHeaders } from "@/lib/tracking/client";
 
 import type {
+  MaterialCategoryReviewStatus,
+  MaterialReviewRunStatus,
   SupplementCategory,
   SupplementHistoryItem,
   SupplementSnapshot,
@@ -57,6 +59,29 @@ export type EnsureInitialReviewResponse = {
   runNo: number;
   status: string;
   created: boolean;
+};
+
+export type SupplementReviewRunResponse = {
+  reviewRunId: string;
+  applicationId: string;
+  runNo: number;
+  status: MaterialReviewRunStatus;
+  triggerType: string;
+  triggeredCategory: SupplementCategory | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  categories: Array<{
+    category: SupplementCategory;
+    status: MaterialCategoryReviewStatus;
+    isLatest: boolean;
+  }>;
+};
+
+export type SyncSupplementReviewRunResponse = {
+  reviewRunId: string;
+  status: MaterialReviewRunStatus;
+  synced: boolean;
+  updatedCategories: SupplementCategory[];
 };
 
 export type SupplementUploadBatchResponse = {
@@ -188,6 +213,36 @@ export async function ensureInitialReview(applicationId: string) {
   );
 
   return parseSupplementResponse<EnsureInitialReviewResponse>(response);
+}
+
+export async function fetchSupplementReviewRun(
+  applicationId: string,
+  reviewRunId: string,
+) {
+  const response = await fetch(
+    `${buildSupplementBasePath(applicationId)}/reviews/${reviewRunId}`,
+    buildSupplementFetchOptions({
+      credentials: "include",
+      cache: "no-store",
+    }),
+  );
+
+  return parseSupplementResponse<SupplementReviewRunResponse>(response);
+}
+
+export async function syncSupplementReviewRun(
+  applicationId: string,
+  reviewRunId: string,
+) {
+  const response = await fetch(
+    `${buildSupplementBasePath(applicationId)}/reviews/${reviewRunId}/sync`,
+    buildSupplementFetchOptions({
+      method: "POST",
+      credentials: "include",
+    }),
+  );
+
+  return parseSupplementResponse<SyncSupplementReviewRunResponse>(response);
 }
 
 export async function fetchSupplementSnapshot(applicationId: string) {

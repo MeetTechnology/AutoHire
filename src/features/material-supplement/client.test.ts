@@ -13,9 +13,11 @@ import {
   createSupplementUploadIntent,
   deleteSupplementDraftFile,
   ensureInitialReview,
+  fetchSupplementReviewRun,
   fetchSupplementHistory,
   fetchSupplementSnapshot,
   fetchSupplementSummary,
+  syncSupplementReviewRun,
 } from "@/features/material-supplement/client";
 
 describe("material supplement client", () => {
@@ -100,6 +102,75 @@ describe("material supplement client", () => {
     expect(requestInit.credentials).toBe("include");
     expect(headers.get("Content-Type")).toBe("application/json");
     expect(requestInit.body).toBe("{}");
+  });
+
+  it("fetches supplement review run status", async () => {
+    const payload = {
+      reviewRunId: "run_001",
+      applicationId: "app_001",
+      runNo: 1,
+      status: "COMPLETED" as const,
+      triggerType: "INITIAL_SUBMISSION",
+      triggeredCategory: null,
+      startedAt: "2026-05-05T09:00:00.000Z",
+      finishedAt: "2026-05-05T09:30:00.000Z",
+      categories: [
+        {
+          category: "EDUCATION" as const,
+          status: "COMPLETED" as const,
+          isLatest: true,
+        },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchSupplementReviewRun("app_001", "run_001"),
+    ).resolves.toEqual(payload);
+
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/applications/app_001/material-supplement/reviews/run_001",
+    );
+    expect(requestInit.credentials).toBe("include");
+    expect(requestInit.cache).toBe("no-store");
+  });
+
+  it("posts supplement review run sync requests", async () => {
+    const payload = {
+      reviewRunId: "run_001",
+      status: "COMPLETED" as const,
+      synced: true,
+      updatedCategories: ["EDUCATION" as const],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(syncSupplementReviewRun("app_001", "run_001")).resolves.toEqual(
+      payload,
+    );
+
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/applications/app_001/material-supplement/reviews/run_001/sync",
+    );
+    expect(requestInit.method).toBe("POST");
+    expect(requestInit.credentials).toBe("include");
   });
 
   it("fetches supplement snapshot", async () => {

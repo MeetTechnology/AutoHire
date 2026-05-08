@@ -214,7 +214,23 @@ test("eligible review with corrected required contact field can continue to mate
 });
 
 test("submitted token restores submitted materials page", async ({ page }) => {
+  const initialReviewResponse = page.waitForResponse(
+    (response) =>
+      response
+        .url()
+        .includes("/material-supplement/reviews/initial") &&
+      response.status() === 200,
+  );
+  const initialReviewSyncResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/material-supplement/reviews/") &&
+      response.url().includes("/sync") &&
+      response.status() === 200,
+  );
+
   await page.goto("/apply/materials?t=sample-submitted-token");
+  await initialReviewResponse;
+  await initialReviewSyncResponse;
 
   await expect(
     page.getByRole("heading", {
@@ -226,5 +242,26 @@ test("submitted token restores submitted materials page", async ({ page }) => {
     page.getByText(
       "Application Received! We will review your package and contact you within 1 week.",
     ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "AI material review" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /Supplement materials are required\.|Some supplement requests are still pending\./,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("No supplement materials are required"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Pending").locator("..").getByText("1"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "View supplement requests" }),
+  ).toHaveAttribute("href", "/apply/supplement");
+  await expect(page.getByRole("link", { name: "Open WeChat" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Leave us a message" }),
   ).toBeVisible();
 });

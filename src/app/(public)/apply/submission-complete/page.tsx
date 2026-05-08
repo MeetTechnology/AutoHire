@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   Clock3,
@@ -43,7 +43,18 @@ import type {
   ApplicationSnapshot,
   FeedbackDeviceType,
 } from "@/features/application/types";
-import { trackPageView, getOrCreateTrackingSessionId } from "@/lib/tracking/client";
+import {
+  ensureInitialReview,
+  fetchSupplementReviewRun,
+  fetchSupplementSummary,
+  syncSupplementReviewRun,
+} from "@/features/material-supplement/client";
+import { SupplementSummaryCard } from "@/features/material-supplement/components/supplement-summary-card";
+import type { SupplementSummary } from "@/features/material-supplement/types";
+import {
+  trackPageView,
+  getOrCreateTrackingSessionId,
+} from "@/lib/tracking/client";
 import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
 import { cn } from "@/lib/utils";
 
@@ -102,6 +113,10 @@ function detectDeviceType(width: number): FeedbackDeviceType {
   return "desktop";
 }
 
+function toMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function buildFeedbackContext(): ApplicationFeedbackContext {
   if (typeof window === "undefined") {
     return {
@@ -136,6 +151,21 @@ export default function SubmissionCompletePage() {
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [supplementSummary, setSupplementSummary] =
+    useState<SupplementSummary | null>(null);
+  const [isSupplementSummaryLoading, setIsSupplementSummaryLoading] =
+    useState(false);
+  const [supplementSummaryError, setSupplementSummaryError] = useState<
+    string | null
+  >(null);
+  const [isStartingInitialReview, setIsStartingInitialReview] = useState(false);
+  const [
+    isAwaitingInitialReviewResult,
+    setIsAwaitingInitialReviewResult,
+  ] = useState(false);
+  const [initialReviewError, setInitialReviewError] = useState<string | null>(
+    null,
+  );
   const [feedback, setFeedback] = useState<ApplicationFeedbackSnapshot>({
     status: "DRAFT",
     rating: null,
@@ -166,6 +196,89 @@ export default function SubmissionCompletePage() {
         : null,
   });
 
+  const loadSupplementSummary = useCallback(
+    async (applicationId: string, options?: { ensureInitial?: boolean }) => {
+      const shouldEnsureInitial = options?.ensureInitial ?? true;
+
+      async function syncInitialReviewResult(reviewRunId: string) {
+        try {
+          await syncSupplementReviewRun(applicationId, reviewRunId);
+          setSupplementSummary(await fetchSupplementSummary(applicationId));
+          setIsAwaitingInitialReviewResult(false);
+        } catch {
+          setIsAwaitingInitialReviewResult(true);
+        }
+      }
+
+      async function guardUnsyncedNoSupplementResult(
+        nextSummary: SupplementSummary,
+      ) {
+        if (
+          nextSummary.materialSupplementStatus !== "NO_SUPPLEMENT_REQUIRED" ||
+          !nextSummary.latestReviewRunId
+        ) {
+          return;
+        }
+
+        try {
+          const reviewRun = await fetchSupplementReviewRun(
+            applicationId,
+            nextSummary.latestReviewRunId,
+          );
+
+          if (reviewRun.categories.length === 0) {
+            await syncInitialReviewResult(nextSummary.latestReviewRunId);
+          }
+        } catch {
+          setIsAwaitingInitialReviewResult(true);
+        }
+      }
+
+      try {
+        setIsSupplementSummaryLoading(true);
+        setSupplementSummaryError(null);
+        setInitialReviewError(null);
+        setIsAwaitingInitialReviewResult(false);
+
+        const nextSummary = await fetchSupplementSummary(applicationId);
+        setSupplementSummary(nextSummary);
+
+        if (
+          shouldEnsureInitial &&
+          (!nextSummary.latestReviewRunId ||
+            nextSummary.materialSupplementStatus === "NOT_STARTED")
+        ) {
+          try {
+            setIsStartingInitialReview(true);
+            const initialReview = await ensureInitialReview(applicationId);
+            await syncInitialReviewResult(initialReview.reviewRunId);
+          } catch (nextError) {
+            setInitialReviewError(
+              toMessage(
+                nextError,
+                "The material review could not be started. Please refresh later.",
+              ),
+            );
+          } finally {
+            setIsStartingInitialReview(false);
+          }
+        } else {
+          await guardUnsyncedNoSupplementResult(nextSummary);
+        }
+      } catch (nextError) {
+        setSupplementSummaryError(
+          toMessage(
+            nextError,
+            "The material review status could not be loaded. Please refresh later.",
+          ),
+        );
+      } finally {
+        setIsSupplementSummaryLoading(false);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     let active = true;
 
@@ -187,6 +300,7 @@ export default function SubmissionCompletePage() {
         }
 
         setSnapshot(nextSnapshot);
+        void loadSupplementSummary(nextSnapshot.applicationId);
       } catch (nextError) {
         if (active) {
           setError(
@@ -239,7 +353,7 @@ export default function SubmissionCompletePage() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [loadSupplementSummary, router]);
 
   useEffect(() => {
     if (
@@ -507,6 +621,22 @@ export default function SubmissionCompletePage() {
                 </div>
               </div>
             </SectionCard>
+          ) : null}
+
+          {!isLoading && !error && snapshot ? (
+            <SupplementSummaryCard
+              summary={supplementSummary}
+              isLoading={isSupplementSummaryLoading}
+              isStartingInitialReview={isStartingInitialReview}
+              isAwaitingInitialReviewResult={isAwaitingInitialReviewResult}
+              error={supplementSummaryError}
+              initialReviewError={initialReviewError}
+              onRefresh={() => {
+                void loadSupplementSummary(snapshot.applicationId, {
+                  ensureInitial: true,
+                });
+              }}
+            />
           ) : null}
 
           {!isLoading && !error && snapshot ? (
