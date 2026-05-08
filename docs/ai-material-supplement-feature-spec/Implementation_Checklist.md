@@ -72,7 +72,7 @@
 
 - [x] material review mock client 已实现，可支撑本地开发、联调和测试。
   - 验证：在无 live backend 的情况下，系统可生成可预期的补件审查状态或结果样例。
-- [ ] material review live client 已实现骨架，并通过 adapter 与业务逻辑解耦。
+- [x] material review live client 已实现骨架，并通过 adapter 与业务逻辑解耦。
   - 验证：live client 有独立入口与配置边界，但页面和 route 不直接依赖外部原始字段。
 - [ ] 审查结果 adapter 与入库事务已实现。
   - 验证：外部或 mock 返回结果先映射到内部最小结构，再完成持久化；UI 读取的是内部结构而非原始 payload。
