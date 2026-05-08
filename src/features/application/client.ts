@@ -17,10 +17,42 @@ type UploadIntent = {
   objectKey: string;
 };
 
+type ApplicationErrorDetails = Record<string, unknown>;
+
+type ApplicationErrorPayload = {
+  error?:
+    | string
+    | {
+        code?: string;
+        message?: string;
+        details?: ApplicationErrorDetails;
+      };
+  code?: string;
+};
+
 export type MaterialsResponse = Record<
   Lowercase<MaterialCategory>,
   Array<{ id: string; fileName: string; fileType?: string }>
 >;
+
+export class ApplicationClientError extends Error {
+  status: number;
+  code: string;
+  details?: ApplicationErrorDetails;
+
+  constructor(input: {
+    message: string;
+    status: number;
+    code: string;
+    details?: ApplicationErrorDetails;
+  }) {
+    super(input.message);
+    this.name = "ApplicationClientError";
+    this.status = input.status;
+    this.code = input.code;
+    this.details = input.details;
+  }
+}
 
 function buildFetchOptions(init?: RequestInit) {
   return {
@@ -31,10 +63,24 @@ function buildFetchOptions(init?: RequestInit) {
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const error = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
-    throw new Error(error.error ?? "Request failed.");
+    const payload = (await response
+      .json()
+      .catch(() => null)) as ApplicationErrorPayload | null;
+    const error = payload?.error;
+    const message =
+      typeof error === "string" ? error : (error?.message ?? "Request failed.");
+    const code =
+      typeof error === "string"
+        ? (payload?.code ?? "REQUEST_FAILED")
+        : (error?.code ?? payload?.code ?? "REQUEST_FAILED");
+    const details = typeof error === "string" ? undefined : error?.details;
+
+    throw new ApplicationClientError({
+      message,
+      status: response.status,
+      code,
+      details,
+    });
   }
 
   return response.json() as Promise<T>;
@@ -374,9 +420,7 @@ export async function submitSupplementalFields(
   return parseResponse<{
     analysisJobId: string | null;
     applicationStatus: string;
-  }>(
-    response,
-  );
+  }>(response);
 }
 
 export async function triggerSecondaryAnalysis(applicationId: string) {

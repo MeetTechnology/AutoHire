@@ -10,12 +10,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import {
-  PageFrame,
-  PageShell,
-  StatusBanner,
-  getButtonClassName,
-} from "@/components/ui/page-shell";
+import { PageFrame, PageShell, StatusBanner } from "@/components/ui/page-shell";
 import { fetchSession } from "@/features/application/client";
 import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
 import {
@@ -24,37 +19,21 @@ import {
 } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
 import {
-  MaterialSupplementClientError,
+  classifySupplementAccessError,
+  isBlockingSupplementAccessError,
+  type SupplementAccessErrorState,
+} from "@/features/material-supplement/access-error";
+import {
   fetchSupplementHistory,
   type SupplementHistoryFilters,
   type SupplementHistoryResponse,
 } from "@/features/material-supplement/client";
+import { SupplementAccessError } from "@/features/material-supplement/components/supplement-access-error";
 import { SupplementHistoryView } from "@/features/material-supplement/components/supplement-history-view";
 import { isSupplementCategory } from "@/features/material-supplement/constants";
 import type { SupplementCategory } from "@/features/material-supplement/types";
 import { trackPageView } from "@/lib/tracking/client";
 import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
-import { cn } from "@/lib/utils";
-
-function toSafeSupplementHistoryError(error: unknown) {
-  if (error instanceof MaterialSupplementClientError) {
-    if (error.status === 401 || error.status === 403) {
-      return "Your supplement session is no longer valid. Return to the application entry or refresh after restoring access.";
-    }
-
-    if (error.code === "APPLICATION_NOT_SUBMITTED") {
-      return "This application has not been submitted yet, so supplement history is not available.";
-    }
-
-    return error.message;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "The supplement history could not be loaded. Please refresh later.";
-}
 
 function parseRunNo(value: string | null) {
   if (value === null) {
@@ -96,10 +75,13 @@ function SupplementHistoryPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
-  const [history, setHistory] = useState<SupplementHistoryResponse | null>(null);
+  const [history, setHistory] = useState<SupplementHistoryResponse | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [accessError, setAccessError] =
+    useState<SupplementAccessErrorState | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const hasTrackedPageView = useRef(false);
   const historyRequestIdRef = useRef(0);
@@ -133,7 +115,7 @@ function SupplementHistoryPageContent() {
           setIsRefreshing(true);
           setRefreshError(null);
         } else {
-          setError(null);
+          setAccessError(null);
         }
 
         const nextHistory = await fetchSupplementHistory(
@@ -144,18 +126,26 @@ function SupplementHistoryPageContent() {
           return;
         }
         setHistory(nextHistory);
-        setError(null);
+        setAccessError(null);
         setRefreshError(null);
       } catch (nextError) {
         if (!isCurrentRequest()) {
           return;
         }
 
+        const nextAccessError = classifySupplementAccessError(nextError);
+
         if (refreshing) {
-          setRefreshError(toSafeSupplementHistoryError(nextError));
+          if (isBlockingSupplementAccessError(nextError)) {
+            setHistory(null);
+            setAccessError(nextAccessError);
+            setRefreshError(null);
+          } else {
+            setRefreshError(nextAccessError.description);
+          }
         } else {
           setHistory(null);
-          setError(toSafeSupplementHistoryError(nextError));
+          setAccessError(nextAccessError);
         }
       } finally {
         if (refreshing && isCurrentRequest()) {
@@ -179,7 +169,9 @@ function SupplementHistoryPageContent() {
         }
 
         if (nextSnapshot.applicationStatus !== "SUBMITTED") {
-          router.replace(resolveRouteFromStatus(nextSnapshot.applicationStatus));
+          router.replace(
+            resolveRouteFromStatus(nextSnapshot.applicationStatus),
+          );
           return;
         }
 
@@ -187,8 +179,9 @@ function SupplementHistoryPageContent() {
         await loadSupplementHistory(nextSnapshot.applicationId);
       } catch (nextError) {
         if (active) {
+          setSnapshot(null);
           setHistory(null);
-          setError(toSafeSupplementHistoryError(nextError));
+          setAccessError(classifySupplementAccessError(nextError));
         }
       } finally {
         if (active) {
@@ -246,41 +239,27 @@ function SupplementHistoryPageContent() {
             />
           ) : null}
 
-          {!isLoading && error ? (
-            <StatusBanner
-              tone="danger"
-              title="Supplement history could not be loaded"
-              description={error}
-            >
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                {snapshot?.applicationId ? (
-                  <button
-                    type="button"
-                    className={cn(
-                      getButtonClassName("secondary"),
-                      "w-full sm:w-auto",
-                    )}
-                    onClick={() => {
-                      void loadSupplementHistory(snapshot.applicationId, {
+          {!isLoading && accessError ? (
+            <SupplementAccessError
+              error={accessError}
+              isRefreshing={isRefreshing}
+              continueHref={
+                snapshot
+                  ? resolveRouteFromStatus(snapshot.applicationStatus)
+                  : "/apply"
+              }
+              onRefresh={
+                snapshot?.applicationId
+                  ? () =>
+                      loadSupplementHistory(snapshot.applicationId, {
                         refreshing: true,
-                      });
-                    }}
-                    disabled={isRefreshing}
-                  >
-                    Refresh
-                  </button>
-                ) : null}
-                <a
-                  href="/apply"
-                  className={cn(getButtonClassName("secondary"), "w-full sm:w-auto")}
-                >
-                  Back to application entry
-                </a>
-              </div>
-            </StatusBanner>
+                      })
+                  : undefined
+              }
+            />
           ) : null}
 
-          {!isLoading && !error && history ? (
+          {!isLoading && !accessError && history ? (
             <>
               {refreshError ? (
                 <StatusBanner

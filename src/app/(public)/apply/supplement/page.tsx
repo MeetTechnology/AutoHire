@@ -3,12 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import {
-  PageFrame,
-  PageShell,
-  StatusBanner,
-  getButtonClassName,
-} from "@/components/ui/page-shell";
+import { PageFrame, PageShell, StatusBanner } from "@/components/ui/page-shell";
 import { fetchSession } from "@/features/application/client";
 import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
 import {
@@ -17,34 +12,16 @@ import {
 } from "@/features/application/route";
 import type { ApplicationSnapshot } from "@/features/application/types";
 import {
-  MaterialSupplementClientError,
-  fetchSupplementSnapshot,
-} from "@/features/material-supplement/client";
+  classifySupplementAccessError,
+  isBlockingSupplementAccessError,
+  type SupplementAccessErrorState,
+} from "@/features/material-supplement/access-error";
+import { fetchSupplementSnapshot } from "@/features/material-supplement/client";
+import { SupplementAccessError } from "@/features/material-supplement/components/supplement-access-error";
 import { SupplementWorkspace } from "@/features/material-supplement/components/supplement-workspace";
 import type { SupplementSnapshot } from "@/features/material-supplement/types";
 import { trackPageView } from "@/lib/tracking/client";
 import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
-import { cn } from "@/lib/utils";
-
-function toSafeSupplementError(error: unknown) {
-  if (error instanceof MaterialSupplementClientError) {
-    if (error.status === 401 || error.status === 403) {
-      return "Your supplement session is no longer valid. Return to the application entry or refresh after restoring access.";
-    }
-
-    if (error.code === "APPLICATION_NOT_SUBMITTED") {
-      return "This application has not been submitted yet, so supplement requests are not available.";
-    }
-
-    return error.message;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "The supplement workspace could not be loaded. Please refresh later.";
-}
 
 export default function SupplementPage() {
   const router = useRouter();
@@ -53,7 +30,8 @@ export default function SupplementPage() {
     useState<SupplementSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [accessError, setAccessError] =
+    useState<SupplementAccessErrorState | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const hasTrackedPageView = useRef(false);
 
@@ -78,19 +56,27 @@ export default function SupplementPage() {
         if (refreshing) {
           setRefreshError(null);
         } else {
-          setError(null);
+          setAccessError(null);
         }
 
         const nextSnapshot = await fetchSupplementSnapshot(applicationId);
         setSupplementSnapshot(nextSnapshot);
-        setError(null);
+        setAccessError(null);
         setRefreshError(null);
       } catch (nextError) {
+        const nextAccessError = classifySupplementAccessError(nextError);
+
         if (refreshing) {
-          setRefreshError(toSafeSupplementError(nextError));
+          if (isBlockingSupplementAccessError(nextError)) {
+            setSupplementSnapshot(null);
+            setAccessError(nextAccessError);
+            setRefreshError(null);
+          } else {
+            setRefreshError(nextAccessError.description);
+          }
         } else {
           setSupplementSnapshot(null);
-          setError(toSafeSupplementError(nextError));
+          setAccessError(nextAccessError);
         }
       } finally {
         if (refreshing) {
@@ -113,7 +99,9 @@ export default function SupplementPage() {
         }
 
         if (nextSnapshot.applicationStatus !== "SUBMITTED") {
-          router.replace(resolveRouteFromStatus(nextSnapshot.applicationStatus));
+          router.replace(
+            resolveRouteFromStatus(nextSnapshot.applicationStatus),
+          );
           return;
         }
 
@@ -121,7 +109,9 @@ export default function SupplementPage() {
         await loadSupplementSnapshot(nextSnapshot.applicationId);
       } catch (nextError) {
         if (active) {
-          setError(toSafeSupplementError(nextError));
+          setSnapshot(null);
+          setSupplementSnapshot(null);
+          setAccessError(classifySupplementAccessError(nextError));
         }
       } finally {
         if (active) {
@@ -179,41 +169,27 @@ export default function SupplementPage() {
             />
           ) : null}
 
-          {!isLoading && error ? (
-            <StatusBanner
-              tone="danger"
-              title="Supplement workspace could not be loaded"
-              description={error}
-            >
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                {snapshot?.applicationId ? (
-                  <button
-                    type="button"
-                    className={cn(
-                      getButtonClassName("secondary"),
-                      "w-full sm:w-auto",
-                    )}
-                    onClick={() => {
-                      void loadSupplementSnapshot(snapshot.applicationId, {
+          {!isLoading && accessError ? (
+            <SupplementAccessError
+              error={accessError}
+              isRefreshing={isRefreshing}
+              continueHref={
+                snapshot
+                  ? resolveRouteFromStatus(snapshot.applicationStatus)
+                  : "/apply"
+              }
+              onRefresh={
+                snapshot?.applicationId
+                  ? () =>
+                      loadSupplementSnapshot(snapshot.applicationId, {
                         refreshing: true,
-                      });
-                    }}
-                    disabled={isRefreshing}
-                  >
-                    Refresh
-                  </button>
-                ) : null}
-                <a
-                  href="/apply"
-                  className={cn(getButtonClassName("secondary"), "w-full sm:w-auto")}
-                >
-                  Back to application entry
-                </a>
-              </div>
-            </StatusBanner>
+                      })
+                  : undefined
+              }
+            />
           ) : null}
 
-          {!isLoading && !error && supplementSnapshot ? (
+          {!isLoading && !accessError && supplementSnapshot ? (
             <>
               {refreshError ? (
                 <StatusBanner
