@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const originalEnv = { ...process.env };
 
-async function loadClient(envOverrides: Record<string, string | undefined> = {}) {
+async function loadClient(
+  envOverrides: Record<string, string | undefined> = {},
+) {
   vi.resetModules();
   process.env = {
     ...originalEnv,
@@ -36,6 +38,66 @@ describe("material review client", () => {
     expect(run.externalRunId).toContain("mock-material-review:initial:");
     expect(result.status).toBe("COMPLETED");
     expect(result.categories.length).toBeGreaterThan(0);
+  });
+
+  it("uses the mock scenario from env in mock mode", async () => {
+    const { createInitialMaterialReview, getMaterialReviewResult } =
+      await loadClient({
+        MATERIAL_REVIEW_MODE: "mock",
+        MATERIAL_REVIEW_MOCK_SCENARIO: "reviewing",
+      });
+    const run = await createInitialMaterialReview({
+      applicationId: "app_001",
+    });
+    const result = await getMaterialReviewResult({
+      externalRunId: run.externalRunId,
+    });
+
+    expect(run.status).toBe("PROCESSING");
+    expect(result.status).toBe("PROCESSING");
+    expect(result.categories).toHaveLength(0);
+  });
+
+  it("maps invalid env mock scenarios to material review client errors", async () => {
+    const { createInitialMaterialReview } = await loadClient({
+      MATERIAL_REVIEW_MODE: "mock",
+      MATERIAL_REVIEW_MOCK_SCENARIO: "unknown",
+    });
+
+    await expect(
+      createInitialMaterialReview({
+        applicationId: "app_001",
+      }),
+    ).rejects.toMatchObject({
+      name: "MaterialReviewClientError",
+      failureCode: "RESULT_INVALID",
+      httpStatus: 400,
+    });
+  });
+
+  it("lets input mock scenario override env in mock mode", async () => {
+    const { createInitialMaterialReview, getMaterialReviewResult } =
+      await loadClient({
+        MATERIAL_REVIEW_MODE: "mock",
+        MATERIAL_REVIEW_MOCK_SCENARIO: "reviewing",
+      });
+    const run = await createInitialMaterialReview({
+      applicationId: "app_001",
+      mockScenario: "satisfied",
+    });
+    const result = await getMaterialReviewResult({
+      externalRunId: run.externalRunId,
+      mockScenario: "no_supplement_required",
+    });
+
+    expect(run.status).toBe("COMPLETED");
+    expect(result.status).toBe("COMPLETED");
+    expect(result.categories).toHaveLength(6);
+    expect(
+      result.categories.every(
+        (category) => !category.resultPayload.supplementRequired,
+      ),
+    ).toBe(true);
   });
 
   it("throws a config error when live mode is missing base url", async () => {

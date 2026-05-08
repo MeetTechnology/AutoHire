@@ -24,6 +24,7 @@ const envSchema = z.object({
   RESUME_ANALYSIS_REANALYZE_PATH: z.string().optional(),
   RESUME_ANALYSIS_MAPPINGS_PATH: z.string().optional(),
   MATERIAL_REVIEW_MODE: z.enum(["mock", "live"]).default("mock"),
+  MATERIAL_REVIEW_MOCK_SCENARIO: z.string().default("supplement_required"),
   MATERIAL_REVIEW_BASE_URL: z.string().optional(),
   MATERIAL_REVIEW_API_KEY: z.string().optional(),
   MATERIAL_REVIEW_CALLBACK_SECRET: z.string().optional(),

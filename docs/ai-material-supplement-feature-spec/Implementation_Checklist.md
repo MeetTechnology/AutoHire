@@ -70,7 +70,7 @@
 
 ## 阶段 5：AI 能力接入
 
-- [ ] material review mock client 已实现，可支撑本地开发、联调和测试。
+- [x] material review mock client 已实现，可支撑本地开发、联调和测试。
   - 验证：在无 live backend 的情况下，系统可生成可预期的补件审查状态或结果样例。
 - [ ] material review live client 已实现骨架，并通过 adapter 与业务逻辑解耦。
   - 验证：live client 有独立入口与配置边界，但页面和 route 不直接依赖外部原始字段。

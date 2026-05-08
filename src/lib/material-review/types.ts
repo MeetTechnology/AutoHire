@@ -1,6 +1,20 @@
-import type { SupplementCategory } from "@/features/material-supplement/types";
+import type {
+  SupplementCategory,
+  SupplementRequestStatus,
+} from "@/features/material-supplement/types";
 
 export type MaterialReviewMode = "mock" | "live";
+
+export const MATERIAL_REVIEW_MOCK_SCENARIOS = [
+  "supplement_required",
+  "no_supplement_required",
+  "reviewing",
+  "satisfied",
+  "category_satisfied",
+] as const;
+
+export type MaterialReviewMockScenario =
+  (typeof MATERIAL_REVIEW_MOCK_SCENARIOS)[number];
 
 export type MaterialReviewJobStatus =
   | "QUEUED"
@@ -21,6 +35,8 @@ export type MaterialReviewRequest = {
   title: string;
   reason: string | null;
   suggestedMaterials: string[];
+  aiMessage?: string | null;
+  status?: SupplementRequestStatus;
 };
 
 export type MaterialReviewResultPayload = {
@@ -38,15 +54,18 @@ export type MaterialCategoryReviewResult = {
 
 export type CreateInitialMaterialReviewInput = {
   applicationId: string;
+  mockScenario?: MaterialReviewMockScenario;
 };
 
 export type CreateCategoryMaterialReviewInput = {
   applicationId: string;
   category: SupplementCategory;
+  mockScenario?: MaterialReviewMockScenario;
 };
 
 export type GetMaterialReviewResultInput = {
   externalRunId: string;
+  mockScenario?: MaterialReviewMockScenario;
 };
 
 export type CreateMaterialReviewResponse = {
