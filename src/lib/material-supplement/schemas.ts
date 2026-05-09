@@ -36,14 +36,14 @@ export const supplementInitialReviewRequestSchema = z.object({}).strict();
 
 export const supplementUploadBatchRequestSchema = z
   .object({
-    category: z.enum(SUPPORTED_SUPPLEMENT_CATEGORIES),
+    category: trimmedNonEmptyString,
   })
   .strict();
 
 export const supplementUploadIntentRequestSchema = z
   .object({
     uploadBatchId: trimmedNonEmptyString,
-    category: z.enum(SUPPORTED_SUPPLEMENT_CATEGORIES),
+    category: trimmedNonEmptyString,
     supplementRequestId: trimmedNonEmptyString.optional(),
     fileName: trimmedNonEmptyString,
     fileType: trimmedNonEmptyString,
@@ -54,7 +54,7 @@ export const supplementUploadIntentRequestSchema = z
 export const supplementConfirmFileRequestSchema = z
   .object({
     uploadBatchId: trimmedNonEmptyString,
-    category: z.enum(SUPPORTED_SUPPLEMENT_CATEGORIES),
+    category: trimmedNonEmptyString,
     supplementRequestId: trimmedNonEmptyString.optional(),
     fileName: trimmedNonEmptyString,
     fileType: trimmedNonEmptyString,

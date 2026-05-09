@@ -22,6 +22,7 @@
     "db:migrate": "bunx --bun prisma migrate dev",
     "db:deploy": "bunx --bun prisma migrate deploy",
     "db:seed": "bun prisma/seed.ts",
+    "oss:latest-expert-material": "bun scripts/latest-expert-material-oss.ts",
     "prepare": "husky"
   },
   "lint-staged": {

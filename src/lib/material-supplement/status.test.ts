@@ -106,6 +106,109 @@ describe("material supplement status helpers", () => {
     });
   });
 
+  it("derives every category display state from latest review and request data", () => {
+    expect(
+      deriveSupplementCategoryState({
+        latestReview: null,
+        latestRequests: [],
+      }),
+    ).toEqual({
+      status: "NOT_STARTED",
+      isReviewing: false,
+    });
+    expect(
+      deriveSupplementCategoryState({
+        latestReview: { status: "QUEUED" },
+        latestRequests: [],
+      }),
+    ).toEqual({
+      status: "REVIEWING",
+      isReviewing: true,
+    });
+    expect(
+      deriveSupplementCategoryState({
+        latestReview: { status: "PROCESSING" },
+        latestRequests: [],
+      }),
+    ).toEqual({
+      status: "REVIEWING",
+      isReviewing: true,
+    });
+    expect(
+      deriveSupplementCategoryState({
+        latestReview: { status: "COMPLETED" },
+        latestRequests: [{ status: "PENDING", isSatisfied: false }],
+      }),
+    ).toEqual({
+      status: "SUPPLEMENT_REQUIRED",
+      isReviewing: false,
+    });
+    expect(
+      deriveSupplementCategoryState({
+        latestReview: { status: "COMPLETED" },
+        latestRequests: [
+          { status: "PENDING", isSatisfied: false },
+          { status: "SATISFIED", isSatisfied: true },
+        ],
+      }),
+    ).toEqual({
+      status: "PARTIALLY_SATISFIED",
+      isReviewing: false,
+    });
+    expect(
+      deriveSupplementCategoryState({
+        latestReview: { status: "COMPLETED" },
+        latestRequests: [{ status: "SATISFIED", isSatisfied: true }],
+      }),
+    ).toEqual({
+      status: "SATISFIED",
+      isReviewing: false,
+    });
+    expect(
+      deriveSupplementCategoryState({
+        latestReview: { status: "COMPLETED" },
+        latestRequests: [],
+      }),
+    ).toEqual({
+      status: "NO_SUPPLEMENT_REQUIRED",
+      isReviewing: false,
+    });
+    expect(
+      deriveSupplementCategoryState({
+        latestReview: { status: "FAILED" },
+        latestRequests: [],
+      }),
+    ).toEqual({
+      status: "REVIEW_FAILED",
+      isReviewing: false,
+    });
+  });
+
+  it("derives all satisfied requests as satisfied and hides them from the main view", () => {
+    const requests = [
+      { status: "SATISFIED", isSatisfied: true },
+      { status: "SATISFIED", isSatisfied: true },
+    ] as const;
+
+    expect(
+      deriveMaterialSupplementStatus({
+        latestRun: { status: "COMPLETED" },
+        latestCategoryReviews: [{ status: "COMPLETED" }],
+        latestRequests: requests,
+      }),
+    ).toBe("SATISFIED");
+    expect(
+      deriveSupplementCategoryState({
+        latestReview: { status: "COMPLETED" },
+        latestRequests: requests,
+      }),
+    ).toEqual({
+      status: "SATISFIED",
+      isReviewing: false,
+    });
+    expect(filterVisibleLatestSupplementRequests(requests)).toEqual([]);
+  });
+
   it("hides satisfied latest requests from the main view while keeping them countable", () => {
     const requests = [
       { status: "SATISFIED", isSatisfied: true },

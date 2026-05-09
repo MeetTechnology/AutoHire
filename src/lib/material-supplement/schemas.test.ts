@@ -57,7 +57,7 @@ describe("supplement upload request schemas", () => {
     ).toBe(true);
   });
 
-  it("rejects unsupported upload intent categories and invalid file sizes", () => {
+  it("keeps upload intent category validation in the service layer", () => {
     expect(
       supplementUploadIntentRequestSchema.safeParse({
         uploadBatchId: "batch_001",
@@ -66,7 +66,10 @@ describe("supplement upload request schemas", () => {
         fileType: "application/pdf",
         fileSize: 123456,
       }).success,
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("rejects invalid upload intent file sizes", () => {
     expect(
       supplementUploadIntentRequestSchema.safeParse({
         uploadBatchId: "batch_001",
@@ -106,16 +109,6 @@ describe("supplement upload request schemas", () => {
     expect(
       supplementConfirmFileRequestSchema.safeParse({
         uploadBatchId: "batch_001",
-        category: "PRODUCT",
-        fileName: "degree.pdf",
-        fileType: "application/pdf",
-        fileSize: 123456,
-        objectKey: "applications/app_001/supplements/PRODUCT/batch_001/degree.pdf",
-      }).success,
-    ).toBe(false);
-    expect(
-      supplementConfirmFileRequestSchema.safeParse({
-        uploadBatchId: "batch_001",
         category: "EDUCATION",
         fileName: "degree.pdf",
         fileType: "application/pdf",
@@ -144,6 +137,19 @@ describe("supplement upload request schemas", () => {
         extra: true,
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps file confirmation category validation in the service layer", () => {
+    expect(
+      supplementConfirmFileRequestSchema.safeParse({
+        uploadBatchId: "batch_001",
+        category: "PRODUCT",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 123456,
+        objectKey: "applications/app_001/supplements/PRODUCT/batch_001/degree.pdf",
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts only category for upload batch confirmation", () => {

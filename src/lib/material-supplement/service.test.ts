@@ -12,6 +12,7 @@ import {
   listMaterialReviewRuns,
   listSupplementRequests,
   listSupplementFiles,
+  softDeleteSupplementFile,
   updateSupplementUploadBatch,
   updateApplication,
 } from "@/lib/data/store";
@@ -39,6 +40,7 @@ import {
   MAX_ARCHIVE_SIZE_BYTES,
   MAX_FILE_SIZE_BYTES,
 } from "@/features/upload/constants";
+import { SUPPORTED_SUPPLEMENT_CATEGORIES } from "@/features/material-supplement/constants";
 
 function resetMemoryStore() {
   (
@@ -54,8 +56,10 @@ describe("material supplement service guards", () => {
     resetMemoryStore();
   });
 
-  it("accepts supported supplement categories", () => {
-    expect(assertSupportedSupplementCategory("EDUCATION")).toBe("EDUCATION");
+  it("accepts all six supported supplement categories", () => {
+    for (const category of SUPPORTED_SUPPLEMENT_CATEGORIES) {
+      expect(assertSupportedSupplementCategory(category)).toBe(category);
+    }
   });
 
   it("rejects unsupported supplement categories", () => {
@@ -65,9 +69,41 @@ describe("material supplement service guards", () => {
         code: "SUPPLEMENT_CATEGORY_UNSUPPORTED",
       }),
     );
+    expect(() => assertSupportedSupplementCategory("CONFERENCE")).toThrowError(
+      expect.objectContaining<Partial<MaterialSupplementServiceError>>({
+        status: 400,
+        code: "SUPPLEMENT_CATEGORY_UNSUPPORTED",
+      }),
+    );
   });
 
-  it("blocks a category while its latest review is processing", async () => {
+  it("blocks a category while its latest review is queued or processing", async () => {
+    const queuedRun = await createMaterialReviewRun({
+      applicationId: "app_secondary",
+      runNo: 1,
+      triggerType: "INITIAL_SUBMISSION",
+      status: "QUEUED",
+    });
+    await createMaterialCategoryReview({
+      applicationId: "app_secondary",
+      reviewRunId: queuedRun.id,
+      category: "HONOR",
+      roundNo: 1,
+      status: "QUEUED",
+    });
+
+    await expect(
+      assertCategoryNotReviewing({
+        applicationId: "app_secondary",
+        category: "HONOR",
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_CATEGORY_REVIEWING",
+      details: {
+        category: "HONOR",
+      },
+    });
     await expect(
       assertCategoryNotReviewing({
         applicationId: "app_supplement_reviewing",
@@ -85,8 +121,8 @@ describe("material supplement service guards", () => {
   it("allows categories whose latest review is not processing", async () => {
     await expect(
       assertCategoryNotReviewing({
-        applicationId: "app_supplement_required",
-        category: "EMPLOYMENT",
+        applicationId: "app_supplement_reviewing",
+        category: "HONOR",
       }),
     ).resolves.toBeUndefined();
   });
@@ -580,6 +616,72 @@ describe("material supplement review run sync", () => {
     );
   });
 
+  it("moves previous latest requests to history when a newer callback creates replacement requests", async () => {
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EMPLOYMENT",
+      status: "PROCESSING",
+      externalRunId: "callback-review-employment-replacement",
+    });
+
+    await expect(
+      acceptSupplementReviewCallback(reviewRun.id, {
+        externalRunId: "callback-review-employment-replacement",
+        status: "COMPLETED",
+        finishedAt: "2026-05-07T09:30:00.000Z",
+        categories: [
+          {
+            category: "EMPLOYMENT",
+            status: "COMPLETED",
+            reviewedAt: "2026-05-07T09:30:00.000Z",
+            aiMessage: "Employment proof still needs payroll evidence.",
+            resultPayload: {
+              supplementRequired: true,
+              requests: [
+                {
+                  title: "Upload payroll proof",
+                  reason: "Payroll proof is required for the current employer.",
+                  suggestedMaterials: ["Payroll slip"],
+                  aiMessage: "Please upload payroll proof.",
+                  status: "PENDING",
+                },
+              ],
+            },
+            rawResultPayload: null,
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      reviewRunId: reviewRun.id,
+      accepted: true,
+      status: "COMPLETED",
+      updatedCategories: ["EMPLOYMENT"],
+    });
+
+    const requests = await listSupplementRequests("app_supplement_required", {
+      category: "EMPLOYMENT",
+    });
+    const latestRequests = requests.filter((request) => request.isLatest);
+    const oldRequest = requests.find(
+      (request) => request.title === "Upload recent employment proof",
+    );
+
+    expect(latestRequests).toHaveLength(1);
+    expect(latestRequests[0]).toMatchObject({
+      reviewRunId: reviewRun.id,
+      title: "Upload payroll proof",
+      status: "PENDING",
+      isLatest: true,
+      isSatisfied: false,
+    });
+    expect(oldRequest).toMatchObject({
+      status: "HISTORY_ONLY",
+      isLatest: false,
+    });
+  });
+
   it("does not let a completed stale callback overwrite a newer latest review", async () => {
     await updateApplication("app_secondary", {
       applicationStatus: "SUBMITTED",
@@ -789,6 +891,19 @@ describe("material supplement upload intents", () => {
     });
   });
 
+  it("allows upload batch creation for other categories while one category is reviewing", async () => {
+    await expect(
+      createSupplementUploadBatchIntent({
+        applicationId: "app_supplement_reviewing",
+        category: "HONOR",
+      }),
+    ).resolves.toMatchObject({
+      applicationId: "app_supplement_reviewing",
+      category: "HONOR",
+      status: "DRAFT",
+    });
+  });
+
   it("rejects upload batch creation when the round limit is reached", async () => {
     await createMaterialReviewRun({
       applicationId: "app_supplement_required",
@@ -802,6 +917,46 @@ describe("material supplement upload intents", () => {
       createSupplementUploadBatchIntent({
         applicationId: "app_supplement_required",
         category: "EMPLOYMENT",
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_ROUND_LIMIT_REACHED",
+    });
+  });
+
+  it("allows upload batch creation at two rounds but rejects upload intent at three rounds", async () => {
+    await expect(
+      createSupplementUploadBatchIntent({
+        applicationId: "app_supplement_required",
+        category: "HONOR",
+      }),
+    ).resolves.toMatchObject({
+      applicationId: "app_supplement_required",
+      category: "HONOR",
+      status: "DRAFT",
+    });
+
+    await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "HONOR",
+      status: "QUEUED",
+    });
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "HONOR",
+    });
+
+    await expect(
+      createSupplementUploadIntent({
+        applicationId: "app_supplement_required",
+        uploadBatchId: batch.id,
+        category: "HONOR",
+        fileName: "award.pdf",
+        fileType: "application/pdf",
+        fileSize: 1234,
+        requestOrigin: "http://localhost",
       }),
     ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
       status: 409,
@@ -1061,6 +1216,87 @@ describe("material supplement upload intents", () => {
       code: "SUPPLEMENT_FILE_DUPLICATE",
     });
   });
+
+  it("allows same-name uploads when size, category, or active state differ", async () => {
+    vi.spyOn(uploadService, "createUploadIntent").mockImplementation(
+      async ({ fileType, objectKey }) => ({
+        uploadUrl: `/api/mock-storage?key=${encodeURIComponent(objectKey)}`,
+        method: "PUT" as const,
+        headers: {
+          "Content-Type": fileType,
+        },
+        objectKey,
+      }),
+    );
+    const educationBatch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+    });
+    await createSupplementFile({
+      applicationId: "app_supplement_required",
+      category: "EDUCATION",
+      uploadBatchId: educationBatch.id,
+      fileName: "degree.pdf",
+      objectKey: `applications/app_supplement_required/supplements/EDUCATION/${educationBatch.id}/degree.pdf`,
+      fileType: "application/pdf",
+      fileSize: 1234,
+    });
+
+    await expect(
+      createSupplementUploadIntent({
+        applicationId: "app_supplement_required",
+        uploadBatchId: educationBatch.id,
+        category: "EDUCATION",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 1235,
+        requestOrigin: "http://localhost",
+      }),
+    ).resolves.toMatchObject({ deduped: false });
+
+    const patentBatch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+    });
+    await expect(
+      createSupplementUploadIntent({
+        applicationId: "app_supplement_required",
+        uploadBatchId: patentBatch.id,
+        category: "PATENT",
+        fileName: "degree.pdf",
+        fileType: "application/pdf",
+        fileSize: 1234,
+        requestOrigin: "http://localhost",
+      }),
+    ).resolves.toMatchObject({ deduped: false });
+
+    const deletedBatch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "HONOR",
+    });
+    const deletedFile = await createSupplementFile({
+      applicationId: "app_supplement_required",
+      category: "HONOR",
+      uploadBatchId: deletedBatch.id,
+      fileName: "award.pdf",
+      objectKey: `applications/app_supplement_required/supplements/HONOR/${deletedBatch.id}/award.pdf`,
+      fileType: "application/pdf",
+      fileSize: 4321,
+    });
+    await softDeleteSupplementFile(deletedFile.id);
+
+    await expect(
+      createSupplementUploadIntent({
+        applicationId: "app_supplement_required",
+        uploadBatchId: deletedBatch.id,
+        category: "HONOR",
+        fileName: "award.pdf",
+        fileType: "application/pdf",
+        fileSize: 4321,
+        requestOrigin: "http://localhost",
+      }),
+    ).resolves.toMatchObject({ deduped: false });
+  });
 });
 
 describe("material supplement file and batch confirmation", () => {
@@ -1103,6 +1339,60 @@ describe("material supplement file and batch confirmation", () => {
         fileCount: 1,
       },
     );
+  });
+
+  it("rejects file and batch confirmation when the round limit is reached", async () => {
+    await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 3,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "HONOR",
+      status: "COMPLETED",
+    });
+
+    const fileBatch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "HONOR",
+    });
+    await expect(
+      confirmSupplementFileUpload({
+        applicationId: "app_supplement_required",
+        uploadBatchId: fileBatch.id,
+        category: "HONOR",
+        fileName: "award.pdf",
+        fileType: "application/pdf",
+        fileSize: 1234,
+        objectKey: `applications/app_supplement_required/supplements/HONOR/${fileBatch.id}/award.pdf`,
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_ROUND_LIMIT_REACHED",
+    });
+
+    const confirmBatch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+    });
+    await createSupplementFile({
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+      uploadBatchId: confirmBatch.id,
+      fileName: "patent.pdf",
+      objectKey: `applications/app_supplement_required/supplements/PATENT/${confirmBatch.id}/patent.pdf`,
+      fileType: "application/pdf",
+      fileSize: 2345,
+    });
+
+    await expect(
+      confirmSupplementUploadBatch({
+        applicationId: "app_supplement_required",
+        uploadBatchId: confirmBatch.id,
+        category: "PATENT",
+      }),
+    ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
+      status: 409,
+      code: "SUPPLEMENT_ROUND_LIMIT_REACHED",
+    });
   });
 
   it("rejects file confirmation for missing, non-draft, duplicate, and reviewing categories", async () => {

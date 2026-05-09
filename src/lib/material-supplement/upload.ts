@@ -45,7 +45,7 @@ type SupplementUploadBatchResult = {
 type CreateSupplementUploadIntentInput = {
   applicationId: string;
   uploadBatchId: string;
-  category: SupplementCategory;
+  category: unknown;
   supplementRequestId?: string;
   fileName: string;
   fileType: string;
@@ -56,7 +56,7 @@ type CreateSupplementUploadIntentInput = {
 type ConfirmSupplementFileUploadInput = {
   applicationId: string;
   uploadBatchId: string;
-  category: SupplementCategory;
+  category: unknown;
   supplementRequestId?: string;
   fileName: string;
   fileType: string;
@@ -67,7 +67,7 @@ type ConfirmSupplementFileUploadInput = {
 type ConfirmSupplementUploadBatchInput = {
   applicationId: string;
   uploadBatchId: string;
-  category: SupplementCategory;
+  category: unknown;
 };
 
 function toUploadBatchResult(batch: {

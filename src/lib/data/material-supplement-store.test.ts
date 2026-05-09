@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   attachSupplementFilesToReviewRun,
+  claimSupplementUploadBatchReview,
   createMaterialCategoryReview,
   createMaterialReviewRun,
   createSupplementRequest,
@@ -15,8 +16,11 @@ import {
   getMaterialSupplementSummaryData,
   getSupplementFileById,
   getSupplementUploadBatchById,
+  listMaterialCategoryReviews,
   listLatestSupplementRequests,
+  listSupplementRequests,
   replaceLatestSupplementRequestsForCategory,
+  reserveSupplementUploadBatchFileSlot,
   softDeleteSupplementFile,
 } from "@/lib/data/store";
 
@@ -73,12 +77,50 @@ describe("material supplement store", () => {
     );
     expect(latest?.id).toBe(created.id);
 
-    const history = await getMaterialSupplementHistoryData("app_supplement_required", {
-      category: "EMPLOYMENT",
-    });
+    const history = await getMaterialSupplementHistoryData(
+      "app_supplement_required",
+      {
+        category: "EMPLOYMENT",
+      },
+    );
     expect(history.items).toHaveLength(2);
     expect(history.items.filter((item) => item.isLatest)).toHaveLength(1);
-    expect(history.items.find((item) => item.categoryReviewId !== created.id)?.isLatest).toBe(
+    expect(
+      history.items.find((item) => item.categoryReviewId !== created.id)
+        ?.isLatest,
+    ).toBe(false);
+  });
+
+  it("keeps only one latest category review for an application category", async () => {
+    const first = await createMaterialCategoryReview({
+      reviewRunId: "mr_run_required_initial",
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+      roundNo: 1,
+      status: "COMPLETED",
+    });
+    expect(first.isLatest).toBe(true);
+
+    const second = await createMaterialCategoryReview({
+      reviewRunId: "mr_run_required_identity_resolved",
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+      roundNo: 2,
+      status: "COMPLETED",
+    });
+
+    const reviews = await listMaterialCategoryReviews(
+      "app_supplement_required",
+      {
+        category: "PATENT",
+      },
+    );
+    const latestReviews = reviews.filter((review) => review.isLatest);
+
+    expect(second.isLatest).toBe(true);
+    expect(latestReviews).toHaveLength(1);
+    expect(latestReviews[0]?.id).toBe(second.id);
+    expect(reviews.find((review) => review.id === first.id)?.isLatest).toBe(
       false,
     );
   });
@@ -107,10 +149,13 @@ describe("material supplement store", () => {
     expect(latest).toHaveLength(1);
     expect(latest[0]?.title).toBe("Upload payroll proof");
 
-    const history = await getMaterialSupplementHistoryData("app_supplement_required", {
-      category: "EMPLOYMENT",
-      runNo: 1,
-    });
+    const history = await getMaterialSupplementHistoryData(
+      "app_supplement_required",
+      {
+        category: "EMPLOYMENT",
+        runNo: 1,
+      },
+    );
     const oldRequest = history.items
       .flatMap((item) => item.requests)
       .find((item) => item.title === "Upload recent employment proof");
@@ -136,14 +181,62 @@ describe("material supplement store", () => {
     expect(latest).toHaveLength(1);
     expect(latest[0]?.id).toBe(created.id);
 
-    const history = await getMaterialSupplementHistoryData("app_supplement_required", {
-      category: "EMPLOYMENT",
-      runNo: 1,
-    });
+    const history = await getMaterialSupplementHistoryData(
+      "app_supplement_required",
+      {
+        category: "EMPLOYMENT",
+        runNo: 1,
+      },
+    );
     const oldRequest = history.items
       .flatMap((item) => item.requests)
       .find((item) => item.title === "Upload recent employment proof");
     expect(oldRequest?.status).toBe("HISTORY_ONLY");
+  });
+
+  it("keeps only the replacement request latest for an application category", async () => {
+    const created = await replaceLatestSupplementRequestsForCategory({
+      applicationId: "app_supplement_required",
+      category: "EMPLOYMENT",
+      reviewRunId: "mr_run_required_initial",
+      categoryReviewId: "mcr_required_employment_initial",
+      requests: [
+        {
+          title: "Upload payroll proof",
+          reason: "Payroll proof is required.",
+        },
+        {
+          title: "Upload employment certificate",
+          reason: "A certificate is required.",
+        },
+      ],
+    });
+
+    const allRequests = await listSupplementRequests(
+      "app_supplement_required",
+      {
+        category: "EMPLOYMENT",
+      },
+    );
+    const latest = await listLatestSupplementRequests(
+      "app_supplement_required",
+      "EMPLOYMENT",
+    );
+
+    expect(created).toHaveLength(2);
+    expect(latest.map((request) => request.title).sort()).toEqual([
+      "Upload employment certificate",
+      "Upload payroll proof",
+    ]);
+    expect(
+      allRequests.find(
+        (request) => request.title === "Upload recent employment proof",
+      ),
+    ).toMatchObject({
+      status: "HISTORY_ONLY",
+      isLatest: false,
+    });
+    expect(allRequests.filter((request) => request.isLatest)).toHaveLength(2);
   });
 
   it("soft deletes draft supplement files and updates the batch file count", async () => {
@@ -224,7 +317,9 @@ describe("material supplement store", () => {
     );
 
     expect(requiredSnapshot.summary.pendingRequestCount).toBeGreaterThan(0);
-    expect(reviewingSnapshot.summary.materialSupplementStatus).toBe("REVIEWING");
+    expect(reviewingSnapshot.summary.materialSupplementStatus).toBe(
+      "REVIEWING",
+    );
 
     const employment = requiredSnapshot.categories.find(
       (item) => item.category === "EMPLOYMENT",
@@ -233,17 +328,25 @@ describe("material supplement store", () => {
       (item) => item.category === "IDENTITY",
     );
 
-    expect(employment?.requests[0]?.title).toBe("Upload recent employment proof");
+    expect(employment?.requests[0]?.title).toBe(
+      "Upload recent employment proof",
+    );
     expect(employment?.draftFiles[0]?.fileName).toBe("employment-proof.pdf");
-    expect(identity?.waitingReviewFiles[0]?.fileName).toBe("passport-fullscan.pdf");
+    expect(identity?.waitingReviewFiles[0]?.fileName).toBe(
+      "passport-fullscan.pdf",
+    );
   });
 
   it("keeps satisfied latest requests in summary counts but hides them from snapshot request lists", async () => {
-    const snapshot = await getMaterialSupplementSnapshotData("app_supplement_required");
+    const snapshot = await getMaterialSupplementSnapshotData(
+      "app_supplement_required",
+    );
 
     expect(snapshot.summary.satisfiedRequestCount).toBe(1);
 
-    const identity = snapshot.categories.find((item) => item.category === "IDENTITY");
+    const identity = snapshot.categories.find(
+      (item) => item.category === "IDENTITY",
+    );
     expect(identity?.status).toBe("SATISFIED");
     expect(identity?.pendingRequestCount).toBe(0);
     expect(identity?.requests).toEqual([]);
@@ -269,15 +372,86 @@ describe("material supplement store", () => {
         category: "IDENTITY",
       },
     );
-    expect(identityHistory.items.every((item) => item.category === "IDENTITY")).toBe(
-      true,
-    );
+    expect(
+      identityHistory.items.every((item) => item.category === "IDENTITY"),
+    ).toBe(true);
   });
 
   it("computes remaining review rounds from the application run count", async () => {
-    const summary = await getMaterialSupplementSummaryData("app_supplement_required");
+    const summary = await getMaterialSupplementSummaryData(
+      "app_supplement_required",
+    );
 
     expect(summary.remainingReviewRounds).toBe(1);
+  });
+
+  it("returns count exceeded when reserving more than the allowed draft file slots", async () => {
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+    });
+
+    for (let index = 0; index < 10; index += 1) {
+      await expect(
+        reserveSupplementUploadBatchFileSlot({
+          applicationId: "app_supplement_required",
+          category: "PATENT",
+          uploadBatchId: batch.id,
+          maxFiles: 10,
+        }),
+      ).resolves.toMatchObject({
+        status: "RESERVED",
+      });
+    }
+
+    await expect(
+      reserveSupplementUploadBatchFileSlot({
+        applicationId: "app_supplement_required",
+        category: "PATENT",
+        uploadBatchId: batch.id,
+        maxFiles: 10,
+      }),
+    ).resolves.toMatchObject({
+      status: "COUNT_EXCEEDED",
+      batch: {
+        id: batch.id,
+        fileCount: 10,
+      },
+    });
+  });
+
+  it("returns count exceeded when claiming a batch with more than the allowed active files", async () => {
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+    });
+
+    for (let index = 0; index < 11; index += 1) {
+      await createSupplementFile({
+        applicationId: "app_supplement_required",
+        category: "PATENT",
+        uploadBatchId: batch.id,
+        fileName: `patent-${index}.pdf`,
+        objectKey: `applications/app_supplement_required/supplements/PATENT/${batch.id}/patent-${index}.pdf`,
+        fileType: "application/pdf",
+        fileSize: 1000 + index,
+      });
+    }
+
+    await expect(
+      claimSupplementUploadBatchReview({
+        applicationId: "app_supplement_required",
+        category: "PATENT",
+        uploadBatchId: batch.id,
+        maxFiles: 10,
+      }),
+    ).resolves.toMatchObject({
+      status: "COUNT_EXCEEDED",
+      batch: {
+        id: batch.id,
+      },
+      fileCount: 11,
+    });
   });
 
   it("attaches draft batch files to a review run and marks the batch reviewing", async () => {
@@ -323,7 +497,9 @@ describe("material supplement store", () => {
       triggeredCategory: "IDENTITY",
     });
 
-    await expect(attachSupplementFilesToReviewRun(batch.id, run.id)).rejects.toThrow(
+    await expect(
+      attachSupplementFilesToReviewRun(batch.id, run.id),
+    ).rejects.toThrow(
       "Material review run category does not match the supplement upload batch category.",
     );
   });
@@ -340,7 +516,9 @@ describe("material supplement store", () => {
       triggeredCategory: "PATENT",
     });
 
-    await expect(attachSupplementFilesToReviewRun(batch.id, run.id)).rejects.toThrow(
+    await expect(
+      attachSupplementFilesToReviewRun(batch.id, run.id),
+    ).rejects.toThrow(
       "Supplement upload batch and material review run must belong to the same application.",
     );
   });
