@@ -1,5 +1,4 @@
 import {
-  SUPPLEMENT_CATEGORY_LABELS,
   SUPPLEMENT_REVIEW_MAX_ROUNDS,
   isSupplementCategory,
 } from "@/features/material-supplement/constants";
@@ -30,15 +29,17 @@ import {
 } from "@/lib/material-review/client";
 import {
   MaterialReviewClientError,
-  type MaterialCategoryReviewResult,
   type MaterialReviewJobStatus,
-  type MaterialReviewResultPayload,
 } from "@/lib/material-review/types";
 import {
   MaterialSupplementServiceError,
   SUPPLEMENT_EXPERT_ERROR_CODES,
   SUPPLEMENT_INTERNAL_ERROR_CODES,
 } from "@/lib/material-supplement/errors";
+import {
+  adaptMaterialReviewCategoryResult,
+  adaptSupplementReviewCallbackCategory,
+} from "@/lib/material-supplement/result-adapter";
 import { getRemainingSupplementReviewRounds } from "@/lib/material-supplement/status";
 import type { supplementReviewCallbackBodySchema } from "@/lib/material-supplement/schemas";
 import type { z } from "zod";
@@ -236,104 +237,6 @@ function assertKnownReviewStatus(
   return status;
 }
 
-function toRecordPayload(
-  payload: MaterialReviewResultPayload,
-): Record<string, unknown> {
-  return {
-    supplementRequired: payload.supplementRequired,
-    requests: payload.requests,
-  };
-}
-
-function mapCategoryResultToSaveInput(result: MaterialCategoryReviewResult) {
-  if (!isSupplementCategory(result.category)) {
-    throw new MaterialSupplementServiceError({
-      message: "The material review result category is unsupported.",
-      status: 502,
-      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_RESULT_INVALID,
-      details: { category: result.category },
-    });
-  }
-
-  const category = result.category;
-  const status = assertKnownReviewStatus(result.status);
-
-  if (
-    typeof result.resultPayload?.supplementRequired !== "boolean" ||
-    !Array.isArray(result.resultPayload.requests)
-  ) {
-    throw new MaterialSupplementServiceError({
-      message: "The material review result payload is invalid.",
-      status: 502,
-      code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_REVIEW_RESULT_INVALID,
-      details: { category },
-    });
-  }
-
-  const requests = result.resultPayload.supplementRequired
-    ? result.resultPayload.requests.map((request) => ({
-        title: request.title,
-        reason: request.reason,
-        suggestedMaterials: request.suggestedMaterials,
-        aiMessage: result.aiMessage,
-        status: "PENDING" as const,
-        isSatisfied: false,
-      }))
-    : [
-        {
-          title: `${SUPPLEMENT_CATEGORY_LABELS[category]} complete`,
-          reason: `No supplement is required for ${SUPPLEMENT_CATEGORY_LABELS[category]}.`,
-          suggestedMaterials: null,
-          aiMessage: result.aiMessage,
-          status: "SATISFIED" as const,
-          isSatisfied: true,
-        },
-      ];
-
-  return {
-    category,
-    status,
-    aiMessage: result.aiMessage,
-    resultPayload: toRecordPayload(result.resultPayload),
-    requests,
-  };
-}
-
-function mapCallbackCategoryResultToSaveInput(
-  result: SupplementReviewCallbackBody["categories"][number],
-) {
-  const category = assertSupportedSupplementCategory(result.category);
-  const status = assertKnownReviewStatus(result.status);
-  const requests = result.resultPayload.supplementRequired
-    ? result.resultPayload.requests.map((request) => ({
-        title: request.title,
-        reason: request.reason ?? null,
-        suggestedMaterials: request.suggestedMaterials ?? null,
-        aiMessage: request.aiMessage ?? result.aiMessage ?? null,
-        status: request.status,
-        isSatisfied: request.status === "SATISFIED",
-      }))
-    : [
-        {
-          title: `${SUPPLEMENT_CATEGORY_LABELS[category]} complete`,
-          reason: `No supplement is required for ${SUPPLEMENT_CATEGORY_LABELS[category]}.`,
-          suggestedMaterials: null,
-          aiMessage: result.aiMessage ?? null,
-          status: "SATISFIED" as const,
-          isSatisfied: true,
-        },
-      ];
-
-  return {
-    category,
-    status,
-    aiMessage: result.aiMessage ?? null,
-    resultPayload: toRecordPayload(result.resultPayload),
-    requests,
-    finishedAt: result.reviewedAt ? new Date(result.reviewedAt) : null,
-  };
-}
-
 function mapMaterialReviewClientError(error: MaterialReviewClientError) {
   if (error.failureCode === "RESULT_INVALID") {
     return new MaterialSupplementServiceError({
@@ -455,7 +358,7 @@ export async function syncSupplementReviewRun(
       finishedAt: result.finishedAt ? new Date(result.finishedAt) : undefined,
       categories:
         status === "COMPLETED"
-          ? result.categories.map(mapCategoryResultToSaveInput)
+          ? result.categories.map(adaptMaterialReviewCategoryResult)
           : [],
     });
 
@@ -573,7 +476,7 @@ export async function acceptSupplementReviewCallback(
       reviewRunId,
       status,
       finishedAt: payload.finishedAt ? new Date(payload.finishedAt) : null,
-      categories: payload.categories.map(mapCallbackCategoryResultToSaveInput),
+      categories: payload.categories.map(adaptSupplementReviewCallbackCategory),
     });
 
     if (!savedResult) {
