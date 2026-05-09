@@ -16,9 +16,9 @@ import {
   isBlockingSupplementAccessError,
   type SupplementAccessErrorState,
 } from "@/features/material-supplement/access-error";
-import { fetchSupplementSnapshot } from "@/features/material-supplement/client";
 import { SupplementAccessError } from "@/features/material-supplement/components/supplement-access-error";
 import { SupplementWorkspace } from "@/features/material-supplement/components/supplement-workspace";
+import { loadSupplementSnapshotWithSync } from "@/features/material-supplement/sync";
 import type { SupplementSnapshot } from "@/features/material-supplement/types";
 import { trackPageView } from "@/lib/tracking/client";
 import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
@@ -33,6 +33,7 @@ export default function SupplementPage() {
   const [accessError, setAccessError] =
     useState<SupplementAccessErrorState | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const supplementSnapshotRef = useRef<SupplementSnapshot | null>(null);
   const hasTrackedPageView = useRef(false);
 
   usePageDurationTracking({
@@ -59,7 +60,11 @@ export default function SupplementPage() {
           setAccessError(null);
         }
 
-        const nextSnapshot = await fetchSupplementSnapshot(applicationId);
+        const nextSnapshot = await loadSupplementSnapshotWithSync({
+          applicationId,
+          currentSnapshot: refreshing ? supplementSnapshotRef.current : null,
+        });
+        supplementSnapshotRef.current = nextSnapshot;
         setSupplementSnapshot(nextSnapshot);
         setAccessError(null);
         setRefreshError(null);
@@ -68,6 +73,7 @@ export default function SupplementPage() {
 
         if (refreshing) {
           if (isBlockingSupplementAccessError(nextError)) {
+            supplementSnapshotRef.current = null;
             setSupplementSnapshot(null);
             setAccessError(nextAccessError);
             setRefreshError(null);
@@ -75,6 +81,7 @@ export default function SupplementPage() {
             setRefreshError(nextAccessError.description);
           }
         } else {
+          supplementSnapshotRef.current = null;
           setSupplementSnapshot(null);
           setAccessError(nextAccessError);
         }
@@ -110,6 +117,7 @@ export default function SupplementPage() {
       } catch (nextError) {
         if (active) {
           setSnapshot(null);
+          supplementSnapshotRef.current = null;
           setSupplementSnapshot(null);
           setAccessError(classifySupplementAccessError(nextError));
         }
