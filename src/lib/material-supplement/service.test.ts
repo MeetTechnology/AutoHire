@@ -4,6 +4,7 @@ import {
   createMaterialReviewRun,
   createMaterialCategoryReview,
   createSupplementFile,
+  createSupplementRequest,
   createSupplementUploadBatch,
   getLatestMaterialCategoryReview,
   getMaterialReviewRunByApplicationAndRunNo,
@@ -25,6 +26,7 @@ import {
   acceptSupplementReviewCallback,
   ensureInitialSupplementReview,
   getSupplementReviewRun,
+  getSupplementSnapshot,
   syncSupplementReviewRun,
 } from "@/lib/material-supplement/service";
 import { MaterialSupplementServiceError } from "@/lib/material-supplement/errors";
@@ -48,6 +50,35 @@ function resetMemoryStore() {
       __autohireStore?: unknown;
     }
   ).__autohireStore = undefined;
+}
+
+async function createCompletedCategoryReviewRound(input: {
+  applicationId: string;
+  category:
+    | "IDENTITY"
+    | "EDUCATION"
+    | "EMPLOYMENT"
+    | "PROJECT"
+    | "PATENT"
+    | "HONOR";
+  runNo: number;
+  roundNo: number;
+}) {
+  const run = await createMaterialReviewRun({
+    applicationId: input.applicationId,
+    runNo: input.runNo,
+    triggerType: "SUPPLEMENT_UPLOAD",
+    triggeredCategory: input.category,
+    status: "COMPLETED",
+  });
+
+  return createMaterialCategoryReview({
+    applicationId: input.applicationId,
+    reviewRunId: run.id,
+    category: input.category,
+    roundNo: input.roundNo,
+    status: "COMPLETED",
+  });
 }
 
 describe("material supplement service guards", () => {
@@ -127,31 +158,56 @@ describe("material supplement service guards", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("allows applications that are still below the round limit", async () => {
+  it("allows categories that are still below the round limit", async () => {
     await expect(
       assertReviewRoundLimit({
         applicationId: "app_supplement_required",
+        category: "EMPLOYMENT",
       }),
     ).resolves.toBeUndefined();
   });
 
-  it("rejects applications that have reached the review round limit", async () => {
-    await createMaterialReviewRun({
+  it("rejects categories that have reached the review round limit", async () => {
+    const secondRun = await createMaterialReviewRun({
       applicationId: "app_supplement_required",
       runNo: 3,
       triggerType: "SUPPLEMENT_UPLOAD",
       triggeredCategory: "EMPLOYMENT",
+      status: "COMPLETED",
+    });
+    await createMaterialCategoryReview({
+      applicationId: "app_supplement_required",
+      reviewRunId: secondRun.id,
+      category: "EMPLOYMENT",
+      roundNo: 2,
+      status: "COMPLETED",
+    });
+
+    const thirdRun = await createMaterialReviewRun({
+      applicationId: "app_supplement_required",
+      runNo: 4,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "EMPLOYMENT",
+      status: "QUEUED",
+    });
+    await createMaterialCategoryReview({
+      applicationId: "app_supplement_required",
+      reviewRunId: thirdRun.id,
+      category: "EMPLOYMENT",
+      roundNo: 3,
       status: "QUEUED",
     });
 
     await expect(
       assertReviewRoundLimit({
         applicationId: "app_supplement_required",
+        category: "EMPLOYMENT",
       }),
     ).rejects.toMatchObject<Partial<MaterialSupplementServiceError>>({
       status: 409,
       code: "SUPPLEMENT_ROUND_LIMIT_REACHED",
       details: {
+        category: "EMPLOYMENT",
         maxRounds: 3,
       },
     });
@@ -414,6 +470,169 @@ describe("material supplement review run sync", () => {
         status: "COMPLETED",
       },
     );
+  });
+
+  it("updates a processing category placeholder when a completed sync result arrives", async () => {
+    const oldRun = await createMaterialReviewRun({
+      applicationId: "app_secondary",
+      runNo: 1,
+      triggerType: "INITIAL_SUBMISSION",
+      status: "COMPLETED",
+      externalRunId: "mock-material-review:initial:patent-old",
+    });
+    const oldReview = await createMaterialCategoryReview({
+      applicationId: "app_secondary",
+      reviewRunId: oldRun.id,
+      category: "PATENT",
+      roundNo: 1,
+      status: "COMPLETED",
+      aiMessage: "Patent documents were missing.",
+      resultPayload: {
+        supplementRequired: true,
+        requests: [],
+      },
+      finishedAt: new Date("2026-05-07T04:00:00.000Z"),
+    });
+    await createSupplementRequest({
+      applicationId: "app_secondary",
+      category: "PATENT",
+      reviewRunId: oldRun.id,
+      categoryReviewId: oldReview.id,
+      title: "Old patent proof",
+      reason: "Patent proof was previously requested.",
+      status: "PENDING",
+    });
+    const reviewRun = await createMaterialReviewRun({
+      applicationId: "app_secondary",
+      runNo: 2,
+      triggerType: "SUPPLEMENT_UPLOAD",
+      triggeredCategory: "PATENT",
+      status: "PROCESSING",
+      externalRunId: "mock-material-review:category:PATENT:placeholder",
+      startedAt: new Date("2026-05-07T05:00:00.000Z"),
+    });
+    const placeholder = await createMaterialCategoryReview({
+      applicationId: "app_secondary",
+      reviewRunId: reviewRun.id,
+      category: "PATENT",
+      roundNo: 2,
+      status: "PROCESSING",
+      aiMessage: "The uploaded supplement files are being reviewed.",
+      resultPayload: null,
+      startedAt: new Date("2026-05-07T05:00:00.000Z"),
+    });
+    const batch = await createSupplementUploadBatch({
+      applicationId: "app_secondary",
+      category: "PATENT",
+      status: "REVIEWING",
+      fileCount: 1,
+      reviewRunId: reviewRun.id,
+      confirmedAt: new Date("2026-05-07T05:00:00.000Z"),
+    });
+
+    vi.spyOn(materialReviewClient, "getMaterialReviewResult").mockResolvedValue(
+      {
+        externalRunId: reviewRun.externalRunId ?? "",
+        status: "COMPLETED",
+        startedAt: "2026-05-07T05:00:00.000Z",
+        finishedAt: "2026-05-07T05:03:00.000Z",
+        categories: [
+          {
+            category: "PATENT",
+            status: "COMPLETED",
+            aiMessage: "Patent documents are still needed.",
+            resultPayload: {
+              supplementRequired: true,
+              requests: [
+                {
+                  title: "Patent certificate",
+                  reason: "The patent certificate was not found.",
+                  suggestedMaterials: ["Patent certificate"],
+                  aiMessage: "Please upload the patent certificate.",
+                  status: "PENDING",
+                },
+              ],
+            },
+            rawResultPayload: null,
+          },
+        ],
+      },
+    );
+
+    await expect(
+      syncSupplementReviewRun("app_secondary", reviewRun.id),
+    ).resolves.toEqual({
+      reviewRunId: reviewRun.id,
+      status: "COMPLETED",
+      synced: true,
+      updatedCategories: ["PATENT"],
+    });
+    await expect(
+      syncSupplementReviewRun("app_secondary", reviewRun.id),
+    ).resolves.toEqual({
+      reviewRunId: reviewRun.id,
+      status: "COMPLETED",
+      synced: false,
+      updatedCategories: [],
+    });
+
+    await expect(
+      getLatestMaterialCategoryReview("app_secondary", "PATENT"),
+    ).resolves.toMatchObject({
+      id: placeholder.id,
+      reviewRunId: reviewRun.id,
+      status: "COMPLETED",
+      aiMessage: "Patent documents are still needed.",
+      isLatest: true,
+    });
+    await expect(getSupplementUploadBatchById(batch.id)).resolves.toMatchObject(
+      {
+        status: "COMPLETED",
+      },
+    );
+
+    const requests = await listSupplementRequests("app_secondary", {
+      category: "PATENT",
+    });
+    const latestRequests = requests.filter((request) => request.isLatest);
+
+    expect(latestRequests).toHaveLength(1);
+    expect(latestRequests[0]).toMatchObject({
+      reviewRunId: reviewRun.id,
+      categoryReviewId: placeholder.id,
+      title: "Patent certificate",
+      status: "PENDING",
+      isSatisfied: false,
+    });
+    expect(
+      requests.filter((request) => request.title === "Patent certificate"),
+    ).toHaveLength(1);
+    expect(
+      requests.find((request) => request.title === "Old patent proof"),
+    ).toMatchObject({
+      status: "HISTORY_ONLY",
+      isLatest: false,
+    });
+
+    const snapshot = await getSupplementSnapshot("app_secondary");
+    const patentCategory = snapshot.categories.find(
+      (category) => category.category === "PATENT",
+    );
+
+    expect(snapshot.summary.materialSupplementStatus).toBe(
+      "SUPPLEMENT_REQUIRED",
+    );
+    expect(patentCategory).toMatchObject({
+      status: "SUPPLEMENT_REQUIRED",
+      isReviewing: false,
+      pendingRequestCount: 1,
+    });
+    expect(patentCategory?.requests).toEqual([
+      expect.objectContaining({
+        title: "Patent certificate",
+        status: "PENDING",
+      }),
+    ]);
   });
 
   it("does not complete upload batches for non-final sync statuses", async () => {
@@ -905,12 +1124,17 @@ describe("material supplement upload intents", () => {
   });
 
   it("rejects upload batch creation when the round limit is reached", async () => {
-    await createMaterialReviewRun({
+    await createCompletedCategoryReviewRound({
       applicationId: "app_supplement_required",
+      category: "EMPLOYMENT",
       runNo: 3,
-      triggerType: "SUPPLEMENT_UPLOAD",
-      triggeredCategory: "EMPLOYMENT",
-      status: "QUEUED",
+      roundNo: 2,
+    });
+    await createCompletedCategoryReviewRound({
+      applicationId: "app_supplement_required",
+      category: "EMPLOYMENT",
+      runNo: 4,
+      roundNo: 3,
     });
 
     await expect(
@@ -936,12 +1160,23 @@ describe("material supplement upload intents", () => {
       status: "DRAFT",
     });
 
-    await createMaterialReviewRun({
+    await createCompletedCategoryReviewRound({
       applicationId: "app_supplement_required",
+      category: "HONOR",
       runNo: 3,
-      triggerType: "SUPPLEMENT_UPLOAD",
-      triggeredCategory: "HONOR",
-      status: "QUEUED",
+      roundNo: 1,
+    });
+    await createCompletedCategoryReviewRound({
+      applicationId: "app_supplement_required",
+      category: "HONOR",
+      runNo: 4,
+      roundNo: 2,
+    });
+    await createCompletedCategoryReviewRound({
+      applicationId: "app_supplement_required",
+      category: "HONOR",
+      runNo: 5,
+      roundNo: 3,
     });
     const batch = await createSupplementUploadBatch({
       applicationId: "app_supplement_required",
@@ -1342,12 +1577,23 @@ describe("material supplement file and batch confirmation", () => {
   });
 
   it("rejects file and batch confirmation when the round limit is reached", async () => {
-    await createMaterialReviewRun({
+    await createCompletedCategoryReviewRound({
       applicationId: "app_supplement_required",
+      category: "HONOR",
       runNo: 3,
-      triggerType: "SUPPLEMENT_UPLOAD",
-      triggeredCategory: "HONOR",
-      status: "COMPLETED",
+      roundNo: 1,
+    });
+    await createCompletedCategoryReviewRound({
+      applicationId: "app_supplement_required",
+      category: "HONOR",
+      runNo: 4,
+      roundNo: 2,
+    });
+    await createCompletedCategoryReviewRound({
+      applicationId: "app_supplement_required",
+      category: "HONOR",
+      runNo: 5,
+      roundNo: 3,
     });
 
     const fileBatch = await createSupplementUploadBatch({
@@ -1372,6 +1618,24 @@ describe("material supplement file and batch confirmation", () => {
     const confirmBatch = await createSupplementUploadBatch({
       applicationId: "app_supplement_required",
       category: "PATENT",
+    });
+    await createCompletedCategoryReviewRound({
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+      runNo: 6,
+      roundNo: 1,
+    });
+    await createCompletedCategoryReviewRound({
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+      runNo: 7,
+      roundNo: 2,
+    });
+    await createCompletedCategoryReviewRound({
+      applicationId: "app_supplement_required",
+      category: "PATENT",
+      runNo: 8,
+      roundNo: 3,
     });
     await createSupplementFile({
       applicationId: "app_supplement_required",

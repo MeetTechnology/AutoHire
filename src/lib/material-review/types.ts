@@ -75,6 +75,12 @@ export type CreateMaterialReviewResponse = {
   finishedAt?: string | null;
 };
 
+export type MaterialReviewIntegrationIdentity = {
+  applicationId: string;
+  userId: number;
+  customerId: number;
+};
+
 export type GetMaterialReviewResultResponse = {
   externalRunId: string;
   status: MaterialReviewJobStatus;

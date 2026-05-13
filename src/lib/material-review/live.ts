@@ -8,6 +8,7 @@ import {
   type CreateMaterialReviewResponse,
   type GetMaterialReviewResultInput,
   type GetMaterialReviewResultResponse,
+  type MaterialReviewIntegrationIdentity,
   type MaterialReviewJobStatus,
 } from "@/lib/material-review/types";
 
@@ -210,6 +211,50 @@ const upstreamErrorSchema = z
   })
   .passthrough();
 
+const positiveIntegerSchema = z.number().int().positive();
+
+const liveIntegrationIdentityResponseSchema = z
+  .object({
+    applicationId: z.string().min(1).optional(),
+    application_id: z.string().min(1).optional(),
+    userId: positiveIntegerSchema.optional(),
+    user_id: positiveIntegerSchema.optional(),
+    customerId: positiveIntegerSchema.optional(),
+    customer_id: positiveIntegerSchema.optional(),
+  })
+  .passthrough()
+  .transform((value, ctx): MaterialReviewIntegrationIdentity => {
+    const applicationId = value.applicationId ?? value.application_id;
+    const userId = value.userId ?? value.user_id;
+    const customerId = value.customerId ?? value.customer_id;
+
+    if (!applicationId) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Live material review identity response is missing applicationId.",
+      });
+
+      return z.NEVER;
+    }
+
+    if (userId === undefined || customerId === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Live material review identity response is missing userId or customerId.",
+      });
+
+      return z.NEVER;
+    }
+
+    return {
+      applicationId,
+      userId,
+      customerId,
+    };
+  });
+
 function assertLiveConfig() {
   const env = getEnv();
 
@@ -238,6 +283,12 @@ function buildLiveUrl(path: string) {
   const env = assertLiveConfig();
 
   return `${env.MATERIAL_REVIEW_BASE_URL.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function buildApplicationPath(pathTemplate: string, applicationId: string) {
+  const encodedApplicationId = encodeURIComponent(applicationId);
+
+  return pathTemplate.replaceAll("{applicationId}", encodedApplicationId);
 }
 
 async function parseResponsePayload(response: Response) {
@@ -340,9 +391,70 @@ function parseLivePayload<T>(schema: z.ZodType<T>, payload: unknown): T {
   return result.data;
 }
 
+async function createOrGetIntegrationIdentity(applicationId: string) {
+  const env = assertLiveConfig();
+  const path = buildApplicationPath(
+    env.MATERIAL_REVIEW_INTEGRATION_IDENTITY_PATH,
+    applicationId,
+  );
+
+  return parseLivePayload(
+    liveIntegrationIdentityResponseSchema,
+    await callLiveService(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        applicationId,
+      }),
+    }),
+  );
+}
+
+async function upsertApplicationMapping(
+  applicationId: string,
+  identity: MaterialReviewIntegrationIdentity,
+) {
+  const env = assertLiveConfig();
+  const path = buildApplicationPath(
+    env.MATERIAL_REVIEW_MAPPING_PATH,
+    applicationId,
+  );
+
+  await callLiveService(path, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      userId: identity.userId,
+      customerId: identity.customerId,
+    }),
+  });
+}
+
+async function ensureLiveMaterialReviewApplicationMapping(applicationId: string) {
+  const identity = await createOrGetIntegrationIdentity(applicationId);
+
+  if (identity.applicationId !== applicationId) {
+    throw new MaterialReviewClientError({
+      message:
+        "Live material review identity response applicationId does not match the request.",
+      failureCode: "RESULT_INVALID",
+      retryable: false,
+      httpStatus: 502,
+    });
+  }
+
+  await upsertApplicationMapping(applicationId, identity);
+}
+
 export async function createInitialMaterialReview(
   input: CreateInitialMaterialReviewInput,
 ) {
+  await ensureLiveMaterialReviewApplicationMapping(input.applicationId);
+
   return parseLivePayload(
     liveCreateResponseSchema,
     await callLiveService("/reviews/initial", {
@@ -360,6 +472,8 @@ export async function createInitialMaterialReview(
 export async function createCategoryMaterialReview(
   input: CreateCategoryMaterialReviewInput,
 ) {
+  await ensureLiveMaterialReviewApplicationMapping(input.applicationId);
+
   return parseLivePayload(
     liveCreateResponseSchema,
     await callLiveService(

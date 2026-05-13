@@ -3,10 +3,7 @@
 import { useRef, useState } from "react";
 import { CheckCircle2, FileUp, Trash2, Upload } from "lucide-react";
 
-import {
-  StatusBanner,
-  getButtonClassName,
-} from "@/components/ui/page-shell";
+import { StatusBanner, getButtonClassName } from "@/components/ui/page-shell";
 import {
   confirmSupplementFileUpload,
   confirmSupplementUploadBatch,
@@ -100,7 +97,7 @@ export function SupplementFilePicker({
   const [error, setError] = useState<string | null>(null);
   const isBusy = status !== "idle";
   const draftBatchId = getSupplementDraftBatchId(draftFiles);
-  const activeBatchId = batchId ?? (draftBatchId ?? null);
+  const activeBatchId = batchId ?? draftBatchId ?? null;
   const isDraftBatchAmbiguous = draftBatchId === undefined;
   const selectionDisabled =
     isBusy ||
@@ -234,10 +231,6 @@ export function SupplementFilePicker({
           <p className="text-sm font-semibold text-[color:var(--primary)]">
             Supplement upload
           </p>
-          <p className="mt-1 text-sm leading-6 text-[color:var(--foreground-soft)]">
-            Add up to {SUPPLEMENT_UPLOAD_MAX_FILES_PER_BATCH} files for this
-            category, then submit them for a category-only review.
-          </p>
         </div>
         <label
           className={cn(
@@ -289,7 +282,7 @@ export function SupplementFilePicker({
       {message ? (
         <StatusBanner
           tone="neutral"
-          title="Supplement upload notice"
+          title="Notice"
           description={message}
           className="shadow-none"
         />
@@ -298,7 +291,7 @@ export function SupplementFilePicker({
       {error ? (
         <StatusBanner
           tone="danger"
-          title="Supplement upload failed"
+          title="Upload failed"
           description={error}
           className="shadow-none"
         />
@@ -311,7 +304,7 @@ export function SupplementFilePicker({
             className="flex flex-col gap-2 rounded-lg bg-[color:var(--muted)]/35 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="min-w-0">
-              <p className="break-words font-medium text-[color:var(--primary)]">
+              <p className="font-medium break-words text-[color:var(--primary)]">
                 {file.name}
               </p>
               <p className="text-xs text-[color:var(--foreground-soft)]">
@@ -336,7 +329,7 @@ export function SupplementFilePicker({
             className="flex flex-col gap-2 rounded-lg bg-[color:var(--muted)]/35 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="min-w-0">
-              <p className="break-words font-medium text-[color:var(--primary)]">
+              <p className="font-medium break-words text-[color:var(--primary)]">
                 {file.fileName}
               </p>
               <p className="text-xs text-[color:var(--foreground-soft)]">

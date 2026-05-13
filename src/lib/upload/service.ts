@@ -1,4 +1,4 @@
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import type { MaterialCategory } from "@/features/application/types";
@@ -53,5 +53,38 @@ export async function createUploadIntent(input: {
       "Content-Type": input.fileType,
     },
     objectKey: input.objectKey,
+  };
+}
+
+export async function createDownloadIntent(input: {
+  objectKey: string;
+  expiresInSeconds: number;
+}) {
+  const env = getEnv();
+
+  if (env.FILE_STORAGE_MODE === "oss") {
+    const client = createOssClient();
+    const command = new GetObjectCommand({
+      Bucket: env.ALIYUN_OSS_BUCKET,
+      Key: input.objectKey,
+    });
+
+    return {
+      downloadUrl: await getSignedUrl(client, command, {
+        expiresIn: input.expiresInSeconds,
+      }),
+      method: "GET",
+      objectKey: input.objectKey,
+      expiresInSeconds: input.expiresInSeconds,
+    };
+  }
+
+  const baseUrl = env.APP_BASE_URL.replace(/\/+$/, "");
+
+  return {
+    downloadUrl: `${baseUrl}/api/mock-storage?key=${encodeURIComponent(input.objectKey)}`,
+    method: "GET",
+    objectKey: input.objectKey,
+    expiresInSeconds: input.expiresInSeconds,
   };
 }

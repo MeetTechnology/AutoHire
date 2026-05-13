@@ -1,8 +1,10 @@
 "use client";
 
 import { ArrowLeft, History, RefreshCw } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
 
 import {
+  MetaStrip,
   SectionCard,
   StatusBanner,
   getButtonClassName,
@@ -41,6 +43,7 @@ const EMPTY_CATEGORY_BASE: Omit<
   latestCategoryReviewId: null,
   latestReviewedAt: null,
   aiMessage: null,
+  remainingReviewRounds: 0,
   pendingRequestCount: 0,
   requests: [],
   draftFiles: [],
@@ -49,33 +52,33 @@ const EMPTY_CATEGORY_BASE: Omit<
 
 const STATUS_COPY: Record<MaterialSupplementStatus, StatusCopy> = {
   NOT_STARTED: {
-    title: "Material review has not started yet.",
-    description: "The supplement workspace will update after AI review starts.",
+    title: "Material review has not started.",
+    description: "Refresh after the AI review starts.",
     tone: "neutral",
   },
   REVIEWING: {
-    title: "AI material review is in progress.",
-    description: "You can refresh this page to check for updated requests.",
+    title: "AI review is in progress.",
+    description: "Refresh to check for updates.",
     tone: "loading",
   },
   SUPPLEMENT_REQUIRED: {
-    title: "Supplement materials are required.",
-    description: "Review each category and prepare the requested files.",
+    title: "Supplement materials are needed.",
+    description: "Open the marked categories and submit the requested files.",
     tone: "danger",
   },
   PARTIALLY_SATISFIED: {
-    title: "Some supplement requests are still pending.",
-    description: "Satisfied requests are hidden here and remain in history.",
+    title: "Some requests are still open.",
+    description: "Only open requests are shown here.",
     tone: "neutral",
   },
   SATISFIED: {
-    title: "Current supplement requests are satisfied.",
-    description: "No visible pending requests remain in the main workspace.",
+    title: "All current requests are satisfied.",
+    description: "Completed items remain in history.",
     tone: "success",
   },
   NO_SUPPLEMENT_REQUIRED: {
-    title: "No supplement materials are required at this time.",
-    description: "The current review did not request additional files.",
+    title: "No supplement materials are needed.",
+    description: "The current review did not request more files.",
     tone: "success",
   },
 };
@@ -121,22 +124,30 @@ export function SupplementWorkspace({
   isRefreshing,
   onRefresh,
 }: SupplementWorkspaceProps) {
+  const shouldReduceMotion = useReducedMotion();
   const statusCopy = getSupplementStatusCopy(
     snapshot.summary.materialSupplementStatus,
   );
   const categories = normalizeSupplementCategories(snapshot);
+  const categoriesWithWork = categories.filter(
+    (category) =>
+      category.pendingRequestCount > 0 ||
+      category.isReviewing ||
+      category.draftFiles.length > 0 ||
+      category.waitingReviewFiles.length > 0,
+  ).length;
   const metaItems = [
     {
       label: "Pending",
       value: String(snapshot.summary.pendingRequestCount),
     },
     {
-      label: "Satisfied",
-      value: String(snapshot.summary.satisfiedRequestCount),
-    },
-    {
       label: "Rounds left",
       value: String(snapshot.summary.remainingReviewRounds),
+    },
+    {
+      label: "Active categories",
+      value: String(categoriesWithWork),
     },
     {
       label: "Latest review",
@@ -145,22 +156,37 @@ export function SupplementWorkspace({
   ];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <motion.div
+      className="mx-auto max-w-5xl space-y-4"
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={
+        shouldReduceMotion
+          ? { duration: 0 }
+          : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
+      }
+    >
       <SectionCard
-        title="Supplement workspace"
-        description="Review the latest AI material requests by category."
+        title="AI supplement review"
+        description="Open a category when it has pending requests or files waiting for review."
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
             <a
               href="/apply/submission-complete"
-              className={cn(getButtonClassName("secondary"), "w-full sm:w-auto")}
+              className={cn(
+                getButtonClassName("secondary"),
+                "w-full sm:w-auto",
+              )}
             >
               <ArrowLeft className="h-4 w-4" aria-hidden />
               Back
             </a>
             <a
               href={SUPPLEMENT_HISTORY_PAGE_PATH}
-              className={cn(getButtonClassName("secondary"), "w-full sm:w-auto")}
+              className={cn(
+                getButtonClassName("secondary"),
+                "w-full sm:w-auto",
+              )}
             >
               <History className="h-4 w-4" aria-hidden />
               View history
@@ -183,56 +209,50 @@ export function SupplementWorkspace({
         <div className="space-y-4">
           <StatusBanner
             tone={isRefreshing ? "loading" : statusCopy.tone}
-            title={isRefreshing ? "Refreshing supplement status" : statusCopy.title}
+            title={isRefreshing ? "Refreshing status" : statusCopy.title}
             description={
               isRefreshing
-                ? "Loading the latest AI material review snapshot."
+                ? "Loading the latest review snapshot."
                 : statusCopy.description
             }
           />
 
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {metaItems.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/30 px-3 py-3"
+          <MetaStrip items={metaItems} />
+
+          <motion.div
+            className="space-y-3"
+            initial={shouldReduceMotion ? false : "hidden"}
+            animate="shown"
+            variants={{
+              hidden: {},
+              shown: {
+                transition: {
+                  staggerChildren: 0.035,
+                  delayChildren: 0.04,
+                },
+              },
+            }}
+          >
+            {categories.map((category) => (
+              <motion.div
+                key={category.category}
+                variants={{
+                  hidden: { opacity: 0, y: 8 },
+                  shown: { opacity: 1, y: 0 },
+                }}
+                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
               >
-                <p className="text-xs font-semibold text-[color:var(--foreground-soft)]">
-                  {item.label}
-                </p>
-                <p className="mt-1 text-sm font-semibold break-words text-[color:var(--primary)]">
-                  {item.value}
-                </p>
-              </div>
+                <SupplementCategorySection
+                  applicationId={snapshot.applicationId}
+                  category={category}
+                  formatDate={formatSupplementDate}
+                  onRefresh={onRefresh}
+                />
+              </motion.div>
             ))}
-          </div>
-
-          {snapshot.summary.satisfiedRequestCount > 0 ? (
-            <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
-              Satisfied requests are hidden from this workspace and remain
-              available on the history page.
-            </p>
-          ) : null}
+          </motion.div>
         </div>
       </SectionCard>
-
-      <SectionCard
-        title="Review categories"
-        description="Only the six supported supplement categories are shown here."
-      >
-        <div className="space-y-3">
-          {categories.map((category) => (
-            <SupplementCategorySection
-              key={category.category}
-              applicationId={snapshot.applicationId}
-              category={category}
-              remainingReviewRounds={snapshot.summary.remainingReviewRounds}
-              formatDate={formatSupplementDate}
-              onRefresh={onRefresh}
-            />
-          ))}
-        </div>
-      </SectionCard>
-    </div>
+    </motion.div>
   );
 }

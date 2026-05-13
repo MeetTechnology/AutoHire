@@ -163,7 +163,7 @@ describe("material supplement routes", () => {
       latestReviewRunId: "mr_run_required_identity_resolved",
       pendingRequestCount: 1,
       satisfiedRequestCount: 1,
-      remainingReviewRounds: 1,
+      remainingReviewRounds: 2,
     });
     expect(payload.supportedCategories).toEqual([
       "IDENTITY",
@@ -304,7 +304,7 @@ describe("material supplement routes", () => {
         latestReviewRunId: "mr_run_required_identity_resolved",
         pendingRequestCount: 1,
         satisfiedRequestCount: 1,
-        remainingReviewRounds: 1,
+        remainingReviewRounds: 2,
       },
     });
     expect(payload.categories).toHaveLength(6);
@@ -1213,10 +1213,7 @@ describe("material supplement routes", () => {
       updatedCategories: [],
     });
     await expect(
-      getMaterialReviewRunByApplicationAndRunNo(
-        "app_supplement_required",
-        3,
-      ),
+      getMaterialReviewRunByApplicationAndRunNo("app_supplement_required", 3),
     ).resolves.toMatchObject({
       status: "COMPLETED",
     });

@@ -7,7 +7,12 @@ import {
   type ReactNode,
 } from "react";
 import { ChevronRight, Mail, type LucideIcon } from "lucide-react";
-import { MotionConfig, motion, useReducedMotion } from "motion/react";
+import {
+  AnimatePresence,
+  MotionConfig,
+  motion,
+  useReducedMotion,
+} from "motion/react";
 
 import { cn } from "@/lib/utils";
 
@@ -570,16 +575,31 @@ export function DisclosureSection({
           aria-hidden
         />
       </button>
-      {expanded ? (
-        <div
-          className={cn(
-            "border-t border-[color:var(--border)] bg-[color:var(--muted)]/35 px-4 py-4 sm:px-5",
-            contentClassName,
-          )}
-        >
-          {children}
-        </div>
-      ) : null}
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            key="content"
+            initial={shouldReduceMotion ? false : { height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={shouldReduceMotion ? undefined : { height: 0, opacity: 0 }}
+            transition={
+              shouldReduceMotion
+                ? { duration: 0 }
+                : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+            }
+            className="overflow-hidden"
+          >
+            <div
+              className={cn(
+                "border-t border-[color:var(--border)] bg-[color:var(--muted)]/35 px-4 py-4 sm:px-5",
+                contentClassName,
+              )}
+            >
+              {children}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </motion.section>
   );
 }

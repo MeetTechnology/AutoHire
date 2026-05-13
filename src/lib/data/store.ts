@@ -17,9 +17,7 @@ import {
 import type {
   MaterialCategoryReviewStatus,
   MaterialReviewRunStatus,
-  MaterialSupplementStatus,
   SupplementCategory,
-  SupplementCategoryDisplayStatus,
   SupplementHistoryItem,
   SupplementRequestStatus,
   SupplementSnapshot,
@@ -3168,12 +3166,24 @@ export async function claimSupplementUploadBatchReview(input: {
             }
           }
 
+          const nextCategoryRoundNo =
+            Math.max(
+              0,
+              ...store.materialCategoryReviews
+                .filter(
+                  (item) =>
+                    item.applicationId === input.applicationId &&
+                    item.category === input.category,
+                )
+                .map((item) => item.roundNo),
+            ) + 1;
+
           categoryReview = {
             id: createId("material_category_review"),
             reviewRunId: reviewRun.id,
             applicationId: input.applicationId,
             category: input.category,
-            roundNo: reviewRun.runNo,
+            roundNo: nextCategoryRoundNo,
             status: "PROCESSING",
             aiMessage: "The uploaded supplement files are being reviewed.",
             resultPayload: null,
@@ -3245,12 +3255,24 @@ export async function claimSupplementUploadBatchReview(input: {
       }
     }
 
+    const nextCategoryRoundNo =
+      Math.max(
+        0,
+        ...store.materialCategoryReviews
+          .filter(
+            (item) =>
+              item.applicationId === input.applicationId &&
+              item.category === input.category,
+          )
+          .map((item) => item.roundNo),
+      ) + 1;
+
     const categoryReview: MaterialCategoryReviewRecord = {
       id: createId("material_category_review"),
       reviewRunId: reviewRun.id,
       applicationId: input.applicationId,
       category: input.category,
-      roundNo: nextRunNo,
+      roundNo: nextCategoryRoundNo,
       status: "PROCESSING",
       aiMessage: "The uploaded supplement files are being reviewed.",
       resultPayload: null,
@@ -3374,12 +3396,21 @@ export async function claimSupplementUploadBatchReview(input: {
           data: { isLatest: false },
         });
 
+        const latestCategoryReview = await tx.materialCategoryReview.findFirst({
+          where: {
+            applicationId: input.applicationId,
+            category: input.category as PrismaSupplementCategory,
+          },
+          orderBy: { roundNo: "desc" },
+        });
+        const nextCategoryRoundNo = (latestCategoryReview?.roundNo ?? 0) + 1;
+
         categoryReview = await tx.materialCategoryReview.create({
           data: {
             reviewRunId: reviewRun.id,
             applicationId: input.applicationId,
             category: input.category as PrismaSupplementCategory,
-            roundNo: reviewRun.runNo,
+            roundNo: nextCategoryRoundNo,
             status: "PROCESSING",
             aiMessage: "The uploaded supplement files are being reviewed.",
             resultPayload: Prisma.JsonNull,
@@ -3483,12 +3514,21 @@ export async function claimSupplementUploadBatchReview(input: {
       data: { isLatest: false },
     });
 
+    const latestCategoryReview = await tx.materialCategoryReview.findFirst({
+      where: {
+        applicationId: input.applicationId,
+        category: input.category as PrismaSupplementCategory,
+      },
+      orderBy: { roundNo: "desc" },
+    });
+    const nextCategoryRoundNo = (latestCategoryReview?.roundNo ?? 0) + 1;
+
     const categoryReview = await tx.materialCategoryReview.create({
       data: {
         reviewRunId: reviewRun.id,
         applicationId: input.applicationId,
         category: input.category as PrismaSupplementCategory,
-        roundNo: runNo,
+        roundNo: nextCategoryRoundNo,
         status: "PROCESSING",
         aiMessage: "The uploaded supplement files are being reviewed.",
         resultPayload: Prisma.JsonNull,
@@ -4068,10 +4108,6 @@ export async function saveMaterialReviewResult(input: {
           item.category === categoryResult.category,
       );
 
-      if (existingForRun) {
-        continue;
-      }
-
       const latestReview = store.materialCategoryReviews.find(
         (item) =>
           item.applicationId === input.applicationId &&
@@ -4088,15 +4124,8 @@ export async function saveMaterialReviewResult(input: {
         continue;
       }
 
-      for (const existing of store.materialCategoryReviews) {
-        if (
-          existing.applicationId === input.applicationId &&
-          existing.category === categoryResult.category &&
-          existing.isLatest
-        ) {
-          existing.isLatest = false;
-          existing.updatedAt = now;
-        }
+      if (existingForRun && existingForRun.status !== "PROCESSING") {
+        continue;
       }
 
       for (const existing of store.supplementRequests) {
@@ -4111,22 +4140,76 @@ export async function saveMaterialReviewResult(input: {
         }
       }
 
-      const categoryReview: MaterialCategoryReviewRecord = {
-        id: createId("material_category_review"),
-        reviewRunId: input.reviewRunId,
-        applicationId: input.applicationId,
-        category: categoryResult.category,
-        roundNo: reviewRun.runNo,
-        status: categoryResult.status,
-        aiMessage: categoryResult.aiMessage,
-        resultPayload: categoryResult.resultPayload,
-        isLatest: true,
-        startedAt: categoryResult.startedAt ?? input.startedAt ?? null,
-        finishedAt: categoryResult.finishedAt ?? input.finishedAt ?? null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      store.materialCategoryReviews.push(categoryReview);
+      let categoryReview: MaterialCategoryReviewRecord;
+
+      if (existingForRun) {
+        for (const existing of store.materialCategoryReviews) {
+          if (
+            existing.id !== existingForRun.id &&
+            existing.applicationId === input.applicationId &&
+            existing.category === categoryResult.category &&
+            existing.isLatest
+          ) {
+            existing.isLatest = false;
+            existing.updatedAt = now;
+          }
+        }
+
+        existingForRun.status = categoryResult.status;
+        existingForRun.aiMessage = categoryResult.aiMessage;
+        existingForRun.resultPayload = categoryResult.resultPayload;
+        existingForRun.isLatest = true;
+        existingForRun.startedAt =
+          categoryResult.startedAt ??
+          input.startedAt ??
+          existingForRun.startedAt;
+        existingForRun.finishedAt =
+          categoryResult.finishedAt ??
+          input.finishedAt ??
+          existingForRun.finishedAt;
+        existingForRun.updatedAt = now;
+        categoryReview = existingForRun;
+      } else {
+        for (const existing of store.materialCategoryReviews) {
+          if (
+            existing.applicationId === input.applicationId &&
+            existing.category === categoryResult.category &&
+            existing.isLatest
+          ) {
+            existing.isLatest = false;
+            existing.updatedAt = now;
+          }
+        }
+
+        const nextCategoryRoundNo =
+          Math.max(
+            0,
+            ...store.materialCategoryReviews
+              .filter(
+                (item) =>
+                  item.applicationId === input.applicationId &&
+                  item.category === categoryResult.category,
+              )
+              .map((item) => item.roundNo),
+          ) + 1;
+
+        categoryReview = {
+          id: createId("material_category_review"),
+          reviewRunId: input.reviewRunId,
+          applicationId: input.applicationId,
+          category: categoryResult.category,
+          roundNo: nextCategoryRoundNo,
+          status: categoryResult.status,
+          aiMessage: categoryResult.aiMessage,
+          resultPayload: categoryResult.resultPayload,
+          isLatest: true,
+          startedAt: categoryResult.startedAt ?? input.startedAt ?? null,
+          finishedAt: categoryResult.finishedAt ?? input.finishedAt ?? null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        store.materialCategoryReviews.push(categoryReview);
+      }
 
       for (const request of categoryResult.requests) {
         const isSatisfied =
@@ -4205,10 +4288,6 @@ export async function saveMaterialReviewResult(input: {
           },
         });
 
-        if (existingForRun) {
-          continue;
-        }
-
         const latestReview = await tx.materialCategoryReview.findFirst({
           where: {
             applicationId: input.applicationId,
@@ -4222,14 +4301,13 @@ export async function saveMaterialReviewResult(input: {
           continue;
         }
 
-        await tx.materialCategoryReview.updateMany({
-          where: {
-            applicationId: input.applicationId,
-            category: categoryResult.category as PrismaSupplementCategory,
-            isLatest: true,
-          },
-          data: { isLatest: false },
-        });
+        if (
+          existingForRun &&
+          existingForRun.status !==
+            ("PROCESSING" as PrismaMaterialCategoryReviewStatus)
+        ) {
+          continue;
+        }
 
         const currentLatestRequests = await tx.supplementRequest.findMany({
           where: {
@@ -4254,23 +4332,81 @@ export async function saveMaterialReviewResult(input: {
           ),
         );
 
-        const categoryReview = await tx.materialCategoryReview.create({
-          data: {
-            reviewRunId: input.reviewRunId,
-            applicationId: input.applicationId,
-            category: categoryResult.category as PrismaSupplementCategory,
-            roundNo: reviewRun.runNo,
-            status: categoryResult.status as PrismaMaterialCategoryReviewStatus,
-            aiMessage: categoryResult.aiMessage,
-            resultPayload:
-              categoryResult.resultPayload === null
-                ? Prisma.JsonNull
-                : (categoryResult.resultPayload as Prisma.InputJsonValue),
-            isLatest: true,
-            startedAt: categoryResult.startedAt ?? input.startedAt ?? null,
-            finishedAt: categoryResult.finishedAt ?? input.finishedAt ?? null,
-          },
-        });
+        let categoryReview:
+          | MaterialCategoryReviewRecord
+          | NonNullable<typeof existingForRun>;
+
+        if (existingForRun) {
+          await tx.materialCategoryReview.updateMany({
+            where: {
+              id: { not: existingForRun.id },
+              applicationId: input.applicationId,
+              category: categoryResult.category as PrismaSupplementCategory,
+              isLatest: true,
+            },
+            data: { isLatest: false },
+          });
+
+          categoryReview = await tx.materialCategoryReview.update({
+            where: { id: existingForRun.id },
+            data: {
+              status:
+                categoryResult.status as PrismaMaterialCategoryReviewStatus,
+              aiMessage: categoryResult.aiMessage,
+              resultPayload:
+                categoryResult.resultPayload === null
+                  ? Prisma.JsonNull
+                  : (categoryResult.resultPayload as Prisma.InputJsonValue),
+              isLatest: true,
+              startedAt:
+                categoryResult.startedAt ??
+                input.startedAt ??
+                existingForRun.startedAt,
+              finishedAt:
+                categoryResult.finishedAt ??
+                input.finishedAt ??
+                existingForRun.finishedAt,
+            },
+          });
+        } else {
+          await tx.materialCategoryReview.updateMany({
+            where: {
+              applicationId: input.applicationId,
+              category: categoryResult.category as PrismaSupplementCategory,
+              isLatest: true,
+            },
+            data: { isLatest: false },
+          });
+
+          const latestCategoryReview =
+            await tx.materialCategoryReview.findFirst({
+              where: {
+                applicationId: input.applicationId,
+                category: categoryResult.category as PrismaSupplementCategory,
+              },
+              orderBy: { roundNo: "desc" },
+            });
+          const nextCategoryRoundNo = (latestCategoryReview?.roundNo ?? 0) + 1;
+
+          categoryReview = await tx.materialCategoryReview.create({
+            data: {
+              reviewRunId: input.reviewRunId,
+              applicationId: input.applicationId,
+              category: categoryResult.category as PrismaSupplementCategory,
+              roundNo: nextCategoryRoundNo,
+              status:
+                categoryResult.status as PrismaMaterialCategoryReviewStatus,
+              aiMessage: categoryResult.aiMessage,
+              resultPayload:
+                categoryResult.resultPayload === null
+                  ? Prisma.JsonNull
+                  : (categoryResult.resultPayload as Prisma.InputJsonValue),
+              isLatest: true,
+              startedAt: categoryResult.startedAt ?? input.startedAt ?? null,
+              finishedAt: categoryResult.finishedAt ?? input.finishedAt ?? null,
+            },
+          });
+        }
 
         for (const request of categoryResult.requests) {
           const normalizedSuggestedMaterials = normalizeSuggestedMaterials(
@@ -4351,13 +4487,13 @@ export async function saveMaterialReviewResult(input: {
 export async function getMaterialSupplementSummaryData(
   applicationId: string,
 ): Promise<MaterialSupplementSummaryData> {
-  const [reviewRuns, latestCategoryReviews, latestRequests] = await Promise.all(
-    [
+  const [reviewRuns, categoryReviews, latestCategoryReviews, latestRequests] =
+    await Promise.all([
       listMaterialReviewRuns(applicationId),
+      listMaterialCategoryReviews(applicationId),
       listMaterialCategoryReviews(applicationId, { isLatest: true }),
       listLatestSupplementRequests(applicationId),
-    ],
-  );
+    ]);
 
   const latestRun = reviewRuns[0] ?? null;
   const latestReviewedAt =
@@ -4371,6 +4507,25 @@ export async function getMaterialSupplementSummaryData(
   const latestCategoryReviewStatuses = Object.fromEntries(
     latestCategoryReviews.map((review) => [review.category, review.status]),
   ) as Partial<Record<SupplementCategory, MaterialCategoryReviewStatus>>;
+  const remainingReviewRoundsByCategory = Object.fromEntries(
+    SUPPORTED_SUPPLEMENT_CATEGORIES.map((category) => [
+      category,
+      getRemainingSupplementReviewRounds(
+        categoryReviews.filter((review) => review.category === category).length,
+      ),
+    ]),
+  ) as Record<SupplementCategory, number>;
+  const categoriesWithPendingRequests = new Set(
+    latestRequests
+      .filter(
+        (request) => !request.isSatisfied && request.status !== "SATISFIED",
+      )
+      .map((request) => request.category),
+  );
+  const summaryRoundCategories =
+    categoriesWithPendingRequests.size > 0
+      ? Array.from(categoriesWithPendingRequests)
+      : latestCategoryReviews.map((review) => review.category);
 
   return {
     applicationId,
@@ -4384,8 +4539,11 @@ export async function getMaterialSupplementSummaryData(
     latestReviewedAt: latestReviewedAt?.toISOString() ?? null,
     pendingRequestCount: countPendingSupplementRequests(latestRequests),
     satisfiedRequestCount: countSatisfiedSupplementRequests(latestRequests),
-    remainingReviewRounds: getRemainingSupplementReviewRounds(
-      reviewRuns.length,
+    remainingReviewRounds: Math.max(
+      0,
+      ...summaryRoundCategories.map(
+        (category) => remainingReviewRoundsByCategory[category],
+      ),
     ),
     supportedCategories: [...SUPPORTED_SUPPLEMENT_CATEGORIES],
     latestRunStatus: latestRun?.status ?? null,
@@ -4396,28 +4554,35 @@ export async function getMaterialSupplementSummaryData(
 export async function getMaterialSupplementSnapshotData(
   applicationId: string,
 ): Promise<SupplementSnapshot> {
-  const [summary, latestCategoryReviews, latestRequests, files, batches] =
-    await Promise.all([
-      getMaterialSupplementSummaryData(applicationId),
-      listMaterialCategoryReviews(applicationId, { isLatest: true }),
-      listLatestSupplementRequests(applicationId),
-      listSupplementFiles(applicationId),
-      (async () => {
-        if (getRuntimeMode() === "memory") {
-          return getMemoryStore()
-            .supplementUploadBatches.filter(
-              (item) => item.applicationId === applicationId,
-            )
-            .sort(byLatestSupplementTimestampDesc);
-        }
+  const [
+    summary,
+    categoryReviews,
+    latestCategoryReviews,
+    latestRequests,
+    files,
+    batches,
+  ] = await Promise.all([
+    getMaterialSupplementSummaryData(applicationId),
+    listMaterialCategoryReviews(applicationId),
+    listMaterialCategoryReviews(applicationId, { isLatest: true }),
+    listLatestSupplementRequests(applicationId),
+    listSupplementFiles(applicationId),
+    (async () => {
+      if (getRuntimeMode() === "memory") {
+        return getMemoryStore()
+          .supplementUploadBatches.filter(
+            (item) => item.applicationId === applicationId,
+          )
+          .sort(byLatestSupplementTimestampDesc);
+      }
 
-        const prisma = await getPrisma();
-        return prisma.supplementUploadBatch.findMany({
-          where: { applicationId },
-          orderBy: { createdAt: "desc" },
-        });
-      })(),
-    ]);
+      const prisma = await getPrisma();
+      return prisma.supplementUploadBatch.findMany({
+        where: { applicationId },
+        orderBy: { createdAt: "desc" },
+      });
+    })(),
+  ]);
 
   const categories = SUPPORTED_SUPPLEMENT_CATEGORIES.map((category) => {
     const latestReview =
@@ -4460,6 +4625,9 @@ export async function getMaterialSupplementSnapshotData(
           (latestReview as MaterialCategoryReviewRecord | null) ?? {},
         )?.toISOString() ?? null,
       aiMessage: latestReview?.aiMessage ?? null,
+      remainingReviewRounds: getRemainingSupplementReviewRounds(
+        categoryReviews.filter((item) => item.category === category).length,
+      ),
       pendingRequestCount: countPendingSupplementRequests(
         latestCategoryRequests,
       ),
@@ -4497,18 +4665,15 @@ export async function getMaterialSupplementHistoryData(
   filters: { category: SupplementCategory | null; runNo: number | null };
   items: SupplementHistoryItem[];
 }> {
-  const [categoryReviews, reviewRuns, requests, files] = await Promise.all([
+  const [categoryReviews, requests, files] = await Promise.all([
     listMaterialCategoryReviews(applicationId, {
       ...(filters?.category === undefined
         ? {}
         : { category: filters.category }),
     }),
-    listMaterialReviewRuns(applicationId),
     listSupplementRequests(applicationId),
     listSupplementFiles(applicationId),
   ]);
-
-  const runNoById = new Map(reviewRuns.map((item) => [item.id, item.runNo]));
 
   const items = categoryReviews
     .filter((review) => {
@@ -4516,12 +4681,10 @@ export async function getMaterialSupplementHistoryData(
         return true;
       }
 
-      return runNoById.get(review.reviewRunId) === filters.runNo;
+      return review.roundNo === filters.runNo;
     })
     .sort((left, right) => {
-      const runNoDiff =
-        (runNoById.get(right.reviewRunId) ?? 0) -
-        (runNoById.get(left.reviewRunId) ?? 0);
+      const runNoDiff = right.roundNo - left.roundNo;
       if (runNoDiff !== 0) {
         return runNoDiff;
       }
@@ -4530,7 +4693,7 @@ export async function getMaterialSupplementHistoryData(
     })
     .map((review) => ({
       reviewRunId: review.reviewRunId,
-      runNo: runNoById.get(review.reviewRunId) ?? 0,
+      runNo: review.roundNo,
       category: review.category,
       categoryReviewId: review.id,
       status: review.status,

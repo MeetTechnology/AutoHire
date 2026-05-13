@@ -88,6 +88,7 @@ export type SupplementCategorySnapshot = {
   latestCategoryReviewId: string | null;
   latestReviewedAt: string | null;
   aiMessage: string | null;
+  remainingReviewRounds: number;
   pendingRequestCount: number;
   requests: SupplementRequestSummary[];
   draftFiles: SupplementFileSummary[];

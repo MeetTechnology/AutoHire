@@ -27,6 +27,12 @@ const envSchema = z.object({
   MATERIAL_REVIEW_MOCK_SCENARIO: z.string().default("supplement_required"),
   MATERIAL_REVIEW_BASE_URL: z.string().optional(),
   MATERIAL_REVIEW_API_KEY: z.string().optional(),
+  MATERIAL_REVIEW_INTEGRATION_IDENTITY_PATH: z.string().default(
+    "/reviews/applications/{applicationId}/integration-identity",
+  ),
+  MATERIAL_REVIEW_MAPPING_PATH: z
+    .string()
+    .default("/reviews/applications/{applicationId}/mapping"),
   MATERIAL_REVIEW_CALLBACK_SECRET: z.string().optional(),
   SENTRY_DSN: z.string().optional().default(""),
 });
@@ -39,6 +45,14 @@ export function getEnv() {
   }
 
   return cachedEnv;
+}
+
+export function resetEnvForTests() {
+  if (process.env.NODE_ENV !== "test") {
+    return;
+  }
+
+  cachedEnv = undefined;
 }
 
 export function getRuntimeMode() {

@@ -18,7 +18,6 @@ import {
   getMaterialSupplementSnapshotData,
   getMaterialSupplementSummaryData,
   listMaterialCategoryReviews,
-  listMaterialReviewRuns,
   saveMaterialReviewResult,
   updateMaterialReviewRun,
   createMaterialReviewRun,
@@ -83,19 +82,28 @@ export async function assertCategoryNotReviewing(input: {
   }
 }
 
-export async function assertReviewRoundLimit(input: { applicationId: string }) {
-  const reviewRuns = await listMaterialReviewRuns(input.applicationId);
+export async function assertReviewRoundLimit(input: {
+  applicationId: string;
+  category: SupplementCategory;
+}) {
+  const categoryReviews = await listMaterialCategoryReviews(
+    input.applicationId,
+    {
+      category: input.category,
+    },
+  );
   const remainingReviewRounds = getRemainingSupplementReviewRounds(
-    reviewRuns.length,
+    categoryReviews.length,
   );
 
   if (remainingReviewRounds <= 0) {
     throw new MaterialSupplementServiceError({
       message:
-        "The supplement review round limit has been reached for this application.",
+        "The supplement review round limit has been reached for this category.",
       status: 409,
       code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_ROUND_LIMIT_REACHED,
       details: {
+        category: input.category,
         maxRounds: SUPPLEMENT_REVIEW_MAX_ROUNDS,
       },
     });

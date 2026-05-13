@@ -160,7 +160,7 @@ export default function SupplementPage() {
     <PageFrame>
       <PageShell
         title="Supplement Materials"
-        description="Review AI material requests and track category-level supplement status after submission."
+        description="Review requested files and submit follow-up materials."
         headerVariant="centered"
         steps={APPLICATION_FLOW_STEPS_WITH_INTRO}
         currentStep={3}

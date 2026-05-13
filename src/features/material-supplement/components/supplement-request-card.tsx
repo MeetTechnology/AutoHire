@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 
 type SupplementRequestCardProps = {
   request: SupplementRequestSummary;
-  formatDate: (value: string | null) => string;
 };
 
 function normalizeSuggestedMaterials(
@@ -47,10 +46,7 @@ function getRequestStatusLabel(request: SupplementRequestSummary) {
   return "Pending";
 }
 
-export function SupplementRequestCard({
-  request,
-  formatDate,
-}: SupplementRequestCardProps) {
+export function SupplementRequestCard({ request }: SupplementRequestCardProps) {
   const suggestedMaterials = normalizeSuggestedMaterials(
     request.suggestedMaterials,
   );
@@ -77,9 +73,6 @@ export function SupplementRequestCard({
               {request.title}
             </h3>
           </div>
-          <p className="text-xs font-medium text-[color:var(--foreground-soft)]">
-            Updated {formatDate(request.updatedAt)}
-          </p>
         </div>
         <span
           className={cn(
@@ -97,15 +90,6 @@ export function SupplementRequestCard({
         <p className="mt-3 text-sm leading-6 break-words text-[color:var(--foreground-soft)]">
           {request.reason}
         </p>
-      ) : null}
-
-      {request.aiMessage ? (
-        <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2.5">
-          <p className="text-xs font-semibold text-sky-950">AI message</p>
-          <p className="mt-1 text-sm leading-6 break-words text-sky-950">
-            {request.aiMessage}
-          </p>
-        </div>
       ) : null}
 
       {suggestedMaterials.length > 0 ? (

@@ -55,9 +55,7 @@ function categorySnapshot(
   };
 }
 
-function snapshot(
-  input: Partial<SupplementSnapshot> = {},
-): SupplementSnapshot {
+function snapshot(input: Partial<SupplementSnapshot> = {}): SupplementSnapshot {
   return {
     applicationId: input.applicationId ?? "app_123",
     summary: {
@@ -134,16 +132,16 @@ describe("SupplementWorkspace", () => {
     }
 
     expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
-    expect(screen.getByText("Satisfied")).toBeInTheDocument();
     expect(screen.getByText("Rounds left")).toBeInTheDocument();
+    expect(screen.getByText("Active categories")).toBeInTheDocument();
     expect(screen.getByText("Latest review")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(
-      screen.getByText("Supplement materials are required."),
+      screen.getByText("Supplement materials are needed."),
     ).toBeInTheDocument();
   });
 
-  it("hides satisfied requests on the main workspace and points to history", () => {
+  it("hides satisfied requests on the main workspace", () => {
     render(
       <SupplementWorkspace
         snapshot={snapshot()}
@@ -156,11 +154,6 @@ describe("SupplementWorkspace", () => {
     expect(
       screen.queryByText("Satisfied transcript request"),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Satisfied requests are hidden from this workspace and remain available on the history page.",
-      ),
-    ).toBeInTheDocument();
   });
 
   it("shows the empty category message when no pending requests are visible", async () => {
@@ -185,7 +178,7 @@ describe("SupplementWorkspace", () => {
     );
 
     expect(
-      screen.getByText("No supplement materials are required at this time."),
+      screen.getByText("No supplement materials are needed."),
     ).toBeInTheDocument();
 
     const identitySectionToggle = screen.getByRole("button", {
@@ -197,7 +190,7 @@ describe("SupplementWorkspace", () => {
     expect(identityRegion).not.toBeNull();
     expect(
       within(identityRegion as HTMLElement).getByText(
-        "No visible pending requests in this category. Satisfied and historical requests remain available in history.",
+        "No open requests in this category.",
       ),
     ).toBeInTheDocument();
   });

@@ -180,7 +180,8 @@ function assertSupplementObjectKeyScope(input: {
 
   if (!input.objectKey.startsWith(expectedPrefix)) {
     throw new MaterialSupplementServiceError({
-      message: "The supplement file object key is outside the expected upload scope.",
+      message:
+        "The supplement file object key is outside the expected upload scope.",
       status: 400,
       code: SUPPLEMENT_EXPERT_ERROR_CODES.SUPPLEMENT_FILE_CONFIRM_FAILED,
       details: {
@@ -202,6 +203,7 @@ export async function createSupplementUploadBatchIntent(input: {
   });
   await assertReviewRoundLimit({
     applicationId: input.applicationId,
+    category,
   });
 
   try {
@@ -232,6 +234,7 @@ export async function createSupplementUploadIntent(
   });
   await assertReviewRoundLimit({
     applicationId: input.applicationId,
+    category,
   });
 
   const batch = await getSupplementUploadBatchById(input.uploadBatchId);
@@ -386,6 +389,7 @@ export async function confirmSupplementFileUpload(
   });
   await assertReviewRoundLimit({
     applicationId: input.applicationId,
+    category,
   });
 
   const batch = await getSupplementUploadBatchById(input.uploadBatchId);
@@ -617,6 +621,7 @@ export async function confirmSupplementUploadBatch(
     });
     await assertReviewRoundLimit({
       applicationId: input.applicationId,
+      category,
     });
   }
 
@@ -757,7 +762,8 @@ export async function confirmSupplementUploadBatch(
     await updateMaterialCategoryReview(claim.categoryReview.id, {
       status: "FAILED",
       finishedAt: new Date(),
-      aiMessage: "The supplement review could not be started. Please try again.",
+      aiMessage:
+        "The supplement review could not be started. Please try again.",
     });
 
     if (error instanceof MaterialSupplementServiceError) {

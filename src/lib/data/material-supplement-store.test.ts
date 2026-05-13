@@ -377,12 +377,12 @@ describe("material supplement store", () => {
     ).toBe(true);
   });
 
-  it("computes remaining review rounds from the application run count", async () => {
+  it("computes remaining review rounds from pending category review counts", async () => {
     const summary = await getMaterialSupplementSummaryData(
       "app_supplement_required",
     );
 
-    expect(summary.remainingReviewRounds).toBe(1);
+    expect(summary.remainingReviewRounds).toBe(2);
   });
 
   it("returns count exceeded when reserving more than the allowed draft file slots", async () => {
