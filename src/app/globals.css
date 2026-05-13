@@ -80,9 +80,16 @@ body::before {
   opacity: 0.92;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/**
+ * Anchor reset belongs in `@layer base` so utilities like `text-white` override
+ * `color: inherit`. Unlayered `a {}` wins over Tailwind utilities and caused
+ * dark inherited text on `bg-[color:var(--primary)]` links (illegible).
+ */
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 button,
