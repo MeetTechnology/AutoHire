@@ -3,10 +3,7 @@
 import { Clock3 } from "lucide-react";
 
 import { DisclosureSection, StatusBanner } from "@/components/ui/page-shell";
-import type {
-  SupplementCategorySnapshot,
-  SupplementFileSummary,
-} from "@/features/material-supplement/types";
+import type { SupplementCategorySnapshot } from "@/features/material-supplement/types";
 import { cn } from "@/lib/utils";
 
 import { SupplementRequestCard } from "./supplement-request-card";
@@ -28,15 +25,13 @@ type StatusCopy = {
 function getCategoryStatusCopy(
   category: SupplementCategorySnapshot,
 ): StatusCopy {
-  if (category.isReviewing || category.status === "REVIEWING") {
-    return {
-      title: "Category review is in progress.",
-      description: "Uploads are locked until the review finishes.",
-      tone: "loading",
-    };
-  }
-
   switch (category.status) {
+    case "REVIEWING":
+      return {
+        title: "This category is still updating.",
+        description: "Refresh shortly for the latest result.",
+        tone: "neutral",
+      };
     case "NOT_STARTED":
       return {
         title: "This category has not been reviewed yet.",
@@ -82,43 +77,6 @@ function getCategoryStatusCopy(
   }
 }
 
-function FileList({
-  title,
-  files,
-  formatDate,
-}: {
-  title: string;
-  files: SupplementFileSummary[];
-  formatDate: (value: string | null) => string;
-}) {
-  if (files.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="rounded-xl border border-[color:var(--border)] bg-white p-3">
-      <p className="text-xs font-semibold text-[color:var(--primary)]">
-        {title}
-      </p>
-      <div className="mt-2 space-y-2">
-        {files.map((file) => (
-          <div
-            key={file.id}
-            className="flex flex-col gap-1 rounded-lg bg-[color:var(--muted)]/35 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
-          >
-            <span className="min-w-0 font-medium break-words text-[color:var(--primary)]">
-              {file.fileName}
-            </span>
-            <span className="shrink-0 text-xs text-[color:var(--foreground-soft)]">
-              {formatDate(file.uploadedAt)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function SupplementCategorySection({
   applicationId,
   category,
@@ -130,8 +88,6 @@ export function SupplementCategorySection({
     (request) => !request.isSatisfied && request.status !== "SATISFIED",
   );
   const shouldShowStatusBanner =
-    category.isReviewing ||
-    category.status === "SUPPLEMENT_REQUIRED" ||
     category.status === "PARTIALLY_SATISFIED" ||
     category.status === "REVIEW_FAILED";
 
@@ -151,7 +107,16 @@ export function SupplementCategorySection({
               {category.pendingRequestCount === 1 ? "" : "s"}
             </span>
           ) : (
-            <span>{category.status.replaceAll("_", " ").toLowerCase()}</span>
+            <span
+              className={cn(
+                category.status === "SATISFIED" ||
+                  category.status === "NO_SUPPLEMENT_REQUIRED"
+                  ? "font-semibold text-emerald-950"
+                  : undefined,
+              )}
+            >
+              {category.status.replaceAll("_", " ").toLowerCase()}
+            </span>
           )}
           {category.latestReviewedAt ? (
             <span className="inline-flex items-center gap-1.5">
@@ -169,7 +134,10 @@ export function SupplementCategorySection({
               ? "border-sky-200 bg-sky-50 text-sky-950"
               : category.status === "SUPPLEMENT_REQUIRED"
                 ? "border-rose-200 bg-rose-50 text-rose-900"
-                : "border-[color:var(--border)] bg-white text-[color:var(--foreground-soft)]",
+                : category.status === "SATISFIED" ||
+                    category.status === "NO_SUPPLEMENT_REQUIRED"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                  : "border-[color:var(--border)] bg-white text-[color:var(--foreground-soft)]",
           )}
         >
           {category.status.replaceAll("_", " ").toLowerCase()}
@@ -187,30 +155,19 @@ export function SupplementCategorySection({
       ) : null}
 
       {visibleRequests.length > 0 ? (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           {visibleRequests.map((request) => (
             <SupplementRequestCard key={request.id} request={request} />
           ))}
         </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-[color:var(--border)] bg-white px-4 py-4 text-sm leading-6 text-[color:var(--foreground-soft)]">
-          No open requests in this category.
-        </div>
-      )}
-
-      <div className="grid gap-3">
-        <FileList
-          title="Waiting review files"
-          files={category.waitingReviewFiles}
-          formatDate={formatDate}
-        />
-      </div>
+      ) : null}
 
       <SupplementFilePicker
         applicationId={applicationId}
         category={category.category}
         categoryLabel={category.label}
         draftFiles={category.draftFiles}
+        waitingReviewFiles={category.waitingReviewFiles}
         isReviewing={category.isReviewing || category.status === "REVIEWING"}
         remainingReviewRounds={category.remainingReviewRounds}
         formatDate={formatDate}

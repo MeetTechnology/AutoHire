@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { CheckCircle2, FileUp, Trash2, Upload } from "lucide-react";
+import { Trash2, Upload } from "lucide-react";
 
 import { StatusBanner, getButtonClassName } from "@/components/ui/page-shell";
 import {
@@ -26,11 +26,14 @@ import type {
 } from "@/features/material-supplement/types";
 import { cn } from "@/lib/utils";
 
+const UPLOAD_INPUT_LABEL = "Upload supplement files";
+
 type SupplementFilePickerProps = {
   applicationId: string;
   category: SupplementCategory;
   categoryLabel: string;
   draftFiles: SupplementFileSummary[];
+  waitingReviewFiles: SupplementFileSummary[];
   isReviewing: boolean;
   remainingReviewRounds: number;
   formatDate: (value: string | null) => string;
@@ -79,11 +82,16 @@ function getRejectedSummary(rejectedFiles: SupplementRejectedFile[]) {
   return parts.join("; ");
 }
 
+function waitingFileStatusLabel(isReviewing: boolean) {
+  return isReviewing ? "Review in progress" : "Awaiting review";
+}
+
 export function SupplementFilePicker({
   applicationId,
   category,
   categoryLabel,
   draftFiles,
+  waitingReviewFiles,
   isReviewing,
   remainingReviewRounds,
   formatDate,
@@ -115,6 +123,9 @@ export function SupplementFilePicker({
       localFileCount: localFiles.length,
       draftFileCount: draftFiles.length,
     });
+
+  const hasAnyListedFile =
+    waitingReviewFiles.length + draftFiles.length + localFiles.length > 0;
 
   function resetFileInput() {
     if (inputRef.current) {
@@ -224,49 +235,34 @@ export function SupplementFilePicker({
     }
   }
 
+  function uploadZonePrompt() {
+    if (remainingReviewRounds <= 0) {
+      return "Review round limit reached";
+    }
+
+    if (isDraftBatchAmbiguous) {
+      return "Resolve draft batches before uploading";
+    }
+
+    if (isReviewing) {
+      return "Review in progress — uploads resume when complete";
+    }
+
+    if (hasAnyListedFile) {
+      return "Click to add file(s)";
+    }
+
+    return "Click to upload file(s)";
+  }
+
   return (
-    <div className="space-y-3 rounded-xl border border-[color:var(--border)] bg-white p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-[color:var(--primary)]">
-            Supplement upload
-          </p>
-        </div>
-        <label
-          className={cn(
-            getButtonClassName("secondary"),
-            "w-full cursor-pointer sm:w-auto",
-            selectionDisabled && "pointer-events-none opacity-55",
-          )}
-        >
-          <FileUp className="h-4 w-4" aria-hidden />
-          Choose files
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            className="sr-only"
-            disabled={selectionDisabled}
-            onChange={(event) => handleSelect(event.target.files)}
-          />
-        </label>
-      </div>
-
-      {isReviewing ? (
-        <StatusBanner
-          tone="loading"
-          title="Uploads are locked"
-          description="This category is reviewing the latest supplement input."
-          className="shadow-none"
-        />
-      ) : null}
-
+    <div className="flex flex-col gap-4">
       {remainingReviewRounds <= 0 ? (
         <StatusBanner
-          tone="neutral"
+          tone="danger"
           title="Review round limit reached"
           description="No additional supplement batches can be submitted for this application."
-          className="shadow-none"
+          className="shadow-none border-rose-100 bg-rose-50/70 text-rose-800 [&>div>span.rounded-full]:bg-rose-300"
         />
       ) : null}
 
@@ -278,6 +274,113 @@ export function SupplementFilePicker({
           className="shadow-none"
         />
       ) : null}
+
+      <div className="flex flex-col gap-2">
+        {waitingReviewFiles.map((file) => (
+          <div
+            key={file.id}
+            className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground-soft)]"
+          >
+            <p
+              className="truncate font-medium text-[color:var(--primary)]"
+              title={file.fileName}
+            >
+              {file.fileName}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--foreground-soft)]">
+              {waitingFileStatusLabel(isReviewing)} ·{" "}
+              {formatSupplementFileSize(file.fileSize)} ·{" "}
+              {formatDate(file.uploadedAt)}
+            </p>
+          </div>
+        ))}
+
+        {draftFiles.map((file) => (
+          <div
+            key={file.id}
+            className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground-soft)]"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="truncate font-medium text-[color:var(--primary)]">
+                {file.fileName}
+              </span>
+              <button
+                type="button"
+                disabled={isBusy || isReviewing}
+                onClick={() => {
+                  void handleDeleteDraft(file.id);
+                }}
+                className="shrink-0 text-xs font-semibold text-[color:var(--accent)] transition hover:text-[#14532d] disabled:opacity-55"
+              >
+                Delete
+              </button>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--foreground-soft)]">
+              Draft · {formatSupplementFileSize(file.fileSize)} ·{" "}
+              {formatDate(file.uploadedAt)}
+            </p>
+          </div>
+        ))}
+
+        {localFiles.map((file, index) => (
+          <div
+            key={`${file.name}-${file.size}-${index}`}
+            className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground-soft)]"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="truncate font-medium text-[color:var(--primary)]">
+                {file.name}
+              </span>
+              <button
+                type="button"
+                disabled={isBusy || isReviewing}
+                className="shrink-0 text-xs font-semibold text-[color:var(--accent)] transition hover:text-[#14532d] disabled:opacity-55"
+                onClick={() => handleRemoveLocal(index)}
+              >
+                Remove
+              </button>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--foreground-soft)]">
+              Ready to upload · {formatSupplementFileSize(file.size)}
+            </p>
+          </div>
+        ))}
+
+        {!hasAnyListedFile ? (
+          <p className="rounded-xl border border-dashed border-[color:var(--border)] bg-white px-3 py-3 text-xs tracking-[0.12em] text-[color:var(--foreground-soft)] uppercase">
+            No supplement files uploaded yet in this batch
+          </p>
+        ) : null}
+      </div>
+
+      <label
+        className={cn("block", selectionDisabled && "pointer-events-none")}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          aria-label={UPLOAD_INPUT_LABEL}
+          className="sr-only"
+          disabled={selectionDisabled}
+          onChange={(event) => handleSelect(event.target.files)}
+        />
+        <div
+          className={cn(
+            "rounded-xl border border-dashed border-[color:var(--border-strong)] bg-white px-4 py-4 text-center transition",
+            !selectionDisabled &&
+              "hover:border-[color:var(--primary)] hover:bg-slate-50 cursor-pointer",
+            selectionDisabled && "opacity-55",
+          )}
+        >
+          <p className="text-sm font-medium text-[color:var(--primary)]">
+            <span className="mr-1 font-semibold" aria-hidden>
+              +
+            </span>
+            {uploadZonePrompt()}
+          </p>
+        </div>
+      </label>
 
       {message ? (
         <StatusBanner
@@ -297,76 +400,13 @@ export function SupplementFilePicker({
         />
       ) : null}
 
-      <div className="space-y-2">
-        {localFiles.map((file, index) => (
-          <div
-            key={`${file.name}-${file.size}-${index}`}
-            className="flex flex-col gap-2 rounded-lg bg-[color:var(--muted)]/35 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="min-w-0">
-              <p className="font-medium break-words text-[color:var(--primary)]">
-                {file.name}
-              </p>
-              <p className="text-xs text-[color:var(--foreground-soft)]">
-                Ready to upload - {formatSupplementFileSize(file.size)}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[color:var(--accent)] disabled:opacity-55"
-              disabled={isBusy || isReviewing}
-              onClick={() => handleRemoveLocal(index)}
-            >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden />
-              Remove
-            </button>
-          </div>
-        ))}
-
-        {draftFiles.map((file) => (
-          <div
-            key={file.id}
-            className="flex flex-col gap-2 rounded-lg bg-[color:var(--muted)]/35 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="min-w-0">
-              <p className="font-medium break-words text-[color:var(--primary)]">
-                {file.fileName}
-              </p>
-              <p className="text-xs text-[color:var(--foreground-soft)]">
-                Draft - {formatSupplementFileSize(file.fileSize)} -{" "}
-                {formatDate(file.uploadedAt)}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[color:var(--accent)] disabled:opacity-55"
-              disabled={isBusy || isReviewing}
-              onClick={() => {
-                void handleDeleteDraft(file.id);
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden />
-              Delete
-            </button>
-          </div>
-        ))}
-
-        {localFiles.length === 0 && draftFiles.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-[color:var(--border)] px-3 py-3 text-xs tracking-[0.12em] text-[color:var(--foreground-soft)] uppercase">
-            No supplement files selected
-          </p>
-        ) : null}
-      </div>
-
-      <div className="flex flex-col gap-2 border-t border-[color:var(--border)] pt-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="inline-flex items-center gap-2 text-xs text-[color:var(--foreground-soft)]">
-          <CheckCircle2 className="h-4 w-4" aria-hidden />
-          {localFiles.length + draftFiles.length}/
-          {SUPPLEMENT_UPLOAD_MAX_FILES_PER_BATCH} files in this batch
-        </p>
+      <div className="flex justify-center pt-1">
         <button
           type="button"
-          className={cn(getButtonClassName("primary"), "w-full sm:w-auto")}
+          className={cn(
+            getButtonClassName("primary"),
+            "min-w-[12rem] justify-center",
+          )}
           disabled={!submitEnabled}
           onClick={() => {
             void handleSubmit();

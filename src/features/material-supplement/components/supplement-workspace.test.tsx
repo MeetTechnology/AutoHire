@@ -102,7 +102,7 @@ function snapshot(input: Partial<SupplementSnapshot> = {}): SupplementSnapshot {
 }
 
 describe("SupplementWorkspace", () => {
-  it("renders the six supported supplement categories and summary meta", () => {
+  it("renders the six supported supplement categories and section header", () => {
     render(
       <SupplementWorkspace
         snapshot={snapshot()}
@@ -131,13 +131,11 @@ describe("SupplementWorkspace", () => {
       expect(screen.queryByText(unsupportedLabel)).not.toBeInTheDocument();
     }
 
-    expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
-    expect(screen.getByText("Rounds left")).toBeInTheDocument();
-    expect(screen.getByText("Active categories")).toBeInTheDocument();
-    expect(screen.getByText("Latest review")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("Supplement submissions")).toBeInTheDocument();
     expect(
-      screen.getByText("Supplement materials are needed."),
+      screen.getByText(
+        "By evidence category—expand each section to address open requests and submit files.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -178,9 +176,8 @@ describe("SupplementWorkspace", () => {
     );
 
     expect(
-      screen.getByText("No supplement materials are needed."),
+      screen.getByText("Supplement submissions"),
     ).toBeInTheDocument();
-
     const identitySectionToggle = screen.getByRole("button", {
       name: /Identity Documents/i,
     });
@@ -190,7 +187,7 @@ describe("SupplementWorkspace", () => {
     expect(identityRegion).not.toBeNull();
     expect(
       within(identityRegion as HTMLElement).getByText(
-        "No open requests in this category.",
+        "No supplement files uploaded yet in this batch",
       ),
     ).toBeInTheDocument();
   });

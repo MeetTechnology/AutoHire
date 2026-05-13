@@ -3,18 +3,12 @@
 import { ArrowLeft, History, RefreshCw } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 
-import {
-  MetaStrip,
-  SectionCard,
-  StatusBanner,
-  getButtonClassName,
-} from "@/components/ui/page-shell";
+import { SectionCard, getButtonClassName } from "@/components/ui/page-shell";
 import {
   SUPPLEMENT_CATEGORIES,
   SUPPLEMENT_HISTORY_PAGE_PATH,
 } from "@/features/material-supplement/constants";
 import type {
-  MaterialSupplementStatus,
   SupplementCategorySnapshot,
   SupplementSnapshot,
 } from "@/features/material-supplement/types";
@@ -26,12 +20,6 @@ type SupplementWorkspaceProps = {
   snapshot: SupplementSnapshot;
   isRefreshing: boolean;
   onRefresh: () => Promise<void> | void;
-};
-
-type StatusCopy = {
-  title: string;
-  description: string;
-  tone: "neutral" | "loading" | "success" | "danger";
 };
 
 const EMPTY_CATEGORY_BASE: Omit<
@@ -48,39 +36,6 @@ const EMPTY_CATEGORY_BASE: Omit<
   requests: [],
   draftFiles: [],
   waitingReviewFiles: [],
-};
-
-const STATUS_COPY: Record<MaterialSupplementStatus, StatusCopy> = {
-  NOT_STARTED: {
-    title: "Material review has not started.",
-    description: "Refresh after the AI review starts.",
-    tone: "neutral",
-  },
-  REVIEWING: {
-    title: "AI review is in progress.",
-    description: "Refresh to check for updates.",
-    tone: "loading",
-  },
-  SUPPLEMENT_REQUIRED: {
-    title: "Supplement materials are needed.",
-    description: "Open the marked categories and submit the requested files.",
-    tone: "danger",
-  },
-  PARTIALLY_SATISFIED: {
-    title: "Some requests are still open.",
-    description: "Only open requests are shown here.",
-    tone: "neutral",
-  },
-  SATISFIED: {
-    title: "All current requests are satisfied.",
-    description: "Completed items remain in history.",
-    tone: "success",
-  },
-  NO_SUPPLEMENT_REQUIRED: {
-    title: "No supplement materials are needed.",
-    description: "The current review did not request more files.",
-    tone: "success",
-  },
 };
 
 export function formatSupplementDate(value: string | null) {
@@ -115,45 +70,13 @@ export function normalizeSupplementCategories(
   }));
 }
 
-function getSupplementStatusCopy(status: MaterialSupplementStatus): StatusCopy {
-  return STATUS_COPY[status];
-}
-
 export function SupplementWorkspace({
   snapshot,
   isRefreshing,
   onRefresh,
 }: SupplementWorkspaceProps) {
   const shouldReduceMotion = useReducedMotion();
-  const statusCopy = getSupplementStatusCopy(
-    snapshot.summary.materialSupplementStatus,
-  );
   const categories = normalizeSupplementCategories(snapshot);
-  const categoriesWithWork = categories.filter(
-    (category) =>
-      category.pendingRequestCount > 0 ||
-      category.isReviewing ||
-      category.draftFiles.length > 0 ||
-      category.waitingReviewFiles.length > 0,
-  ).length;
-  const metaItems = [
-    {
-      label: "Pending",
-      value: String(snapshot.summary.pendingRequestCount),
-    },
-    {
-      label: "Rounds left",
-      value: String(snapshot.summary.remainingReviewRounds),
-    },
-    {
-      label: "Active categories",
-      value: String(categoriesWithWork),
-    },
-    {
-      label: "Latest review",
-      value: formatSupplementDate(snapshot.summary.latestReviewedAt),
-    },
-  ];
 
   return (
     <motion.div
@@ -167,8 +90,8 @@ export function SupplementWorkspace({
       }
     >
       <SectionCard
-        title="AI supplement review"
-        description="Open a category when it has pending requests or files waiting for review."
+        title="Supplement submissions"
+        description="By evidence category—expand each section to address open requests and submit files."
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
             <a
@@ -206,19 +129,7 @@ export function SupplementWorkspace({
           </div>
         }
       >
-        <div className="space-y-4">
-          <StatusBanner
-            tone={isRefreshing ? "loading" : statusCopy.tone}
-            title={isRefreshing ? "Refreshing status" : statusCopy.title}
-            description={
-              isRefreshing
-                ? "Loading the latest review snapshot."
-                : statusCopy.description
-            }
-          />
-
-          <MetaStrip items={metaItems} />
-
+        <div className="flex flex-col gap-4">
           <motion.div
             className="space-y-3"
             initial={shouldReduceMotion ? false : "hidden"}

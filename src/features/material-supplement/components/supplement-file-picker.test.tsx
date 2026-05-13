@@ -52,6 +52,7 @@ function renderPicker(
       category="EDUCATION"
       categoryLabel="Education Documents"
       draftFiles={[]}
+      waitingReviewFiles={[]}
       isReviewing={false}
       remainingReviewRounds={2}
       formatDate={formatDate}
@@ -120,12 +121,12 @@ describe("SupplementFilePicker", () => {
     renderPicker();
 
     await user.upload(
-      screen.getByLabelText("Choose files"),
+      screen.getByLabelText("Upload supplement files"),
       file("degree.pdf", 1024),
     );
 
     expect(screen.getByText("degree.pdf")).toBeInTheDocument();
-    expect(screen.getByText(/Ready to upload - 1 KB/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ready to upload · 1 KB/i)).toBeInTheDocument();
   });
 
   it("deduplicates selected files by file name and size and shows a notice", async () => {
@@ -139,7 +140,7 @@ describe("SupplementFilePicker", () => {
       ],
     });
 
-    await user.upload(screen.getByLabelText("Choose files"), [
+    await user.upload(screen.getByLabelText("Upload supplement files"), [
       file("degree.pdf", 1024),
       file("passport.pdf", 2048),
     ]);
@@ -161,7 +162,7 @@ describe("SupplementFilePicker", () => {
       ),
     });
 
-    await user.upload(screen.getByLabelText("Choose files"), [
+    await user.upload(screen.getByLabelText("Upload supplement files"), [
       file("one.pdf", 1024),
       file("two.pdf", 2048),
     ]);
@@ -171,7 +172,6 @@ describe("SupplementFilePicker", () => {
     expect(
       screen.getByText(/1 file over the 10-file limit skipped/i),
     ).toBeInTheDocument();
-    expect(screen.getByText("10/10 files in this batch")).toBeInTheDocument();
   });
 
   it("locks selection, deletion, and submission while the category is reviewing", () => {
@@ -180,8 +180,7 @@ describe("SupplementFilePicker", () => {
       draftFiles: [draftFile()],
     });
 
-    expect(screen.getByText("Uploads are locked")).toBeInTheDocument();
-    expect(screen.getByLabelText("Choose files")).toBeDisabled();
+    expect(screen.getByLabelText("Upload supplement files")).toBeDisabled();
     expect(screen.getByRole("button", { name: /Delete/i })).toBeDisabled();
     expect(
       screen.getByRole("button", { name: /Submit for review/i }),
@@ -194,7 +193,7 @@ describe("SupplementFilePicker", () => {
     renderPicker({ onRefresh });
 
     await user.upload(
-      screen.getByLabelText("Choose files"),
+      screen.getByLabelText("Upload supplement files"),
       file("degree.pdf", 1024),
     );
     await user.click(screen.getByRole("button", { name: /Submit for review/i }));
