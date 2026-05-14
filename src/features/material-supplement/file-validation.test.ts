@@ -99,6 +99,19 @@ describe("material supplement file validation", () => {
     ]);
   });
 
+  it("accepts common image extensions for supplement categories", () => {
+    const result = selectSupplementFiles({
+      category: "IDENTITY",
+      nextFiles: [file("id-front.png", 100), file("id-back.jpg", 200)],
+    });
+
+    expect(result.acceptedFiles.map((item) => item.name)).toEqual([
+      "id-front.png",
+      "id-back.jpg",
+    ]);
+    expect(result.rejectedFiles).toHaveLength(0);
+  });
+
   it("detects whether draft files belong to one batch", () => {
     expect(getSupplementDraftBatchId([])).toBeNull();
     expect(

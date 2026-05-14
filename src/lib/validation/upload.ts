@@ -3,6 +3,7 @@ import { isSupplementCategory } from "@/features/material-supplement/constants";
 import type { SupplementCategory } from "@/features/material-supplement/types";
 import {
   ALLOWED_DOCUMENT_EXTENSIONS,
+  ALLOWED_SUPPLEMENT_EXTENSIONS,
   MAX_ARCHIVE_SIZE_BYTES,
   MAX_FILE_SIZE_BYTES,
   MAX_PRODUCT_MATERIAL_BYTES,
@@ -12,6 +13,14 @@ function hasAllowedExtension(fileName: string) {
   const lower = fileName.toLowerCase();
 
   return ALLOWED_DOCUMENT_EXTENSIONS.some((extension) =>
+    lower.endsWith(extension),
+  );
+}
+
+function hasAllowedSupplementExtension(fileName: string) {
+  const lower = fileName.toLowerCase();
+
+  return ALLOWED_SUPPLEMENT_EXTENSIONS.some((extension) =>
     lower.endsWith(extension),
   );
 }
@@ -36,7 +45,7 @@ export function validateUpload(
   }
 
   if (options?.category && isSupplementCategory(options.category)) {
-    if (!hasAllowedExtension(fileName)) {
+    if (!hasAllowedSupplementExtension(fileName)) {
       return { valid: false, reason: "UNSUPPORTED_FILE_TYPE" as const };
     }
 

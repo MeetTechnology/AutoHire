@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Trash2, Upload } from "lucide-react";
+import { useId, useRef, useState } from "react";
+import { Upload } from "lucide-react";
 
 import { StatusBanner, getButtonClassName } from "@/components/ui/page-shell";
 import {
@@ -59,6 +59,7 @@ function getRejectedSummary(rejectedFiles: SupplementRejectedFile[]) {
     return null;
   }
 
+  const maxFiles = SUPPLEMENT_UPLOAD_MAX_FILES_PER_BATCH;
   const byReason = rejectedFiles.reduce<Record<string, number>>((acc, item) => {
     acc[item.reason] = (acc[item.reason] ?? 0) + 1;
     return acc;
@@ -69,7 +70,7 @@ function getRejectedSummary(rejectedFiles: SupplementRejectedFile[]) {
       case "DUPLICATE":
         return `${count} duplicate file${count === 1 ? "" : "s"} skipped`;
       case "COUNT_EXCEEDED":
-        return `${count} file${count === 1 ? "" : "s"} over the 10-file limit skipped`;
+        return `${count} file${count === 1 ? "" : "s"} over the ${maxFiles}-file limit skipped`;
       case "UNSUPPORTED_FILE_TYPE":
         return `${count} unsupported file type${count === 1 ? "" : "s"} skipped`;
       case "ARCHIVE_TOO_LARGE":
@@ -97,12 +98,19 @@ export function SupplementFilePicker({
   formatDate,
   onRefresh,
 }: SupplementFilePickerProps) {
+  const uploadHintId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const dragDepthRef = useRef(0);
   const [localFiles, setLocalFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<PickerStatus>("idle");
   const [batchId, setBatchId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const isBusy = status !== "idle";
   const draftBatchId = getSupplementDraftBatchId(draftFiles);
   const activeBatchId = batchId ?? draftBatchId ?? null;
@@ -133,17 +141,18 @@ export function SupplementFilePicker({
     }
   }
 
-  function handleSelect(files: FileList | null) {
+  function handleSelect(files: FileList | File[] | null) {
     if (!files || selectionDisabled) {
       resetFileInput();
       return;
     }
 
+    const list = Array.isArray(files) ? files : Array.from(files);
     const result = selectSupplementFiles({
       category,
       existingFiles: draftFiles,
       currentFiles: localFiles,
-      nextFiles: Array.from(files),
+      nextFiles: list,
     });
     const rejectedSummary = getRejectedSummary(result.rejectedFiles);
 
@@ -151,6 +160,48 @@ export function SupplementFilePicker({
     setError(null);
     setMessage(rejectedSummary);
     resetFileInput();
+  }
+
+  function handleDragEnter(event: React.DragEvent) {
+    if (selectionDisabled) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current += 1;
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(event: React.DragEvent) {
+    if (selectionDisabled) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current -= 1;
+    if (dragDepthRef.current <= 0) {
+      dragDepthRef.current = 0;
+      setIsDragging(false);
+    }
+  }
+
+  function handleDragOver(event: React.DragEvent) {
+    if (selectionDisabled) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleDrop(event: React.DragEvent) {
+    if (selectionDisabled) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDragging(false);
+    handleSelect(event.dataTransfer.files);
   }
 
   function handleRemoveLocal(fileIndex: number) {
@@ -197,11 +248,15 @@ export function SupplementFilePicker({
     setStatus(localFiles.length > 0 ? "uploading" : "confirming");
     setError(null);
     setMessage(null);
+    setUploadProgress(null);
 
     try {
       const nextBatchId = await ensureBatchId();
+      const total = localFiles.length;
 
-      for (const file of localFiles) {
+      for (let index = 0; index < localFiles.length; index += 1) {
+        const file = localFiles[index];
+        setUploadProgress({ current: index + 1, total });
         const intent = await createSupplementUploadIntent(applicationId, {
           uploadBatchId: nextBatchId,
           category,
@@ -221,6 +276,7 @@ export function SupplementFilePicker({
       }
 
       setStatus("confirming");
+      setUploadProgress(null);
       await confirmSupplementUploadBatch(applicationId, nextBatchId, {
         category,
       });
@@ -231,6 +287,7 @@ export function SupplementFilePicker({
     } catch (nextError) {
       setError(toSafeErrorMessage(nextError));
     } finally {
+      setUploadProgress(null);
       setStatus("idle");
     }
   }
@@ -249,10 +306,10 @@ export function SupplementFilePicker({
     }
 
     if (hasAnyListedFile) {
-      return "Click to add file(s)";
+      return "Click or drag to add more files";
     }
 
-    return "Click to upload file(s)";
+    return "Click or drag to upload files";
   }
 
   return (
@@ -361,16 +418,25 @@ export function SupplementFilePicker({
           type="file"
           multiple
           aria-label={UPLOAD_INPUT_LABEL}
+          aria-describedby={selectionDisabled ? undefined : uploadHintId}
           className="sr-only"
           disabled={selectionDisabled}
           onChange={(event) => handleSelect(event.target.files)}
         />
         <div
+          data-testid="supplement-file-drop-zone"
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
           className={cn(
             "rounded-xl border border-dashed border-[color:var(--border-strong)] bg-white px-4 py-4 text-center transition",
             !selectionDisabled &&
               "hover:border-[color:var(--primary)] hover:bg-slate-50 cursor-pointer",
             selectionDisabled && "opacity-55",
+            isDragging &&
+              !selectionDisabled &&
+              "border-[color:var(--primary)] bg-slate-50 ring-2 ring-[color:var(--primary)]/25",
           )}
         >
           <p className="text-sm font-medium text-[color:var(--primary)]">
@@ -379,6 +445,16 @@ export function SupplementFilePicker({
             </span>
             {uploadZonePrompt()}
           </p>
+          {!selectionDisabled ? (
+            <p
+              id={uploadHintId}
+              className="mt-2 text-xs leading-relaxed text-[color:var(--foreground-soft)]"
+            >
+              Select multiple files at once or drag them here (up to{" "}
+              {SUPPLEMENT_UPLOAD_MAX_FILES_PER_BATCH} per batch, including
+              drafts).
+            </p>
+          ) : null}
         </div>
       </label>
 
@@ -414,7 +490,9 @@ export function SupplementFilePicker({
         >
           <Upload className="h-4 w-4" aria-hidden />
           {status === "uploading"
-            ? "Uploading"
+            ? uploadProgress && uploadProgress.total > 1
+              ? `Uploading ${uploadProgress.current}/${uploadProgress.total}`
+              : "Uploading"
             : status === "confirming"
               ? "Submitting"
               : "Submit for review"}

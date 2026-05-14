@@ -44,6 +44,7 @@ import type {
   ApplicationSnapshot,
   FeedbackDeviceType,
 } from "@/features/application/types";
+import { kickoffInitialMaterialReview } from "@/features/material-supplement/kickoff-initial-material-review";
 import {
   trackPageView,
   getOrCreateTrackingSessionId,
@@ -191,6 +192,7 @@ export default function SubmissionCompletePage() {
         }
 
         setSnapshot(nextSnapshot);
+        void kickoffInitialMaterialReview(nextSnapshot.applicationId);
       } catch (nextError) {
         if (active) {
           setError(

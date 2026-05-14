@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +23,16 @@ const formatDate = (value: string | null) => value ?? "Not reviewed yet";
 
 function file(name: string, size: number, type = "application/pdf") {
   return new File(["x".repeat(Math.max(1, size))], name, { type });
+}
+
+/** jsdom has no DataTransfer; supply a minimal drop payload with `files`. */
+function fakeDropFileList(...files: File[]): FileList {
+  const list = Object.assign([...files], {
+    item(index: number) {
+      return files[index] ?? null;
+    },
+  });
+  return list as unknown as FileList;
 }
 
 function draftFile(input: {
@@ -75,14 +85,16 @@ describe("SupplementFilePicker", () => {
       fileCount: 0,
       createdAt: "2026-05-05T10:03:00.000Z",
     });
-    vi.mocked(supplementClient.createSupplementUploadIntent).mockResolvedValue({
-      uploadId: "upload_123",
-      uploadUrl: "https://upload.example.test",
-      method: "PUT",
-      headers: {},
-      objectKey: "objects/degree.pdf",
-      deduped: false,
-    });
+    vi.mocked(supplementClient.createSupplementUploadIntent).mockImplementation(
+      async (_applicationId, input) => ({
+        uploadId: "upload_123",
+        uploadUrl: "https://upload.example.test",
+        method: "PUT",
+        headers: {},
+        objectKey: `objects/${input.fileName}`,
+        deduped: false,
+      }),
+    );
     vi.mocked(supplementClient.uploadSupplementBinary).mockResolvedValue();
     vi.mocked(supplementClient.confirmSupplementFileUpload).mockResolvedValue({
       file: {
@@ -114,6 +126,20 @@ describe("SupplementFilePicker", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it("accepts multiple files via drag and drop", () => {
+    renderPicker();
+
+    const zone = screen.getByTestId("supplement-file-drop-zone");
+    const files = fakeDropFileList(file("a.pdf", 100), file("b.pdf", 200));
+
+    fireEvent.dragEnter(zone);
+    fireEvent.dragOver(zone);
+    fireEvent.drop(zone, { dataTransfer: { files } });
+
+    expect(screen.getByText("a.pdf")).toBeInTheDocument();
+    expect(screen.getByText("b.pdf")).toBeInTheDocument();
   });
 
   it("shows selected files in the pending upload list", async () => {
@@ -234,5 +260,29 @@ describe("SupplementFilePicker", () => {
         "Education Documents files were submitted for AI review.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("submits multiple files in one batch and refreshes", async () => {
+    const user = userEvent.setup();
+    const onRefresh = vi.fn();
+    renderPicker({ onRefresh });
+
+    await user.upload(screen.getByLabelText("Upload supplement files"), [
+      file("degree.pdf", 1024),
+      file("transcript.pdf", 2048),
+    ]);
+    await user.click(screen.getByRole("button", { name: /Submit for review/i }));
+
+    await waitFor(() => {
+      expect(supplementClient.confirmSupplementUploadBatch).toHaveBeenCalled();
+    });
+
+    expect(supplementClient.createSupplementUploadIntent).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(supplementClient.confirmSupplementFileUpload).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 });

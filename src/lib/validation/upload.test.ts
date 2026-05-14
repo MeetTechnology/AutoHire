@@ -45,9 +45,32 @@ describe("validateUpload", () => {
     ).toEqual({ valid: true });
   });
 
-  it("rejects supplement categories when the extension is outside the shared allowlist", () => {
+  it("accepts supplement image and video types aligned with Gemini multimodal docs", () => {
     expect(
-      validateUpload("supplement.mov", MAX_FILE_SIZE_BYTES, {
+      validateUpload("scan.png", 1024, {
+        category: "IDENTITY",
+      }),
+    ).toEqual({ valid: true });
+    expect(
+      validateUpload("photo.jpeg", 1024, {
+        category: "EDUCATION",
+      }),
+    ).toEqual({ valid: true });
+    expect(
+      validateUpload("doc.heic", 1024, {
+        category: "EMPLOYMENT",
+      }),
+    ).toEqual({ valid: true });
+    expect(
+      validateUpload("clip.mov", 1024, {
+        category: "PROJECT",
+      }),
+    ).toEqual({ valid: true });
+  });
+
+  it("rejects supplement categories when the extension is outside the supplement allowlist", () => {
+    expect(
+      validateUpload("supplement.exe", MAX_FILE_SIZE_BYTES, {
         category: "PROJECT",
       }),
     ).toEqual({
