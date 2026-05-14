@@ -2,6 +2,7 @@
 
 import { ArrowLeft, CheckCircle2, Clock3, FileText, RefreshCw } from "lucide-react";
 
+import { MarkdownProse } from "@/components/ui/markdown-prose";
 import {
   DisclosureSection,
   SectionCard,
@@ -120,9 +121,9 @@ function RequestList({ item }: { item: SupplementHistoryItem }) {
                 {request.title}
               </p>
               {request.reason ? (
-                <p className="mt-1 text-sm leading-6 break-words text-[color:var(--foreground-soft)]">
-                  {request.reason}
-                </p>
+                <div className="mt-1 max-w-none break-words">
+                  <MarkdownProse markdown={request.reason} />
+                </div>
               ) : null}
             </div>
             <span

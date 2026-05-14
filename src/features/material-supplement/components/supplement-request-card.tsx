@@ -2,6 +2,7 @@
 
 import { CheckCircle2, FileText } from "lucide-react";
 
+import { MarkdownProse } from "@/components/ui/markdown-prose";
 import type { SupplementRequestSummary } from "@/features/material-supplement/types";
 import { cn } from "@/lib/utils";
 
@@ -87,9 +88,9 @@ export function SupplementRequestCard({ request }: SupplementRequestCardProps) {
       </div>
 
       {request.reason ? (
-        <p className="mt-3 text-sm leading-6 break-words text-[color:var(--foreground-soft)]">
-          {request.reason}
-        </p>
+        <div className="mt-3 max-w-none break-words">
+          <MarkdownProse markdown={request.reason} />
+        </div>
       ) : null}
 
       {suggestedMaterials.length > 0 ? (
