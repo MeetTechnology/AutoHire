@@ -2501,9 +2501,10 @@ export async function createMaterialCategoryReview(input: {
         status: (input.status ??
           "QUEUED") as PrismaMaterialCategoryReviewStatus,
         aiMessage: input.aiMessage ?? null,
-        resultPayload: (input.resultPayload ?? null) as
-          | Prisma.InputJsonValue
-          | Prisma.JsonNull,
+        resultPayload:
+          input.resultPayload === null || input.resultPayload === undefined
+            ? Prisma.JsonNull
+            : (input.resultPayload as Prisma.InputJsonValue),
         isLatest: true,
         startedAt: input.startedAt ?? null,
         finishedAt: input.finishedAt ?? null,

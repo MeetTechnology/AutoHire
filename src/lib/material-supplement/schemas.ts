@@ -92,9 +92,23 @@ export const supplementCallbackRequestItemStatusSchema = z.enum([
 
 export const supplementCallbackRequestItemSchema = z.object({
   title: trimmedNonEmptyString,
-  reason: z.string().trim().nullish(),
-  suggestedMaterials: z.array(trimmedNonEmptyString).nullish(),
-  aiMessage: z.string().trim().nullish(),
+  reason: z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  suggestedMaterials: z
+    .array(trimmedNonEmptyString)
+    .nullable()
+    .optional()
+    .transform((value) => value ?? []),
+  aiMessage: z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
   status: supplementCallbackRequestItemStatusSchema,
 });
 
@@ -106,8 +120,16 @@ export const supplementCallbackResultPayloadSchema = z.object({
 export const supplementCallbackCategoryResultSchema = z.object({
   category: supplementCallbackCategorySchema,
   status: supplementCallbackRequestStatusSchema,
-  reviewedAt: isoDatetimeString.nullish(),
-  aiMessage: z.string().trim().nullish(),
+  reviewedAt: isoDatetimeString
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  aiMessage: z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
   resultPayload: supplementCallbackResultPayloadSchema,
   rawResultPayload: z.unknown().nullable().optional(),
 });

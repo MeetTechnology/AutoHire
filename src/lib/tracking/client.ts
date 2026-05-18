@@ -207,6 +207,8 @@ export async function trackPageView(input: {
     apply_entry: "intro_page_viewed",
     apply_resume: "resume_page_viewed",
     apply_result: "analysis_result_viewed",
+    apply_supplement: "supplement_page_viewed",
+    apply_supplement_history: "supplement_history_page_viewed",
     apply_materials: "materials_page_viewed",
     apply_submission_complete: "feedback_viewed",
   };

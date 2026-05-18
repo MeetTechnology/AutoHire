@@ -27,13 +27,24 @@ const envSchema = z.object({
   MATERIAL_REVIEW_MOCK_SCENARIO: z.string().default("supplement_required"),
   MATERIAL_REVIEW_BASE_URL: z.string().optional(),
   MATERIAL_REVIEW_API_KEY: z.string().optional(),
-  MATERIAL_REVIEW_INTEGRATION_IDENTITY_PATH: z.string().default(
-    "/reviews/applications/{applicationId}/integration-identity",
-  ),
+  MATERIAL_REVIEW_INTEGRATION_IDENTITY_PATH: z
+    .string()
+    .default("/reviews/applications/{applicationId}/integration-identity"),
   MATERIAL_REVIEW_MAPPING_PATH: z
     .string()
     .default("/reviews/applications/{applicationId}/mapping"),
   MATERIAL_REVIEW_CALLBACK_SECRET: z.string().optional(),
+  ASK_AI_MODE: z.enum(["mock", "live"]).default("mock"),
+  ASK_AI_ALIYUN_BASE_URL: z
+    .string()
+    .url()
+    .default("https://dashscope.aliyuncs.com"),
+  ASK_AI_ALIYUN_API_KEY: z.string().optional(),
+  ASK_AI_ALIYUN_APP_ID: z.string().optional(),
+  ASK_AI_DEFAULT_LOCALE: z.string().min(1).default("zh-CN"),
+  ASK_AI_TRACE_RAW_RESPONSE: z.coerce.boolean().default(false),
+  ASK_AI_MAX_QUESTION_CHARS: z.coerce.number().int().positive().default(1000),
+  ASK_AI_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
   SENTRY_DSN: z.string().optional().default(""),
 });
 

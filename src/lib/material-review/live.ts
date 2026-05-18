@@ -276,7 +276,10 @@ function assertLiveConfig() {
     });
   }
 
-  return env;
+  return env as typeof env & {
+    MATERIAL_REVIEW_BASE_URL: string;
+    MATERIAL_REVIEW_API_KEY: string;
+  };
 }
 
 function buildLiveUrl(path: string) {
@@ -434,7 +437,9 @@ async function upsertApplicationMapping(
   });
 }
 
-async function ensureLiveMaterialReviewApplicationMapping(applicationId: string) {
+async function ensureLiveMaterialReviewApplicationMapping(
+  applicationId: string,
+) {
   const identity = await createOrGetIntegrationIdentity(applicationId);
 
   if (identity.applicationId !== applicationId) {

@@ -151,6 +151,16 @@ enum ApplicationFeedbackStatus {
   SUBMITTED
 }
 
+enum AskAiFeedbackRating {
+  UP
+  DOWN
+}
+
+enum AskAiSessionStatus {
+  ACTIVE
+  CLEARED
+}
+
 model ExpertInvitation {
   id          String      @id @default(cuid())
   expertId    String
@@ -168,48 +178,49 @@ model ExpertInvitation {
 }
 
 model Application {
-  id                          String             @id @default(cuid())
-  expertId                    String
-  invitationId                String             @unique
-  applicationStatus           ApplicationStatus  @default(INIT)
-  currentStep                 String?
-  eligibilityResult           EligibilityResult  @default(UNKNOWN)
-  latestAnalysisJobId         String?
-  firstAccessedAt             DateTime?
-  lastAccessedAt              DateTime?
-  introConfirmedAt            DateTime?
-  resumeUploadStartedAt       DateTime?
-  resumeUploadedAt            DateTime?
-  analysisStartedAt           DateTime?
-  analysisCompletedAt         DateTime?
-  materialsEnteredAt          DateTime?
-  submittedAt                 DateTime?
-  screeningPassportFullName   String?
-  screeningContactEmail       String?
-  screeningWorkEmail          String?
-  screeningPhoneNumber        String?
-  productInnovationDescription String?          @db.Text
-  createdAt                   DateTime           @default(now())
-  updatedAt                   DateTime           @updatedAt
+  id                           String            @id @default(cuid())
+  expertId                     String
+  invitationId                 String            @unique
+  applicationStatus            ApplicationStatus @default(INIT)
+  currentStep                  String?
+  eligibilityResult            EligibilityResult @default(UNKNOWN)
+  latestAnalysisJobId          String?
+  firstAccessedAt              DateTime?
+  lastAccessedAt               DateTime?
+  introConfirmedAt             DateTime?
+  resumeUploadStartedAt        DateTime?
+  resumeUploadedAt             DateTime?
+  analysisStartedAt            DateTime?
+  analysisCompletedAt          DateTime?
+  materialsEnteredAt           DateTime?
+  submittedAt                  DateTime?
+  screeningPassportFullName    String?
+  screeningContactEmail        String?
+  screeningWorkEmail           String?
+  screeningPhoneNumber         String?
+  productInnovationDescription String?           @db.Text
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @updatedAt
 
-  invitation                  ExpertInvitation              @relation(fields: [invitationId], references: [id])
-  resumeFiles                 ResumeFile[]
-  analysisJobs                ResumeAnalysisJob[]
-  analysisResults             ResumeAnalysisResult[]
-  extractionReviews           ResumeExtractionReview[]
-  secondaryAnalysisRuns       SecondaryAnalysisRun[]
+  invitation                   ExpertInvitation              @relation(fields: [invitationId], references: [id])
+  resumeFiles                  ResumeFile[]
+  analysisJobs                 ResumeAnalysisJob[]
+  analysisResults              ResumeAnalysisResult[]
+  extractionReviews            ResumeExtractionReview[]
+  secondaryAnalysisRuns        SecondaryAnalysisRun[]
   secondaryAnalysisFieldValues SecondaryAnalysisFieldValue[]
-  supplementalFields          SupplementalFieldSubmission[]
-  materials                   ApplicationMaterial[]
-  materialReviewRuns          MaterialReviewRun[]
-  materialCategoryReviews     MaterialCategoryReview[]
-  supplementRequests          SupplementRequest[]
-  supplementUploadBatches     SupplementUploadBatch[]
-  supplementFiles             SupplementFile[]
-  feedback                    ApplicationFeedback?
-  events                      ApplicationEventLog[]
-  accessLogs                  InviteAccessLog[]
-  fileUploadAttempts          FileUploadAttempt[]
+  supplementalFields           SupplementalFieldSubmission[]
+  materials                    ApplicationMaterial[]
+  materialReviewRuns           MaterialReviewRun[]
+  materialCategoryReviews      MaterialCategoryReview[]
+  supplementRequests           SupplementRequest[]
+  supplementUploadBatches      SupplementUploadBatch[]
+  supplementFiles              SupplementFile[]
+  feedback                     ApplicationFeedback?
+  events                       ApplicationEventLog[]
+  accessLogs                   InviteAccessLog[]
+  fileUploadAttempts           FileUploadAttempt[]
+  askAiChatSessions            AskAiChatSession[]
 
   @@index([expertId])
   @@index([applicationStatus])
@@ -223,20 +234,20 @@ model Application {
 }
 
 model ResumeFile {
-  id            String      @id @default(cuid())
+  id            String   @id @default(cuid())
   applicationId String
   fileName      String
   objectKey     String
   fileType      String
   fileSize      Int
-  versionNo     Int         @default(1)
-  uploadedAt    DateTime    @default(now())
+  versionNo     Int      @default(1)
+  uploadedAt    DateTime @default(now())
 
-  application Application @relation(fields: [applicationId], references: [id])
+  application  Application         @relation(fields: [applicationId], references: [id])
   analysisJobs ResumeAnalysisJob[]
 
-  @@index([applicationId])
   @@unique([applicationId, versionNo])
+  @@index([applicationId])
 }
 
 model ResumeAnalysisJob {
@@ -274,7 +285,7 @@ model ResumeAnalysisResult {
   missingFields     Json?
   createdAt         DateTime          @default(now())
 
-  application Application @relation(fields: [applicationId], references: [id])
+  application Application       @relation(fields: [applicationId], references: [id])
   analysisJob ResumeAnalysisJob @relation(fields: [analysisJobId], references: [id])
 
   @@index([applicationId])
@@ -301,19 +312,19 @@ model ResumeExtractionReview {
 }
 
 model SecondaryAnalysisRun {
-  id             String   @id @default(cuid())
-  applicationId  String
-  analysisJobId  String?
-  externalRunId  String
-  status         String
-  errorMessage   String?
-  runSummary     Json?
-  rawResults     Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(cuid())
+  applicationId String
+  analysisJobId String?
+  externalRunId String
+  status        String
+  errorMessage  String?
+  runSummary    Json?
+  rawResults    Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  application Application @relation(fields: [applicationId], references: [id])
-  analysisJob ResumeAnalysisJob? @relation(fields: [analysisJobId], references: [id])
+  application Application                   @relation(fields: [applicationId], references: [id])
+  analysisJob ResumeAnalysisJob?            @relation(fields: [analysisJobId], references: [id])
   fieldValues SecondaryAnalysisFieldValue[]
 
   @@unique([applicationId, externalRunId])
@@ -322,21 +333,21 @@ model SecondaryAnalysisRun {
 }
 
 model SecondaryAnalysisFieldValue {
-  id               String   @id @default(cuid())
-  applicationId    String
-  secondaryRunId   String
-  no               Int
-  columnName       String?
-  label            String
-  sourceValue      String?
-  editedValue      String?
-  effectiveValue   String?
-  hasOverride      Boolean  @default(false)
-  isMissing        Boolean  @default(false)
-  isEdited         Boolean  @default(false)
-  savedAt          DateTime @default(now())
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id             String   @id @default(cuid())
+  applicationId  String
+  secondaryRunId String
+  no             Int
+  columnName     String?
+  label          String
+  sourceValue    String?
+  editedValue    String?
+  effectiveValue String?
+  hasOverride    Boolean  @default(false)
+  isMissing      Boolean  @default(false)
+  isEdited       Boolean  @default(false)
+  savedAt        DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   application  Application          @relation(fields: [applicationId], references: [id])
   secondaryRun SecondaryAnalysisRun @relation(fields: [secondaryRunId], references: [id])
@@ -352,7 +363,7 @@ model SupplementalFieldSubmission {
   fieldValues   Json
   submittedAt   DateTime @default(now())
 
-  application Application @relation(fields: [applicationId], references: [id])
+  application Application        @relation(fields: [applicationId], references: [id])
   analysisJob ResumeAnalysisJob? @relation(fields: [analysisJobId], references: [id])
 
   @@index([applicationId])
@@ -381,7 +392,7 @@ model MaterialReviewRun {
   id                String                    @id @default(cuid())
   applicationId     String
   runNo             Int
-  status            MaterialReviewRunStatus  @default(QUEUED)
+  status            MaterialReviewRunStatus   @default(QUEUED)
   triggerType       MaterialReviewTriggerType
   triggeredCategory SupplementCategory?
   externalRunId     String?
@@ -391,11 +402,11 @@ model MaterialReviewRun {
   createdAt         DateTime                  @default(now())
   updatedAt         DateTime                  @updatedAt
 
-  application            Application              @relation(fields: [applicationId], references: [id])
-  categoryReviews        MaterialCategoryReview[]
-  supplementRequests     SupplementRequest[]
+  application             Application              @relation(fields: [applicationId], references: [id])
+  categoryReviews         MaterialCategoryReview[]
+  supplementRequests      SupplementRequest[]
   supplementUploadBatches SupplementUploadBatch[]
-  supplementFiles        SupplementFile[]
+  supplementFiles         SupplementFile[]
 
   @@unique([applicationId, runNo])
   @@index([applicationId])
@@ -405,19 +416,19 @@ model MaterialReviewRun {
 }
 
 model MaterialCategoryReview {
-  id           String                       @id @default(cuid())
-  reviewRunId  String
+  id            String                       @id @default(cuid())
+  reviewRunId   String
   applicationId String
-  category     SupplementCategory
-  roundNo      Int
-  status       MaterialCategoryReviewStatus @default(QUEUED)
-  aiMessage    String?                      @db.Text
+  category      SupplementCategory
+  roundNo       Int
+  status        MaterialCategoryReviewStatus @default(QUEUED)
+  aiMessage     String?                      @db.Text
   resultPayload Json?
-  isLatest     Boolean                      @default(true)
-  startedAt    DateTime?
-  finishedAt   DateTime?
-  createdAt    DateTime                     @default(now())
-  updatedAt    DateTime                     @updatedAt
+  isLatest      Boolean                      @default(true)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
 
   reviewRun          MaterialReviewRun   @relation(fields: [reviewRunId], references: [id])
   application        Application         @relation(fields: [applicationId], references: [id])
@@ -432,21 +443,21 @@ model MaterialCategoryReview {
 }
 
 model SupplementRequest {
-  id               String                  @id @default(cuid())
-  applicationId    String
-  category         SupplementCategory
-  reviewRunId      String
-  categoryReviewId String
-  title            String
-  reason           String?                 @db.Text
+  id                 String                  @id @default(cuid())
+  applicationId      String
+  category           SupplementCategory
+  reviewRunId        String
+  categoryReviewId   String
+  title              String
+  reason             String?                 @db.Text
   suggestedMaterials Json?
-  aiMessage        String?                 @db.Text
-  status           SupplementRequestStatus @default(PENDING)
-  isLatest         Boolean                 @default(true)
-  isSatisfied      Boolean                 @default(false)
-  satisfiedAt      DateTime?
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  aiMessage          String?                 @db.Text
+  status             SupplementRequestStatus @default(PENDING)
+  isLatest           Boolean                 @default(true)
+  isSatisfied        Boolean                 @default(false)
+  satisfiedAt        DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   application    Application            @relation(fields: [applicationId], references: [id])
   reviewRun      MaterialReviewRun      @relation(fields: [reviewRunId], references: [id])
@@ -471,7 +482,7 @@ model SupplementUploadBatch {
   createdAt     DateTime                    @default(now())
   updatedAt     DateTime                    @updatedAt
 
-  application Application       @relation(fields: [applicationId], references: [id])
+  application Application        @relation(fields: [applicationId], references: [id])
   reviewRun   MaterialReviewRun? @relation(fields: [reviewRunId], references: [id])
   files       SupplementFile[]
 
@@ -482,7 +493,7 @@ model SupplementUploadBatch {
 }
 
 model SupplementFile {
-  id                  String              @id @default(cuid())
+  id                  String             @id @default(cuid())
   applicationId       String
   category            SupplementCategory
   supplementRequestId String?
@@ -492,16 +503,16 @@ model SupplementFile {
   objectKey           String
   fileType            String
   fileSize            Int
-  isDeleted           Boolean             @default(false)
+  isDeleted           Boolean            @default(false)
   deletedAt           DateTime?
-  uploadedAt          DateTime            @default(now())
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  uploadedAt          DateTime           @default(now())
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
-  application       Application        @relation(fields: [applicationId], references: [id])
-  supplementRequest SupplementRequest? @relation(fields: [supplementRequestId], references: [id])
+  application       Application           @relation(fields: [applicationId], references: [id])
+  supplementRequest SupplementRequest?    @relation(fields: [supplementRequestId], references: [id])
   uploadBatch       SupplementUploadBatch @relation(fields: [uploadBatchId], references: [id])
-  reviewRun         MaterialReviewRun? @relation(fields: [reviewRunId], references: [id])
+  reviewRun         MaterialReviewRun?    @relation(fields: [reviewRunId], references: [id])
 
   @@index([applicationId, category])
   @@index([applicationId, uploadBatchId])
@@ -528,16 +539,16 @@ model ApplicationFeedback {
 }
 
 model ApplicationEventLog {
-  id            String      @id @default(cuid())
+  id            String       @id @default(cuid())
   applicationId String
   eventType     String
-  eventTime     DateTime    @default(now())
+  eventTime     DateTime     @default(now())
   pageName      String?
   stepName      String?
   actionName    String?
   eventStatus   EventStatus?
   errorCode     String?
-  errorMessage  String?     @db.Text
+  errorMessage  String?      @db.Text
   durationMs    Int?
   sessionId     String?
   requestId     String?
@@ -546,7 +557,7 @@ model ApplicationEventLog {
   userAgent     String?
   referer       String?
   eventPayload  Json?
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime     @default(now())
 
   application Application @relation(fields: [applicationId], references: [id])
 
@@ -580,8 +591,8 @@ model InviteAccessLog {
   utmCampaign   String?
   createdAt     DateTime                  @default(now())
 
-  invitation    ExpertInvitation?         @relation(fields: [invitationId], references: [id])
-  application   Application?              @relation(fields: [applicationId], references: [id])
+  invitation  ExpertInvitation? @relation(fields: [invitationId], references: [id])
+  application Application?      @relation(fields: [applicationId], references: [id])
 
   @@index([occurredAt])
   @@index([invitationId, occurredAt])
@@ -595,9 +606,9 @@ model InviteAccessLog {
 }
 
 model FileUploadAttempt {
-  id                String             @id @default(cuid())
+  id                String              @id @default(cuid())
   applicationId     String
-  uploadId          String?            @unique
+  uploadId          String?             @unique
   kind              UploadKind
   category          MaterialCategory?
   fileName          String
@@ -613,10 +624,10 @@ model FileUploadAttempt {
   objectKey         String?
   sessionId         String?
   requestId         String?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
-  application       Application        @relation(fields: [applicationId], references: [id])
+  application Application @relation(fields: [applicationId], references: [id])
 
   @@index([applicationId, kind, createdAt])
   @@index([applicationId, category, createdAt])
@@ -624,4 +635,85 @@ model FileUploadAttempt {
   @@index([failureStage, createdAt])
   @@index([sessionId, createdAt])
   @@index([requestId])
+}
+
+model AskAiChatSession {
+  id              String             @id @default(cuid())
+  applicationId   String?
+  aliyunSessionId String?
+  status          AskAiSessionStatus @default(ACTIVE)
+  startedAt       DateTime           @default(now())
+  lastMessageAt   DateTime?
+  clearedAt       DateTime?
+  pageName        String?
+  sessionId       String?
+  requestId       String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  application Application?       @relation(fields: [applicationId], references: [id])
+  messages    AskAiChatMessage[]
+
+  @@index([applicationId, createdAt])
+  @@index([aliyunSessionId])
+  @@index([sessionId, createdAt])
+}
+
+model AskAiChatMessage {
+  id              String   @id @default(cuid())
+  chatSessionId   String
+  role            String
+  content         String   @db.Text
+  uiMessageId     String?
+  aliyunRequestId String?
+  latencyMs       Int?
+  tokenUsage      Json?
+  errorCode       String?
+  errorMessage    String?  @db.Text
+  rawResponse     Json?
+  createdAt       DateTime @default(now())
+
+  chatSession     AskAiChatSession      @relation(fields: [chatSessionId], references: [id])
+  retrievedChunks AskAiRetrievedChunk[]
+  feedback        AskAiMessageFeedback?
+
+  @@index([chatSessionId, createdAt])
+  @@index([aliyunRequestId])
+  @@index([uiMessageId])
+}
+
+model AskAiRetrievedChunk {
+  id            String   @id @default(cuid())
+  messageId     String
+  sourceId      String?
+  documentTitle String?
+  documentUrl   String?
+  sectionTitle  String?
+  chunkText     String?  @db.Text
+  score         Float?
+  rank          Int?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  message AskAiChatMessage @relation(fields: [messageId], references: [id])
+
+  @@index([messageId, rank])
+  @@index([sourceId])
+}
+
+model AskAiMessageFeedback {
+  id            String              @id @default(cuid())
+  messageId     String              @unique
+  rating        AskAiFeedbackRating
+  comment       String?             @db.Text
+  applicationId String?
+  sessionId     String?
+  requestId     String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  message AskAiChatMessage @relation(fields: [messageId], references: [id])
+
+  @@index([rating, createdAt])
+  @@index([applicationId, createdAt])
 }

@@ -12,6 +12,8 @@ const trackEventSchema = z.object({
       "apply_entry",
       "apply_resume",
       "apply_result",
+      "apply_supplement",
+      "apply_supplement_history",
       "apply_materials",
       "apply_submission_complete",
     ])
@@ -23,6 +25,8 @@ const trackEventSchema = z.object({
       "resume_upload",
       "resume_extraction",
       "analysis_result",
+      "supplement",
+      "supplement_history",
       "supplemental",
       "secondary_analysis",
       "materials",

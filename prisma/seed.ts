@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 import {
   SAMPLE_TOKENS,
@@ -25,7 +25,8 @@ const prisma = new PrismaClient({
 async function seedSubmittedApplication(
   sample: ReturnType<typeof getSampleSubmittedApplicationRecords>[number],
 ) {
-  const { application, resumeFile, analysisJob, analysisResult, material } = sample;
+  const { application, resumeFile, analysisJob, analysisResult, material } =
+    sample;
 
   await prisma.application.create({
     data: {
@@ -64,8 +65,8 @@ async function seedSubmittedApplication(
           displaySummary: "您已通过初步资格判断，请继续完成详细分析。",
           extractedFields: {
             "*姓名": application.screeningPassportFullName,
-            "最高学位": "博士",
-            "就职单位中文": analysisResult.extractedFields["就职单位中文"],
+            最高学位: "博士",
+            就职单位中文: analysisResult.extractedFields["就职单位中文"],
           },
           missingFields: analysisResult.missingFields,
           createdAt: analysisResult.createdAt,
@@ -171,12 +172,12 @@ async function main() {
           displaySummary: "当前无法完成资格判断，缺少关键信息。",
           extractedFields: {
             "*姓名": "Progress Expert",
-            "性别": "女",
+            性别: "女",
             "*出生日期（无则1900-01-01）": "1900-01-01",
-            "最高学位": "",
-            "就职单位中文": "",
+            最高学位: "",
+            就职单位中文: "",
             "（省/国）入选信息": "国家级人才计划（2021）",
-            "备注": "内部字段不面向专家展示",
+            备注: "内部字段不面向专家展示",
             __rawReasoning:
               "系统已识别部分背景信息，但仍缺少关键资格判断字段。",
           },
@@ -229,7 +230,8 @@ async function main() {
         create: {
           id: "resume_secondary",
           fileName: "candidate-secondary.pdf",
-          objectKey: "applications/app_secondary/resume/candidate-secondary.pdf",
+          objectKey:
+            "applications/app_secondary/resume/candidate-secondary.pdf",
           fileType: "application/pdf",
           fileSize: 2048,
           versionNo: 1,
@@ -258,9 +260,9 @@ async function main() {
           displaySummary: "您已通过初步资格判断，请继续完成详细分析。",
           extractedFields: {
             "*姓名": "Secondary Expert",
-            "最高学位": "博士",
-            "就职单位中文": "Example Institute",
-            "研究方向": "Marine biotechnology",
+            最高学位: "博士",
+            就职单位中文: "Example Institute",
+            研究方向: "Marine biotechnology",
           },
           missingFields: [],
           createdAt: now,
@@ -281,6 +283,10 @@ async function main() {
     await prisma.materialCategoryReview.create({
       data: {
         ...review,
+        resultPayload:
+          review.resultPayload === null
+            ? Prisma.JsonNull
+            : (review.resultPayload as Prisma.InputJsonValue),
       },
     });
   }
@@ -289,6 +295,10 @@ async function main() {
     await prisma.supplementRequest.create({
       data: {
         ...request,
+        suggestedMaterials:
+          request.suggestedMaterials === null
+            ? Prisma.JsonNull
+            : (request.suggestedMaterials as Prisma.InputJsonValue),
       },
     });
   }

@@ -1,4 +1,6 @@
-  import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+
+import { AskAiEntry } from "@/features/ask-ai/components/ask-ai-entry";
 
 const APPLY_FLOW_BACKDROP_STYLE: CSSProperties = {
   backgroundImage:
@@ -21,6 +23,7 @@ export default function ApplyLayout({
         style={APPLY_FLOW_BACKDROP_STYLE}
       />
       <div className="relative z-10">{children}</div>
+      <AskAiEntry pageName="apply" />
     </div>
   );
 }

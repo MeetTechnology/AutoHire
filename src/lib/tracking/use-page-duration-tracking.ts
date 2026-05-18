@@ -11,6 +11,8 @@ const DURATION_EVENT_BY_PAGE: Record<TrackingPageName, string> = {
   apply_entry: "intro_page_duration_recorded",
   apply_resume: "resume_page_duration_recorded",
   apply_result: "analysis_result_duration_recorded",
+  apply_supplement: "supplement_page_duration_recorded",
+  apply_supplement_history: "supplement_history_duration_recorded",
   apply_materials: "materials_page_duration_recorded",
   apply_submission_complete: "submission_complete_duration_recorded",
 };
