@@ -15,10 +15,27 @@ export type AskAiSource = {
   metadata?: Record<string, unknown> | null;
 };
 
+export type AskAiProgressStage =
+  | "received"
+  | "retrieving"
+  | "reasoning"
+  | "generating"
+  | "finalizing";
+
+export type AskAiProgress = {
+  stage: AskAiProgressStage;
+  label: string;
+  source: "aliyun" | "mock" | "system";
+};
+
 export type AskAiStreamEvent =
   | {
       type: "source";
       source: AskAiSource;
+    }
+  | {
+      type: "progress";
+      progress: AskAiProgress;
     }
   | {
       type: "text-delta";

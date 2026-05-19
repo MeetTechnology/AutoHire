@@ -28,10 +28,10 @@ export function PromptInput({
 
   return (
     <form
-      className="border-border bg-background border-t p-3"
+      className="border-border/80 bg-card/95 border-t p-3 shadow-[0_-18px_40px_rgba(15,23,42,0.06)]"
       onSubmit={handleSubmit}
     >
-      <div className="border-input bg-background flex flex-col gap-2 rounded-lg border p-2 shadow-sm">
+      <div className="border-input bg-background flex flex-col gap-2 rounded-lg border p-2 shadow-[0_8px_22px_rgba(15,23,42,0.05)] focus-within:border-emerald-500/45 focus-within:ring-3 focus-within:ring-emerald-500/12">
         <Textarea
           value={value}
           onChange={(event) => onValueChange(event.currentTarget.value)}
@@ -43,8 +43,8 @@ export function PromptInput({
           }}
           disabled={disabled}
           placeholder={placeholder}
-          className="max-h-40 min-h-20 resize-none border-0 px-1 py-1 shadow-none focus-visible:ring-0"
-          aria-label="Ask AI question"
+          className="max-h-40 min-h-20 resize-none border-0 px-1 py-1 text-sm leading-6 shadow-none focus-visible:ring-0"
+          aria-label="Guidance question"
         />
         <div className="flex items-center justify-between gap-2">
           <p className="text-muted-foreground text-xs">
@@ -70,7 +70,7 @@ export function PromptInputSubmit({
     <Button
       type="submit"
       disabled={disabled}
-      className={cn("min-w-20", className)}
+      className={cn("min-w-20 bg-emerald-700 hover:bg-emerald-800", className)}
       size="sm"
     >
       {children}

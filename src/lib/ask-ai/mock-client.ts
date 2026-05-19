@@ -34,6 +34,15 @@ const MOCK_SOURCES = [
 export async function* streamMockAskAiResponse(
   request: AskAiChatRequest,
 ): AsyncGenerator<AskAiStreamEvent> {
+  yield {
+    type: "progress",
+    progress: {
+      stage: "retrieving",
+      label: "正在检索知识库",
+      source: "mock",
+    },
+  };
+
   for (const source of MOCK_SOURCES) {
     yield { type: "source", source };
   }

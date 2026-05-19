@@ -2,6 +2,7 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   type UIMessage,
+  type UIMessageStreamWriter,
 } from "ai";
 import { NextRequest } from "next/server";
 import { z } from "zod";
@@ -13,7 +14,7 @@ import {
   getAskAiAliyunSessionId,
   persistAskAiAnswer,
 } from "@/lib/ask-ai/trace-service";
-import type { AskAiSource } from "@/lib/ask-ai/types";
+import type { AskAiProgress, AskAiSource } from "@/lib/ask-ai/types";
 import { getSessionCookieName, verifySessionToken } from "@/lib/auth/session";
 import { getEnv } from "@/lib/env";
 import { jsonError, parseJsonBody } from "@/lib/http";
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
       let aliyunRequestId: string | null = null;
       let usage: Record<string, unknown> | null = null;
       let rawResponse: Record<string, unknown> | null = null;
+      let wroteGeneratingProgress = false;
 
       writer.write({
         type: "start",
@@ -100,6 +102,12 @@ export async function POST(request: NextRequest) {
           id: textPartId,
         });
 
+        writeProgress(writer, {
+          stage: "received",
+          label: "已收到问题",
+          source: "system",
+        });
+
         for await (const event of streamAskAiResponse({
           chatSessionId,
           messages,
@@ -110,6 +118,11 @@ export async function POST(request: NextRequest) {
           locale: env.ASK_AI_DEFAULT_LOCALE,
           signal: request.signal,
         })) {
+          if (event.type === "progress") {
+            writeProgress(writer, event.progress);
+            continue;
+          }
+
           if (event.type === "source") {
             if (
               !sources.some(
@@ -128,6 +141,15 @@ export async function POST(request: NextRequest) {
           }
 
           if (event.type === "text-delta") {
+            if (!wroteGeneratingProgress) {
+              writeProgress(writer, {
+                stage: "generating",
+                label: "正在生成回答",
+                source: "system",
+              });
+              wroteGeneratingProgress = true;
+            }
+
             answer += event.text;
             writer.write({
               type: "text-delta",
@@ -211,6 +233,18 @@ export async function POST(request: NextRequest) {
   });
 
   return createUIMessageStreamResponse({ stream });
+}
+
+function writeProgress(
+  writer: UIMessageStreamWriter<UIMessage>,
+  progress: AskAiProgress,
+) {
+  writer.write({
+    type: "data-ask-ai-progress",
+    id: "ask-ai-progress",
+    data: progress,
+    transient: true,
+  });
 }
 
 function getMessageText(message: UIMessage) {

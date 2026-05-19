@@ -1,4 +1,9 @@
-import type { AskAiSource, AskAiStreamEvent } from "@/lib/ask-ai/types";
+import type {
+  AskAiProgress,
+  AskAiProgressStage,
+  AskAiSource,
+  AskAiStreamEvent,
+} from "@/lib/ask-ai/types";
 
 type ParsedSseMessage = {
   event?: string;
@@ -82,19 +87,23 @@ export function parseAliyunPayload(data: string): AskAiStreamEvent[] {
   const output = asRecord(payload.output);
   const events: AskAiStreamEvent[] = [];
   const sources = extractSources(payload);
+  const text = readString(output, "text") ?? readString(payload, "text");
+
+  for (const progress of extractProgress(output, Boolean(text))) {
+    events.push({ type: "progress", progress });
+  }
 
   for (const source of sources) {
     events.push({ type: "source", source });
   }
 
-  const text = readString(output, "text") ?? readString(payload, "text");
   if (text) {
     events.push({ type: "text-delta", text });
   }
 
   const finishReason =
     readString(output, "finish_reason") ?? readString(payload, "finish_reason");
-  if (finishReason) {
+  if (finishReason && finishReason.toLowerCase() !== "null") {
     events.push({
       type: "finish",
       aliyunSessionId: readString(output, "session_id"),
@@ -116,6 +125,107 @@ export async function* parseAliyunSseStream(
     }
   }
 }
+
+function extractProgress(
+  output: Record<string, unknown> | null,
+  hasText: boolean,
+): AskAiProgress[] {
+  if (hasText) {
+    return [progress("generating", "正在生成回答", "aliyun")];
+  }
+
+  const thought = asArray(output?.thoughts)
+    .map((item) => parseThoughtResponse(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .at(-1);
+
+  if (!thought) {
+    return [];
+  }
+
+  const nodeType = readString(thought, "nodeType") ?? "";
+  const nodeStatus = readString(thought, "nodeStatus") ?? "";
+  const stage = mapThoughtToStage(nodeType, nodeStatus);
+
+  return stage ? [progress(stage, progressLabels[stage], "aliyun")] : [];
+}
+
+function parseThoughtResponse(
+  thought: unknown,
+): Record<string, unknown> | null {
+  const record = asRecord(thought);
+  const response = readString(record, "response");
+
+  if (!response) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(response) as unknown;
+    const parsedRecord = asRecord(parsed);
+
+    if (!parsedRecord) {
+      return null;
+    }
+
+    return {
+      nodeName: readString(parsedRecord, "nodeName"),
+      nodeType: readString(parsedRecord, "nodeType"),
+      nodeStatus: readString(parsedRecord, "nodeStatus"),
+      nodeExecTime: readString(parsedRecord, "nodeExecTime"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function mapThoughtToStage(
+  nodeType: string,
+  nodeStatus: string,
+): AskAiProgressStage | null {
+  const normalizedType = nodeType.toLowerCase();
+  const normalizedStatus = nodeStatus.toLowerCase();
+
+  if (normalizedStatus === "executing") {
+    if (
+      /rag|retrieval|retrieve|knowledge|search|plugin|tool|知识|检索|插件/.test(
+        normalizedType,
+      )
+    ) {
+      return "retrieving";
+    }
+
+    if (/llm|model|大模型/.test(normalizedType)) {
+      return "reasoning";
+    }
+
+    return "reasoning";
+  }
+
+  if (normalizedStatus === "success") {
+    return /end|output|结束|输出/.test(normalizedType)
+      ? "finalizing"
+      : "reasoning";
+  }
+
+  return null;
+}
+
+function progress(
+  stage: AskAiProgressStage,
+  label: string,
+  source: AskAiProgress["source"],
+): AskAiProgress {
+  return { stage, label, source };
+}
+
+const progressLabels: Record<AskAiProgressStage, string> = {
+  received: "已收到问题",
+  retrieving: "正在检索知识库",
+  reasoning: "正在分析申请上下文",
+  generating: "正在生成回答",
+  finalizing: "正在整理引用来源",
+};
 
 function extractSources(payload: Record<string, unknown>): AskAiSource[] {
   const output = asRecord(payload.output);

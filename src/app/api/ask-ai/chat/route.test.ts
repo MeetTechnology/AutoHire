@@ -50,6 +50,10 @@ describe("Ask AI chat route", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toContain("AutoHire");
+    const streamText = await response.text();
+
+    expect(streamText).toContain("data-ask-ai-progress");
+    expect(streamText).toContain("正在检索知识库");
+    expect(streamText).toContain("AutoHire");
   });
 });

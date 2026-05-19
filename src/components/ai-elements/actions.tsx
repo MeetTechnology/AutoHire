@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/tooltip";
 
 export function Actions({ children }: { children: ReactNode }) {
-  return <div className="mt-1 flex items-center gap-1">{children}</div>;
+  return <div className="mt-1.5 flex items-center gap-1">{children}</div>;
 }
 
 export function ActionButton({
@@ -34,6 +34,7 @@ export function ActionButton({
             type="button"
             variant={pressed ? "secondary" : "ghost"}
             size="icon-sm"
+            className={pressed ? "bg-emerald-100 text-emerald-800" : ""}
             disabled={disabled}
             aria-label={label}
             aria-pressed={pressed}

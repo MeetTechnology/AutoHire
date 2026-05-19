@@ -18,7 +18,7 @@ export function Conversation({
 
   return (
     <ScrollArea className={cn("min-h-0 flex-1", className)} {...props}>
-      <div className="flex min-h-full flex-col gap-4 px-4 py-3">
+      <div className="flex min-h-full flex-col gap-4 px-4 py-4">
         {children}
         <div ref={endRef} aria-hidden />
       </div>

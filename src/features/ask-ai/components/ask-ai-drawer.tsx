@@ -2,8 +2,18 @@
 
 import { DefaultChatTransport } from "ai";
 import { useChat } from "@ai-sdk/react";
-import { BotIcon, SendIcon, Trash2Icon } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  ClipboardCheckIcon,
+  CompassIcon,
+  FileTextIcon,
+  ListChecksIcon,
+  PaperclipIcon,
+  SearchCheckIcon,
+  SendIcon,
+  Trash2Icon,
+  type LucideIcon,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Conversation } from "@/components/ai-elements/conversation";
@@ -17,7 +27,6 @@ import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -26,7 +35,72 @@ import { AskAiSources } from "@/features/ask-ai/components/ask-ai-sources";
 import type {
   AskAiFeedbackRating,
   AskAiMessage,
+  AskAiProgress,
 } from "@/features/ask-ai/lib/types";
+
+const STARTER_PROMPTS = [
+  {
+    label: "Application Steps",
+    prompt:
+      "Walk me through the full AutoHire application process and what I should prepare for each step.",
+    icon: ListChecksIcon,
+  },
+  {
+    label: "Resume Review",
+    prompt:
+      "What does the resume review stage usually focus on, and how can I strengthen my materials?",
+    icon: ClipboardCheckIcon,
+  },
+  {
+    label: "Supplemental Materials",
+    prompt:
+      "What should I submit during the supplemental materials step, and what is easy to miss?",
+    icon: PaperclipIcon,
+  },
+  {
+    label: "Supporting Files",
+    prompt:
+      "Which supporting files should I upload, and what should I consider for naming and content?",
+    icon: FileTextIcon,
+  },
+  {
+    label: "Status Check",
+    prompt:
+      "After submission, how can I understand my current application status and likely next steps?",
+    icon: SearchCheckIcon,
+  },
+] as const;
+
+const FALLBACK_PROGRESS: AskAiProgress[] = [
+  {
+    stage: "received",
+    label: "Question received",
+    source: "system",
+  },
+  {
+    stage: "retrieving",
+    label: "Reviewing relevant guidance",
+    source: "system",
+  },
+  {
+    stage: "reasoning",
+    label: "Assessing your application context",
+    source: "system",
+  },
+  {
+    stage: "finalizing",
+    label: "Preparing references",
+    source: "system",
+  },
+];
+
+const PROGRESS_LABELS: Record<AskAiProgress["stage"], string> = {
+  received: "Question received",
+  retrieving: "Reviewing relevant guidance",
+  reasoning: "Assessing your application context",
+  generating: "Drafting the response",
+  finalizing: "Preparing references",
+};
 
 export function AskAiDrawer({
   open,
@@ -41,6 +115,7 @@ export function AskAiDrawer({
   const [feedback, setFeedback] = useState<Record<string, AskAiFeedbackRating>>(
     {},
   );
+  const [activeProgress, setActiveProgress] = useState<AskAiProgress>();
   const transport = useMemo(
     () =>
       new DefaultChatTransport<AskAiMessage>({
@@ -53,28 +128,73 @@ export function AskAiDrawer({
   const { id, messages, sendMessage, regenerate, setMessages, status, error } =
     useChat<AskAiMessage>({
       transport,
+      onData(dataPart) {
+        if (dataPart.type === "data-ask-ai-progress") {
+          setActiveProgress(dataPart.data);
+        }
+      },
     });
   const busy = status === "submitted" || status === "streaming";
+  const latestAssistant = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  const latestAssistantText = latestAssistant
+    ? getMessageText(latestAssistant)
+    : "";
+  const shouldShowProgress = busy && latestAssistantText.length === 0;
 
-  async function submit() {
-    const value = input.trim();
+  useEffect(() => {
+    if (!shouldShowProgress) {
+      return;
+    }
+
+    const timers = FALLBACK_PROGRESS.slice(1).map((progress, index) =>
+      window.setTimeout(
+        () => {
+          setActiveProgress((current) =>
+            current?.source === "aliyun" ? current : progress,
+          );
+        },
+        600 + index * 1600,
+      ),
+    );
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [shouldShowProgress]);
+
+  async function sendPrompt(prompt: string) {
+    const value = prompt.trim();
 
     if (!value || busy) {
       return;
     }
 
     setInput("");
+    setActiveProgress(FALLBACK_PROGRESS[0]);
     await sendMessage({ text: value });
+  }
+
+  async function submit() {
+    await sendPrompt(input);
   }
 
   async function clear() {
     setMessages([]);
     setFeedback({});
-    await fetch("/api/ask-ai/clear", {
+    setActiveProgress(undefined);
+    const response = await fetch("/api/ask-ai/clear", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chatSessionId: id, pageName }),
     });
+
+    if (!response.ok) {
+      toast.error("Conversation could not be cleared");
+      return;
+    }
+
     toast.success("Conversation cleared");
   }
 
@@ -82,6 +202,7 @@ export function AskAiDrawer({
     messageId: string,
     rating: AskAiFeedbackRating,
   ) {
+    const previousRating = feedback[messageId];
     setFeedback((current) => ({ ...current, [messageId]: rating }));
     const response = await fetch("/api/ask-ai/feedback", {
       method: "POST",
@@ -90,6 +211,17 @@ export function AskAiDrawer({
     });
 
     if (!response.ok) {
+      setFeedback((current) => {
+        const next = { ...current };
+
+        if (previousRating) {
+          next[messageId] = previousRating;
+        } else {
+          delete next[messageId];
+        }
+
+        return next;
+      });
       toast.error("Feedback could not be saved");
       return;
     }
@@ -101,28 +233,24 @@ export function AskAiDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-[min(100vw,28rem)] gap-0 p-0 sm:max-w-[28rem]"
+        className="w-[min(100vw,30rem)] gap-0 overflow-hidden border-l border-slate-200/80 bg-[#f7f9fc] p-0 sm:max-w-[30rem]"
       >
-        <SheetHeader className="border-border border-b">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
-              <BotIcon aria-hidden />
+        <SheetHeader className="border-border/80 bg-card/95 border-b px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-lg bg-[#0a192f] text-white shadow-[0_8px_20px_rgba(10,25,47,0.18)]">
+              <CompassIcon aria-hidden />
             </div>
-            <div className="min-w-0">
-              <SheetTitle>Ask AI</SheetTitle>
-              <SheetDescription>
-                Answers are grounded in the AutoHire knowledge base.
-              </SheetDescription>
+            <div className="min-w-0 flex-1">
+              <SheetTitle className="text-base">
+                Application Guidance
+              </SheetTitle>
             </div>
           </div>
         </SheetHeader>
 
         <Conversation>
           {messages.length === 0 && (
-            <div className="border-border bg-muted/30 text-muted-foreground rounded-lg border border-dashed p-4 text-sm leading-6">
-              Ask about the application process, resume review, supplemental
-              information, or supporting materials.
-            </div>
+            <AskAiEmptyState onPrompt={sendPrompt} disabled={busy} />
           )}
 
           {messages.map((message) => {
@@ -134,7 +262,17 @@ export function AskAiDrawer({
                 <Message from={message.role === "user" ? "user" : "assistant"}>
                   <MessageContent>
                     {isAssistant ? (
-                      <Response>{text || "Thinking..."}</Response>
+                      text ? (
+                        <Response>{text}</Response>
+                      ) : (
+                        <AskAiProgressStatus
+                          progress={
+                            getMessageProgress(message) ??
+                            activeProgress ??
+                            FALLBACK_PROGRESS[0]
+                          }
+                        />
+                      )
                     ) : (
                       <p>{text}</p>
                     )}
@@ -169,7 +307,7 @@ export function AskAiDrawer({
           onValueChange={setInput}
           onSubmit={submit}
           disabled={busy}
-          placeholder="Ask about AutoHire documents..."
+          placeholder="Ask about applications, materials, or review steps..."
         >
           <Button
             type="button"
@@ -191,6 +329,93 @@ export function AskAiDrawer({
   );
 }
 
+function AskAiEmptyState({
+  onPrompt,
+  disabled,
+}: {
+  onPrompt: (prompt: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-4 py-1">
+      <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.07)]">
+        <div
+          className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#0a192f] via-emerald-600 to-sky-500"
+          aria-hidden
+        />
+        <div className="flex items-start gap-3 pt-1">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800">
+            <CompassIcon aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <p className="text-foreground text-sm font-semibold">
+              Start with a common scenario
+            </p>
+            <p className="text-muted-foreground mt-1 text-sm leading-6">
+              Choose a prompt below or ask a question about your application.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {STARTER_PROMPTS.map((starterPrompt) => (
+          <PromptChip
+            key={starterPrompt.label}
+            label={starterPrompt.label}
+            icon={starterPrompt.icon}
+            onClick={() => onPrompt(starterPrompt.prompt)}
+            disabled={disabled}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PromptChip({
+  label,
+  icon: Icon,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-auto min-h-11 justify-start gap-2 rounded-lg border-slate-200 bg-white px-3 py-2 text-left whitespace-normal text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-900"
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600 group-hover/button:bg-emerald-100 group-hover/button:text-emerald-800">
+        <Icon className="size-3.5" aria-hidden />
+      </span>
+      <span className="min-w-0 leading-4">{label}</span>
+    </Button>
+  );
+}
+
+export function AskAiProgressStatus({ progress }: { progress: AskAiProgress }) {
+  return (
+    <div
+      className="text-muted-foreground flex items-center gap-2 text-sm leading-6"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="relative inline-flex size-2.5 shrink-0" aria-hidden>
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/35" />
+        <span className="relative inline-flex size-2.5 rounded-full bg-emerald-600" />
+      </span>
+      <span>{PROGRESS_LABELS[progress.stage] ?? progress.label}</span>
+    </div>
+  );
+}
+
 function getMessageText(message: AskAiMessage) {
   return message.parts
     .map((part) => {
@@ -201,4 +426,17 @@ function getMessageText(message: AskAiMessage) {
       return "";
     })
     .join("");
+}
+
+function getMessageProgress(message: AskAiMessage) {
+  return message.parts
+    .map((part) => {
+      if (part.type === "data-ask-ai-progress") {
+        return part.data;
+      }
+
+      return null;
+    })
+    .filter((progress): progress is AskAiProgress => Boolean(progress))
+    .at(-1);
 }

@@ -59,6 +59,7 @@ export async function* streamAliyunAskAiResponse(
           },
           parameters: {
             incremental_output: true,
+            has_thoughts: true,
           },
         }),
         signal: timeoutController.signal,
