@@ -54,6 +54,10 @@ describe("Ask AI chat route", () => {
 
     expect(streamText).toContain("data-ask-ai-progress");
     expect(streamText).toContain("正在检索知识库");
+    expect(streamText).toContain("data-ask-ai-source");
+    expect(streamText).toContain("#ask-ai-preview:");
+    expect(streamText).not.toContain("dashscope-file-datacenter");
+    expect(streamText).not.toContain("Signature=secret");
     expect(streamText).toContain("AutoHire");
   });
 });

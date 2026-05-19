@@ -8,6 +8,7 @@ export type AskAiSource = {
   sourceId: string;
   title: string;
   url?: string | null;
+  previewToken?: string | null;
   sectionTitle?: string | null;
   chunkText?: string | null;
   score?: number | null;

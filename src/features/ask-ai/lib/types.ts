@@ -13,8 +13,15 @@ export type AskAiProgress = {
   source: "aliyun" | "mock" | "system";
 };
 
+export type AskAiSourcePart = {
+  sourceId: string;
+  title: string;
+  previewToken: string;
+};
+
 type AskAiDataParts = {
   "ask-ai-progress": AskAiProgress;
+  "ask-ai-source": AskAiSourcePart;
 };
 
 export type AskAiMessage = UIMessage<unknown, AskAiDataParts>;

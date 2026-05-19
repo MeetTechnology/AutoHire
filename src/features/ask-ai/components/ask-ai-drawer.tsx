@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/sheet";
 import { AskAiMessageActions } from "@/features/ask-ai/components/ask-ai-message-actions";
 import { AskAiSources } from "@/features/ask-ai/components/ask-ai-sources";
+import { SourcePreviewDialog } from "@/features/ask-ai/components/source-preview-dialog";
 import type {
   AskAiFeedbackRating,
   AskAiMessage,
@@ -116,6 +117,10 @@ export function AskAiDrawer({
     {},
   );
   const [activeProgress, setActiveProgress] = useState<AskAiProgress>();
+  const [sourcePreview, setSourcePreview] = useState<{
+    token: string;
+    title?: string;
+  } | null>(null);
   const transport = useMemo(
     () =>
       new DefaultChatTransport<AskAiMessage>({
@@ -263,7 +268,13 @@ export function AskAiDrawer({
                   <MessageContent>
                     {isAssistant ? (
                       text ? (
-                        <Response>{text}</Response>
+                        <Response
+                          onPreviewSource={(token, title) =>
+                            setSourcePreview({ token, title })
+                          }
+                        >
+                          {text}
+                        </Response>
                       ) : (
                         <AskAiProgressStatus
                           progress={
@@ -280,7 +291,12 @@ export function AskAiDrawer({
                 </Message>
                 {isAssistant && (
                   <div className="ml-0">
-                    <AskAiSources message={message} />
+                    <AskAiSources
+                      message={message}
+                      onPreviewSource={(token, title) =>
+                        setSourcePreview({ token, title })
+                      }
+                    />
                     <AskAiMessageActions
                       messageId={message.id}
                       content={text}
@@ -324,6 +340,14 @@ export function AskAiDrawer({
             Send
           </PromptInputSubmit>
         </PromptInput>
+        <SourcePreviewDialog
+          preview={sourcePreview}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setSourcePreview(null);
+            }
+          }}
+        />
       </SheetContent>
     </Sheet>
   );

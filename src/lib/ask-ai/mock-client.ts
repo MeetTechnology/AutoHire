@@ -4,7 +4,7 @@ const MOCK_SOURCES = [
   {
     sourceId: "autohire-application-flow",
     title: "AutoHire Application Flow",
-    url: "/apply",
+    url: "https://dashscope-file-datacenter-prod-01.oss-cn-beijing.aliyuncs.com/1891090362825054/10658150/conn_file_default_10658150/autohire-application-flow.md?Expires=1779353502&OSSAccessKeyId=test&Signature=secret",
     sectionTitle: "Expert application process",
     chunkText:
       "AutoHire guides experts through invitation access, resume review, supplemental information, materials upload, and final submission.",
@@ -53,6 +53,8 @@ export async function* streamMockAskAiResponse(
     `你的问题是：“${request.question}”`,
     ``,
     `在当前申请流程中，Ask AI 会优先依据项目文档和流程说明回答；如果知识库没有足够依据，它应该明确说明无法确认，而不是编造答案。`,
+    ``,
+    `[^1]: [AutoHire Application Flow](https://dashscope-file-datacenter-prod-01.oss-cn-beijing.aliyuncs.com/1891090362825054/10658150/conn_file_default_10658150/autohire-application-flow.md?Expires=1779353502&OSSAccessKeyId=test&Signature=secret)`,
   ].join("\n");
 
   for (const token of chunkText(answer, 18)) {

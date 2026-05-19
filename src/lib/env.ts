@@ -45,6 +45,9 @@ const envSchema = z.object({
   ASK_AI_TRACE_RAW_RESPONSE: z.coerce.boolean().default(false),
   ASK_AI_MAX_QUESTION_CHARS: z.coerce.number().int().positive().default(1000),
   ASK_AI_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+  ASK_AI_SOURCE_PREVIEW_ALLOWED_HOSTS: z
+    .string()
+    .default("dashscope-file-datacenter-prod-01.oss-cn-beijing.aliyuncs.com"),
   SENTRY_DSN: z.string().optional().default(""),
 });
 

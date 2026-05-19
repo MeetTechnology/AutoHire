@@ -10,6 +10,10 @@ import { z } from "zod";
 import { streamAskAiResponse } from "@/lib/ask-ai/client";
 import { AskAiProviderError } from "@/lib/ask-ai/aliyun-client";
 import {
+  createPreviewSourceFromUrl,
+  sanitizeAskAiMarkdown,
+} from "@/lib/ask-ai/source-preview";
+import {
   ensureAskAiChatSession,
   getAskAiAliyunSessionId,
   persistAskAiAnswer,
@@ -90,6 +94,7 @@ export async function POST(request: NextRequest) {
       let usage: Record<string, unknown> | null = null;
       let rawResponse: Record<string, unknown> | null = null;
       let wroteGeneratingProgress = false;
+      let rawAnswer = "";
 
       writer.write({
         type: "start",
@@ -129,13 +134,27 @@ export async function POST(request: NextRequest) {
                 (source) => source.sourceId === event.source.sourceId,
               )
             ) {
-              sources.push(event.source);
-              writer.write({
-                type: "source-url",
-                sourceId: event.source.sourceId,
-                url: toSourceUrl(event.source.url, env.APP_BASE_URL),
-                title: event.source.title,
-              });
+              const preview = createPreviewSourceFromUrl(
+                event.source.url,
+                event.source.title,
+              );
+              const source = {
+                ...event.source,
+                previewToken: preview?.previewToken ?? null,
+              };
+
+              sources.push(source);
+
+              if (source.previewToken) {
+                writer.write({
+                  type: "data-ask-ai-source",
+                  data: {
+                    sourceId: source.sourceId,
+                    title: source.title,
+                    previewToken: source.previewToken,
+                  },
+                });
+              }
             }
             continue;
           }
@@ -150,12 +169,7 @@ export async function POST(request: NextRequest) {
               wroteGeneratingProgress = true;
             }
 
-            answer += event.text;
-            writer.write({
-              type: "text-delta",
-              id: textPartId,
-              delta: event.text,
-            });
+            rawAnswer += event.text;
             continue;
           }
 
@@ -164,6 +178,17 @@ export async function POST(request: NextRequest) {
           aliyunRequestId = event.aliyunRequestId ?? aliyunRequestId;
           usage = event.usage ?? usage;
           rawResponse = event.rawResponse ?? rawResponse;
+        }
+
+        const sanitized = sanitizeAskAiMarkdown(rawAnswer);
+        answer = sanitized.markdown;
+
+        if (answer) {
+          writer.write({
+            type: "text-delta",
+            id: textPartId,
+            delta: answer,
+          });
         }
 
         writer.write({
@@ -258,18 +283,6 @@ function getMessageText(message: UIMessage) {
     })
     .join("")
     .trim();
-}
-
-function toSourceUrl(url: string | null | undefined, baseUrl: string) {
-  if (!url) {
-    return baseUrl;
-  }
-
-  try {
-    return new URL(url, baseUrl).toString();
-  } catch {
-    return baseUrl;
-  }
 }
 
 function createId(prefix: string) {
