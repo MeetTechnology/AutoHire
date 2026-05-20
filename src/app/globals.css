@@ -53,12 +53,14 @@
 
 html {
   scroll-behavior: smooth;
-  overflow-x: clip;
+  /* Reserve gutter up-front so Base UI scroll lock does not leave a white strip. */
+  scrollbar-gutter: stable;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: clip;
   background-color: var(--background);
   font-family: var(--font-sans), sans-serif;
   text-rendering: optimizeLegibility;
@@ -145,6 +147,20 @@ select {
   html {
     scroll-behavior: auto;
   }
+}
+
+/*
+ * When a right Sheet opens, scroll lock hides the thumb but can leave the gutter
+ * visible as a light strip. Extend the overlay/panel into that space.
+ */
+html:has([data-slot="sheet-content"][data-open]) {
+  --sheet-scrollbar-size: calc(100vw - 100%);
+}
+
+html:has([data-slot="sheet-content"][data-open]) [data-slot="sheet-overlay"],
+html:has([data-slot="sheet-content"][data-open])
+  [data-slot="sheet-content"][data-side="right"] {
+  right: calc(-1 * var(--sheet-scrollbar-size, 0px));
 }
 
 /*---break---

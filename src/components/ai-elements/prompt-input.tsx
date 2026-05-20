@@ -48,7 +48,7 @@ export function PromptInput({
         />
         <div className="flex min-w-0 items-center justify-between gap-2">
           <p className="text-muted-foreground min-w-0 shrink text-xs">
-            Enter 发送，Shift+Enter 换行
+            Press Enter to send, Shift+Enter for a new line
           </p>
           <div className="flex shrink-0 items-center gap-2">{children}</div>
         </div>
