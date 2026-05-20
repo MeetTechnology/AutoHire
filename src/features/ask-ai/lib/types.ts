@@ -27,3 +27,13 @@ type AskAiDataParts = {
 export type AskAiMessage = UIMessage<unknown, AskAiDataParts>;
 
 export type AskAiFeedbackRating = "UP" | "DOWN";
+
+export type AskAiHistoryItem = {
+  id: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  question: string;
+  answer: string;
+  createdAt: string;
+  sources: AskAiSourcePart[];
+};

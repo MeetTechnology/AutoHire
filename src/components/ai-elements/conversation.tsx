@@ -2,7 +2,6 @@
 
 import { type ComponentProps, useEffect, useRef } from "react";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 export function Conversation({
@@ -17,11 +16,14 @@ export function Conversation({
   }, [children]);
 
   return (
-    <ScrollArea className={cn("min-h-0 flex-1", className)} {...props}>
-      <div className="flex min-h-full flex-col gap-4 px-4 py-4">
+    <div
+      className={cn("h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain", className)}
+      {...props}
+    >
+      <div className="flex min-h-full min-w-0 flex-col gap-4 px-4 py-4">
         {children}
         <div ref={endRef} aria-hidden />
       </div>
-    </ScrollArea>
+    </div>
   );
 }

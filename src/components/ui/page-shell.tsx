@@ -150,19 +150,30 @@ const BUTTON_STYLES: Record<
     "border border-[color:var(--border)] bg-[color:var(--muted)] text-[color:var(--foreground-soft)] hover:bg-slate-200",
 };
 
+const PAGE_CONTENT_CLASS =
+  "mx-auto w-full max-w-[1180px] px-3 pb-3 sm:px-4 sm:pb-4 lg:px-5 lg:pb-5";
+
 export function PageFrame({ children, maxWidth, className }: PageFrameProps) {
   return (
     <MotionConfig transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}>
       <main
         className={cn(
-          "min-h-screen w-full px-3 pb-3 text-[color:var(--foreground)] sm:px-4 sm:pb-4 lg:px-5 lg:pb-5",
-          maxWidth
-            ? cn("mx-auto", MAX_WIDTH_CLASS[maxWidth])
-            : "mx-auto max-w-[1180px]",
+          "min-h-screen w-full text-[color:var(--foreground)]",
           className,
         )}
       >
-        {children}
+        {maxWidth ? (
+          <div
+            className={cn(
+              "mx-auto w-full px-3 pb-3 sm:px-4 sm:pb-4 lg:px-5 lg:pb-5",
+              MAX_WIDTH_CLASS[maxWidth],
+            )}
+          >
+            {children}
+          </div>
+        ) : (
+          children
+        )}
       </main>
     </MotionConfig>
   );
@@ -186,28 +197,27 @@ export function PageShell({
   const trimmedDescription = description.trim();
 
   return (
-    <motion.section
-      className={cn("mx-auto w-full", className)}
-      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 10 }}
-      animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
-    >
-      <div className="space-y-4">
-        {steps?.length ? (
-          <div className="sticky top-0 z-40 -mt-3 sm:-mt-4 lg:-mt-5">
-            <div className="relative left-1/2 w-screen -translate-x-1/2 border-b border-[color:var(--border)] bg-[color:var(--background-elevated)]/98 shadow-[0_6px_18px_rgba(10,25,47,0.04)] backdrop-blur">
-              <div className="px-4 py-2 sm:px-6 sm:py-2.5 lg:px-8">
-                <FlowArrowStepper
-                  steps={steps}
-                  currentStep={currentStep ?? (stepIndexing === "zero" ? 0 : 1)}
-                  stepIndexing={stepIndexing}
-                  stepLinks={stepLinks}
-                  maxAccessibleStep={maxAccessibleStep}
-                />
-              </div>
-            </div>
+    <>
+      {steps?.length ? (
+        <div className="sticky top-0 z-40 w-full border-b border-[color:var(--border)] bg-[color:var(--background-elevated)]/98 shadow-[0_6px_18px_rgba(10,25,47,0.04)] backdrop-blur">
+          <div className="mx-auto max-w-[1180px] px-4 py-2 sm:px-6 sm:py-2.5 lg:px-8">
+            <FlowArrowStepper
+              steps={steps}
+              currentStep={currentStep ?? (stepIndexing === "zero" ? 0 : 1)}
+              stepIndexing={stepIndexing}
+              stepLinks={stepLinks}
+              maxAccessibleStep={maxAccessibleStep}
+            />
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
+      <motion.section
+        className={cn(PAGE_CONTENT_CLASS, className)}
+        initial={shouldReduceMotion ? undefined : { opacity: 0, y: 10 }}
+        animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+      >
+        <div className="flex flex-col gap-4">
         {headerVariant === "centered" ? (
           <div className="mx-auto flex max-w-4xl flex-col items-center px-3 py-7 text-center sm:px-4 sm:py-10">
             <h1
@@ -253,8 +263,9 @@ export function PageShell({
         )}
 
         {children}
-      </div>
-    </motion.section>
+        </div>
+      </motion.section>
+    </>
   );
 }
 
@@ -294,7 +305,7 @@ function FlowArrowStepper({
 
   return (
     <div
-      className="w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="max-w-full min-w-0 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       role="list"
       aria-label="Application progress"
     >

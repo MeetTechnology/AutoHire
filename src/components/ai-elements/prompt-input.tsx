@@ -28,7 +28,7 @@ export function PromptInput({
 
   return (
     <form
-      className="border-border/80 bg-card/95 border-t p-3 shadow-[0_-18px_40px_rgba(15,23,42,0.06)]"
+      className="border-border/80 w-full border-t bg-card p-3 shadow-[0_-18px_40px_rgba(15,23,42,0.06)]"
       onSubmit={handleSubmit}
     >
       <div className="border-input bg-background flex flex-col gap-2 rounded-lg border p-2 shadow-[0_8px_22px_rgba(15,23,42,0.05)] focus-within:border-emerald-500/45 focus-within:ring-3 focus-within:ring-emerald-500/12">
@@ -46,11 +46,11 @@ export function PromptInput({
           className="max-h-40 min-h-20 resize-none border-0 px-1 py-1 text-sm leading-6 shadow-none focus-visible:ring-0"
           aria-label="Guidance question"
         />
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-muted-foreground text-xs">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <p className="text-muted-foreground min-w-0 shrink text-xs">
             Enter 发送，Shift+Enter 换行
           </p>
-          <div className="flex items-center gap-2">{children}</div>
+          <div className="flex shrink-0 items-center gap-2">{children}</div>
         </div>
       </div>
     </form>

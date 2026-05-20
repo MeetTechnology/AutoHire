@@ -32,6 +32,7 @@ describe("Ask AI trace service", () => {
       saveAskAiFeedback,
       clearAskAiChatSession,
       getAskAiAliyunSessionId,
+      listAskAiHistory,
     } = await loadTraceService();
 
     await persistAskAiAnswer({
@@ -92,5 +93,29 @@ describe("Ask AI trace service", () => {
     expect(store?.messages).toHaveLength(2);
     expect(store?.chunks).toHaveLength(1);
     expect(store?.feedback).toHaveLength(1);
+
+    await expect(
+      listAskAiHistory({ applicationId: "app_1", limit: 20 }),
+    ).resolves.toMatchObject([
+      {
+        userMessageId: "user_ui_1",
+        assistantMessageId: "assistant_ui_1",
+        question: "What should I upload?",
+        answer: "Upload supporting materials.",
+      },
+    ]);
+
+    store?.messages.reverse();
+
+    await expect(
+      listAskAiHistory({ applicationId: "app_1", limit: 20 }),
+    ).resolves.toMatchObject([
+      {
+        userMessageId: "user_ui_1",
+        assistantMessageId: "assistant_ui_1",
+        question: "What should I upload?",
+        answer: "Upload supporting materials.",
+      },
+    ]);
   });
 });

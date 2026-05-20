@@ -3,10 +3,12 @@ import { Prisma } from "@prisma/client";
 import { getEnv, getRuntimeMode } from "@/lib/env";
 import type {
   AskAiFeedbackRating,
+  AskAiHistoryItem,
   AskAiPersistAnswerInput,
   AskAiSource,
   AskAiTraceContext,
 } from "@/lib/ask-ai/types";
+import { createPreviewSourceFromUrl } from "@/lib/ask-ai/source-preview";
 
 type MemoryChatSession = {
   id: string;
@@ -181,7 +183,7 @@ export async function persistAskAiAnswer(input: AskAiPersistAnswerInput) {
     }
 
     store.messages.push({
-      id: createId("askuser"),
+      id: createPairedUserMessageId(input.assistantMessageId),
       chatSessionId: input.chatSessionId,
       role: "user",
       content: input.question,
@@ -235,6 +237,7 @@ export async function persistAskAiAnswer(input: AskAiPersistAnswerInput) {
     });
     await tx.askAiChatMessage.create({
       data: {
+        id: createPairedUserMessageId(input.assistantMessageId),
         chatSessionId: input.chatSessionId,
         role: "user",
         content: input.question,
@@ -381,6 +384,58 @@ export async function clearAskAiChatSession(input: AskAiTraceContext) {
   });
 }
 
+export async function listAskAiHistory(input: {
+  applicationId: string;
+  limit?: number;
+}): Promise<AskAiHistoryItem[]> {
+  const limit = clampHistoryLimit(input.limit);
+
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const sessionIds = new Set(
+      store.sessions
+        .filter((session) => session.applicationId === input.applicationId)
+        .map((session) => session.id),
+    );
+    const messages = store.messages.filter((message) =>
+      sessionIds.has(message.chatSessionId),
+    );
+
+    return buildHistoryItems({
+      messages,
+      getChunks: (messageId) =>
+        store.chunks.filter((chunk) => chunk.messageId === messageId),
+      limit,
+    });
+  }
+
+  const prisma = await getPrisma();
+  const messages = await prisma.askAiChatMessage.findMany({
+    where: {
+      role: { in: ["user", "assistant"] },
+      chatSession: {
+        applicationId: input.applicationId,
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: Math.max(limit * 8, 80),
+    include: {
+      retrievedChunks: {
+        orderBy: { rank: "asc" },
+      },
+    },
+  });
+  const chunksByMessageId = new Map(
+    messages.map((message) => [message.id, message.retrievedChunks]),
+  );
+
+  return buildHistoryItems({
+    messages,
+    getChunks: (messageId) => chunksByMessageId.get(messageId) ?? [],
+    limit,
+  });
+}
+
 function toJson(value: Record<string, unknown> | null | undefined) {
   return value === undefined || value === null
     ? Prisma.JsonNull
@@ -389,4 +444,137 @@ function toJson(value: Record<string, unknown> | null | undefined) {
 
 function createId(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
+function createPairedUserMessageId(assistantMessageId: string) {
+  return `${assistantMessageId}_user`;
+}
+
+function getRoleSortWeight(role: string) {
+  return role === "user" ? 0 : 1;
+}
+
+function clampHistoryLimit(limit: number | undefined) {
+  if (!limit || !Number.isFinite(limit)) {
+    return 20;
+  }
+
+  return Math.min(Math.max(Math.trunc(limit), 1), 20);
+}
+
+function buildHistoryItems({
+  messages,
+  getChunks,
+  limit,
+}: {
+  messages: Array<{
+    id: string;
+    chatSessionId: string;
+    role: string;
+    content: string;
+    uiMessageId: string | null;
+    errorCode: string | null;
+    createdAt: Date;
+  }>;
+  getChunks: (messageId: string) => Array<{
+    sourceId?: string | null;
+    documentTitle?: string | null;
+    title?: string | null;
+    documentUrl?: string | null;
+    url?: string | null;
+    rank?: number | null;
+  }>;
+  limit: number;
+}) {
+  const bySession = new Map<string, typeof messages>();
+
+  for (const message of messages) {
+    const sessionMessages = bySession.get(message.chatSessionId) ?? [];
+    sessionMessages.push(message);
+    bySession.set(message.chatSessionId, sessionMessages);
+  }
+
+  const items: AskAiHistoryItem[] = [];
+
+  for (const sessionMessages of bySession.values()) {
+    const ordered = [...sessionMessages].sort(
+      (left, right) =>
+        left.createdAt.getTime() - right.createdAt.getTime() ||
+        getRoleSortWeight(left.role) - getRoleSortWeight(right.role),
+    );
+    let pendingUser: {
+      id: string;
+      content: string;
+      uiMessageId: string | null;
+    } | null = null;
+
+    for (const message of ordered) {
+      if (message.role === "user") {
+        pendingUser = {
+          id: message.id,
+          content: message.content,
+          uiMessageId: message.uiMessageId,
+        };
+        continue;
+      }
+
+      if (
+        message.role !== "assistant" ||
+        !pendingUser ||
+        message.errorCode ||
+        !message.content.trim()
+      ) {
+        continue;
+      }
+
+      items.push({
+        id: message.id,
+        userMessageId: pendingUser.uiMessageId ?? pendingUser.id,
+        assistantMessageId: message.uiMessageId ?? message.id,
+        question: pendingUser.content,
+        answer: message.content,
+        createdAt: message.createdAt.toISOString(),
+        sources: getHistorySources(getChunks(message.id)),
+      });
+      pendingUser = null;
+    }
+  }
+
+  return items
+    .sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() -
+        new Date(left.createdAt).getTime(),
+    )
+    .slice(0, limit);
+}
+
+function getHistorySources(
+  chunks: Array<{
+    sourceId?: string | null;
+    documentTitle?: string | null;
+    title?: string | null;
+    documentUrl?: string | null;
+    url?: string | null;
+    rank?: number | null;
+  }>,
+) {
+  return chunks
+    .sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0))
+    .map((chunk, index) => {
+      const title = chunk.documentTitle ?? chunk.title ?? `Source ${index + 1}`;
+      const url = chunk.documentUrl ?? chunk.url ?? null;
+      const preview = createPreviewSourceFromUrl(url, title);
+
+      if (!preview) {
+        return null;
+      }
+
+      return {
+        sourceId: chunk.sourceId ?? `source-${index + 1}`,
+        title,
+        previewToken: preview.previewToken,
+      };
+    })
+    .filter((source): source is NonNullable<typeof source> => Boolean(source));
 }

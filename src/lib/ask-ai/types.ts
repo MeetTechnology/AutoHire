@@ -83,3 +83,17 @@ export type AskAiPersistAnswerInput = AskAiTraceContext & {
   errorCode?: string | null;
   errorMessage?: string | null;
 };
+
+export type AskAiHistoryItem = {
+  id: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  question: string;
+  answer: string;
+  createdAt: string;
+  sources: Array<{
+    sourceId: string;
+    title: string;
+    previewToken: string;
+  }>;
+};
