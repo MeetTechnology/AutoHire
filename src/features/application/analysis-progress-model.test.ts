@@ -15,7 +15,7 @@ import {
 
 describe("getDisplayedProgressRatio", () => {
   it("is monotonic for increasing elapsed", () => {
-    const steps = [0, 100, 5000, 12_000, 20_000, 32_000, 45_000, 60_000, 90_000];
+    const steps = [0, 100, 3000, 6_000, 10_000, 16_000, 22_000, 30_000, 45_000];
     let previous = -1;
 
     for (const ms of steps) {
@@ -37,8 +37,8 @@ describe("getDisplayedProgressRatio", () => {
     expect(getDisplayedProgressRatio(90_000)).toBe(PRE_COMPLETE_CAP);
   });
 
-  it("at ~32s lands in 0.70–0.85 of full track (not cap-scaled)", () => {
-    const r = getDisplayedProgressRatio(32_000);
+  it("at ~16s lands in 0.70–0.85 of full track (not cap-scaled)", () => {
+    const r = getDisplayedProgressRatio(16_000);
 
     expect(r).toBeGreaterThanOrEqual(0.7);
     expect(r).toBeLessThanOrEqual(0.85);
@@ -48,8 +48,8 @@ describe("getDisplayedProgressRatio", () => {
 describe("getPrimaryStageMessageIndex", () => {
   it("advances at band boundaries", () => {
     expect(getPrimaryStageMessageIndex(0)).toBe(0);
-    expect(getPrimaryStageMessageIndex(44_999)).toBe(0);
-    expect(getPrimaryStageMessageIndex(45_000)).toBe(1);
+    expect(getPrimaryStageMessageIndex(22_499)).toBe(0);
+    expect(getPrimaryStageMessageIndex(22_500)).toBe(1);
     expect(getPrimaryStageMessageIndex(120_000)).toBe(1);
   });
 });
@@ -57,8 +57,8 @@ describe("getPrimaryStageMessageIndex", () => {
 describe("getSecondaryStageMessageIndex", () => {
   it("uses two bands", () => {
     expect(getSecondaryStageMessageIndex(0)).toBe(0);
-    expect(getSecondaryStageMessageIndex(29_999)).toBe(0);
-    expect(getSecondaryStageMessageIndex(30_000)).toBe(1);
+    expect(getSecondaryStageMessageIndex(14_999)).toBe(0);
+    expect(getSecondaryStageMessageIndex(15_000)).toBe(1);
     expect(getSecondaryStageMessageIndex(120_000)).toBe(1);
   });
 });

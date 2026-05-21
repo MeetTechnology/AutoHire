@@ -1,14 +1,14 @@
 /** Piecewise-linear progress (0–PRE_COMPLETE_CAP) per OpenSpec resume-analysis-progress. */
 
-export const MS_SEGMENT_1_END = 12_000;
-export const MS_SEGMENT_2_END = 32_000;
-export const MS_SEGMENT_3_END = 60_000;
-export const MS_LONG_WAIT = 60_000;
+export const MS_SEGMENT_1_END = 6_000;
+export const MS_SEGMENT_2_END = 16_000;
+export const MS_SEGMENT_3_END = 30_000;
+export const MS_LONG_WAIT = 30_000;
 
 export const PRE_COMPLETE_CAP = 0.92;
 
-const RATIO_AT_12S = 0.28;
-const RATIO_AT_32S = 0.78;
+const RATIO_AT_6S = 0.28;
+const RATIO_AT_16S = 0.78;
 
 /** Generic wait lines (initial / re-analysis)—no staged eligibility narration. */
 export const PRIMARY_STAGE_MESSAGES = [
@@ -25,27 +25,27 @@ export const SECONDARY_STAGE_MESSAGES = [
 export const LONG_WAIT_PRIMARY_SUFFIX =
   " Still processing—thank you for your patience.";
 
-const PRIMARY_BAND_MS = [0, 45_000] as const;
+const PRIMARY_BAND_MS = [0, 22_500] as const;
 
-const SECONDARY_BAND_MS = [0, 30_000] as const;
+const SECONDARY_BAND_MS = [0, 15_000] as const;
 
 export function getDisplayedProgressRatio(elapsedMs: number): number {
   const t = Math.max(0, elapsedMs);
 
   if (t <= MS_SEGMENT_1_END) {
-    return (t / MS_SEGMENT_1_END) * RATIO_AT_12S;
+    return (t / MS_SEGMENT_1_END) * RATIO_AT_6S;
   }
 
   if (t <= MS_SEGMENT_2_END) {
     const span = MS_SEGMENT_2_END - MS_SEGMENT_1_END;
     const frac = (t - MS_SEGMENT_1_END) / span;
-    return RATIO_AT_12S + frac * (RATIO_AT_32S - RATIO_AT_12S);
+    return RATIO_AT_6S + frac * (RATIO_AT_16S - RATIO_AT_6S);
   }
 
   if (t <= MS_SEGMENT_3_END) {
     const span = MS_SEGMENT_3_END - MS_SEGMENT_2_END;
     const frac = (t - MS_SEGMENT_2_END) / span;
-    return RATIO_AT_32S + frac * (PRE_COMPLETE_CAP - RATIO_AT_32S);
+    return RATIO_AT_16S + frac * (PRE_COMPLETE_CAP - RATIO_AT_16S);
   }
 
   return PRE_COMPLETE_CAP;
