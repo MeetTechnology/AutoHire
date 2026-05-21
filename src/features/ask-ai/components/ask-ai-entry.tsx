@@ -39,112 +39,85 @@ function AnimatedEnterpriseRagAssistantIcon() {
     >
       <style>
         {`
-          .rag-orbit-flow {
-            stroke-dasharray: 34 18;
-            animation: rag-orbit-flow 4.2s ease-in-out infinite;
-          }
-
-          .rag-orbit-flow-subtle {
-            stroke-dasharray: 22 24;
-            animation: rag-orbit-flow 5.4s ease-in-out infinite reverse;
-          }
-
-          .rag-node-pulse {
-            animation: rag-node-pulse 2.6s ease-in-out infinite;
+          .assistant-bot-float {
+            animation: assistant-bot-float 3.6s ease-in-out infinite;
             transform-box: fill-box;
             transform-origin: center;
           }
 
-          .rag-node-delay-medium {
-            animation-delay: 0.28s;
-          }
-
-          .rag-node-delay-long {
-            animation-delay: 0.56s;
-          }
-
-          .rag-core-float {
-            animation: rag-core-float 3.4s ease-in-out infinite;
+          .assistant-eye {
+            animation: assistant-eye 3.2s ease-in-out infinite;
             transform-box: fill-box;
             transform-origin: center;
           }
 
-          .rag-core-shine {
-            animation: rag-core-shine 3.4s ease-in-out infinite;
+          .assistant-eye-right {
+            animation-delay: 0.14s;
           }
 
-          .rag-spark-pulse {
-            animation: rag-spark-pulse 2.2s ease-in-out infinite;
+          .assistant-signal {
+            animation: assistant-signal 2.8s ease-in-out infinite;
             transform-box: fill-box;
             transform-origin: center;
           }
 
-          @keyframes rag-orbit-flow {
-            0% {
-              stroke-dashoffset: 34;
-              opacity: 0.58;
+          .assistant-soft-glow {
+            animation: assistant-soft-glow 3.6s ease-in-out infinite;
+          }
+
+          @keyframes assistant-bot-float {
+            0%, 100% {
+              transform: translateY(0);
             }
-            45% {
+            52% {
+              transform: translateY(-1.4px);
+            }
+          }
+
+          @keyframes assistant-eye {
+            0%, 100% {
+              transform: scaleY(1);
+              opacity: 0.9;
+            }
+            44% {
+              transform: scaleY(1);
               opacity: 1;
             }
-            100% {
-              stroke-dashoffset: -34;
-              opacity: 0.66;
-            }
-          }
-
-          @keyframes rag-node-pulse {
-            0%, 100% {
-              transform: scale(1);
-              opacity: 0.86;
-            }
-            45% {
-              transform: scale(1.12);
-              opacity: 1;
-            }
-          }
-
-          @keyframes rag-core-float {
-            0%, 100% {
-              transform: translateY(0) scale(1);
-            }
-            50% {
-              transform: translateY(-1.2px) scale(1.025);
-            }
-          }
-
-          @keyframes rag-core-shine {
-            0% {
-              opacity: 0.2;
-              transform: translateX(-8px);
-            }
-            50% {
-              opacity: 0.62;
-            }
-            100% {
-              opacity: 0.16;
-              transform: translateX(8px);
-            }
-          }
-
-          @keyframes rag-spark-pulse {
-            0%, 100% {
-              transform: scale(0.9) rotate(0deg);
+            48% {
+              transform: scaleY(0.22);
               opacity: 0.78;
             }
-            50% {
-              transform: scale(1.18) rotate(8deg);
+            54% {
+              transform: scaleY(1);
               opacity: 1;
+            }
+          }
+
+          @keyframes assistant-signal {
+            0%, 100% {
+              transform: scale(0.94);
+              opacity: 0.72;
+            }
+            50% {
+              transform: scale(1.16);
+              opacity: 1;
+            }
+          }
+
+          @keyframes assistant-soft-glow {
+            0%, 100% {
+              opacity: 0.36;
+            }
+            50% {
+              opacity: 0.72;
             }
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .rag-orbit-flow,
-            .rag-orbit-flow-subtle,
-            .rag-node-pulse,
-            .rag-core-float,
-            .rag-core-shine,
-            .rag-spark-pulse {
+            .assistant-bot-float,
+            .assistant-eye,
+            .assistant-signal,
+            .assistant-soft-glow {
               animation: none;
             }
           }
@@ -152,57 +125,46 @@ function AnimatedEnterpriseRagAssistantIcon() {
       </style>
       <defs>
         <linearGradient
-          id="rag-assistant-primary"
-          x1="17"
-          y1="13"
+          id="assistant-bot-stroke"
+          x1="18"
+          y1="15"
           x2="47"
-          y2="51"
+          y2="50"
           gradientUnits="userSpaceOnUse"
         >
-          <stop stopColor="#243c8f" />
-          <stop offset="0.48" stopColor="#1769d2" />
-          <stop offset="1" stopColor="#0891b2" />
+          <stop stopColor="#18356f" />
+          <stop offset="0.5" stopColor="#1264b8" />
+          <stop offset="1" stopColor="#0794a8" />
         </linearGradient>
         <linearGradient
-          id="rag-assistant-orbit"
-          x1="10"
-          y1="23"
-          x2="54"
-          y2="42"
+          id="assistant-bot-face"
+          x1="20"
+          y1="18"
+          x2="44"
+          y2="47"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#ffffff" />
+          <stop offset="0.55" stopColor="#eefaff" />
+          <stop offset="1" stopColor="#d9f3ff" />
+        </linearGradient>
+        <linearGradient
+          id="assistant-bot-eye"
+          x1="24"
+          y1="29"
+          x2="40"
+          y2="37"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#1d4ed8" />
           <stop offset="1" stopColor="#06b6d4" />
         </linearGradient>
-        <linearGradient
-          id="rag-assistant-core"
-          x1="22"
-          y1="19"
-          x2="42"
-          y2="43"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="#f8fbff" />
-          <stop offset="1" stopColor="#dff7ff" />
-        </linearGradient>
-        <linearGradient
-          id="rag-assistant-shine"
-          x1="24"
-          y1="19"
-          x2="40"
-          y2="44"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="white" stopOpacity="0" />
-          <stop offset="0.5" stopColor="white" stopOpacity="0.92" />
-          <stop offset="1" stopColor="white" stopOpacity="0" />
-        </linearGradient>
         <radialGradient
-          id="rag-assistant-glow"
+          id="assistant-bot-glow"
           cx="0"
           cy="0"
           r="1"
-          gradientTransform="translate(32 30) rotate(90) scale(26)"
+          gradientTransform="translate(32 35) rotate(90) scale(24)"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#67e8f9" stopOpacity="0.38" />
@@ -210,102 +172,76 @@ function AnimatedEnterpriseRagAssistantIcon() {
         </radialGradient>
       </defs>
 
-      <circle cx="32" cy="32" r="28" fill="url(#rag-assistant-glow)" />
-      <ellipse
-        className="rag-orbit-flow-subtle"
+      <circle
+        className="assistant-soft-glow"
         cx="32"
-        cy="32"
-        rx="24"
-        ry="10.5"
-        stroke="url(#rag-assistant-orbit)"
-        strokeWidth="2.3"
-        strokeLinecap="round"
-        opacity="0.54"
-        transform="rotate(-18 32 32)"
+        cy="34"
+        r="27"
+        fill="url(#assistant-bot-glow)"
       />
-      <ellipse
-        className="rag-orbit-flow"
-        cx="32"
-        cy="32"
-        rx="22.5"
-        ry="9.5"
-        stroke="url(#rag-assistant-orbit)"
-        strokeWidth="2.7"
-        strokeLinecap="round"
-        transform="rotate(18 32 32)"
-      />
-
-      <g className="rag-core-float">
+      <g className="assistant-bot-float">
         <path
-          d="M32 16.5 45 24v16L32 47.5 19 40V24l13-7.5Z"
-          fill="url(#rag-assistant-core)"
-          stroke="url(#rag-assistant-primary)"
-          strokeWidth="2.8"
+          d="M32 15.5v4.8"
+          stroke="url(#assistant-bot-stroke)"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+        />
+        <circle
+          className="assistant-signal"
+          cx="32"
+          cy="12.8"
+          r="3.2"
+          fill="#f59e0b"
+        />
+        <path
+          d="M20.5 26.5c0-4.1 3.3-7.4 7.4-7.4h8.2c4.1 0 7.4 3.3 7.4 7.4v12.2c0 4.1-3.3 7.4-7.4 7.4h-8.2c-4.1 0-7.4-3.3-7.4-7.4V26.5Z"
+          fill="url(#assistant-bot-face)"
+          stroke="url(#assistant-bot-stroke)"
+          strokeWidth="2.9"
+        />
+        <path
+          d="M18.6 32.2h1.9v7.2h-1.9c-2 0-3.6-1.6-3.6-3.6s1.6-3.6 3.6-3.6Z"
+          fill="#e7f7ff"
+          stroke="url(#assistant-bot-stroke)"
+          strokeWidth="2.2"
           strokeLinejoin="round"
         />
         <path
-          d="M32 17v30"
-          stroke="url(#rag-assistant-primary)"
-          strokeWidth="1.55"
-          strokeLinecap="round"
-          opacity="0.42"
-        />
-        <path
-          d="M20 24.5 32 31.5l12-7"
-          stroke="url(#rag-assistant-primary)"
-          strokeWidth="1.55"
-          strokeLinecap="round"
+          d="M45.4 32.2h1.9c2 0 3.6 1.6 3.6 3.6s-1.6 3.6-3.6 3.6h-1.9v-7.2Z"
+          fill="#e7f7ff"
+          stroke="url(#assistant-bot-stroke)"
+          strokeWidth="2.2"
           strokeLinejoin="round"
-          opacity="0.44"
+        />
+        <circle
+          className="assistant-eye"
+          cx="27.2"
+          cy="32.4"
+          r="2.8"
+          fill="url(#assistant-bot-eye)"
+        />
+        <circle
+          className="assistant-eye assistant-eye-right"
+          cx="36.8"
+          cy="32.4"
+          r="2.8"
+          fill="url(#assistant-bot-eye)"
         />
         <path
-          d="M24.8 37.8h14.4"
-          stroke="url(#rag-assistant-primary)"
-          strokeWidth="2.5"
+          d="M27.8 39.1c2.4 1.7 6 1.7 8.4 0"
+          stroke="url(#assistant-bot-stroke)"
+          strokeWidth="2.2"
           strokeLinecap="round"
+          opacity="0.72"
         />
         <path
-          d="M27.5 32h9"
-          stroke="url(#rag-assistant-primary)"
-          strokeWidth="2.5"
+          d="M24.2 25.5c1.8-1.2 4.2-1.8 7.8-1.8 3.6 0 6 .6 7.8 1.8"
+          stroke="white"
+          strokeWidth="2.1"
           strokeLinecap="round"
-        />
-        <path
-          className="rag-core-shine"
-          d="M25.5 21.5 38.8 43"
-          stroke="url(#rag-assistant-shine)"
-          strokeWidth="3.6"
-          strokeLinecap="round"
-          opacity="0.35"
+          opacity="0.82"
         />
       </g>
-
-      <circle
-        className="rag-node-pulse"
-        cx="15.5"
-        cy="31.5"
-        r="3.5"
-        fill="url(#rag-assistant-primary)"
-      />
-      <circle
-        className="rag-node-pulse rag-node-delay-medium"
-        cx="48.5"
-        cy="28"
-        r="3.5"
-        fill="url(#rag-assistant-primary)"
-      />
-      <circle
-        className="rag-node-pulse rag-node-delay-long"
-        cx="41.5"
-        cy="46"
-        r="3.2"
-        fill="#f59e0b"
-      />
-      <path
-        className="rag-spark-pulse"
-        d="M48.5 15.5 50 19l3.5 1.5L50 22l-1.5 3.5L47 22l-3.5-1.5L47 19l1.5-3.5Z"
-        fill="#f59e0b"
-      />
     </svg>
   );
 }
