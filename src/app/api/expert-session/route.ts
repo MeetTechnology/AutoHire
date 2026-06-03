@@ -6,11 +6,13 @@ import {
   getSnapshot,
   resolveInviteToken,
 } from "@/lib/application/service";
+import { getInvitationAccessBlockReason } from "@/lib/auth/invitation-access";
 import {
   getSessionCookieName,
   getSessionMaxAgeSeconds,
   verifySessionToken,
 } from "@/lib/auth/session";
+import { findInvitationById } from "@/lib/data/store";
 import { isClientHttps, jsonError } from "@/lib/http";
 import { trackEventFromRequest } from "@/lib/tracking/service";
 
@@ -105,6 +107,27 @@ export async function GET(request: NextRequest) {
   const session = verifySessionToken(cookieValue);
 
   if (!session) {
+    return jsonError("No valid session was found. Please reopen the invitation link.", 401, {
+      code: "SESSION_REQUIRED",
+    });
+  }
+
+  const invitation = await findInvitationById(session.invitationId);
+  const invitationBlockReason = getInvitationAccessBlockReason(invitation);
+
+  if (invitationBlockReason === "DISABLED") {
+    return jsonError("This invitation link has been disabled.", 403, {
+      code: "DISABLED_TOKEN",
+    });
+  }
+
+  if (invitationBlockReason === "EXPIRED") {
+    return jsonError("This invitation link has expired.", 410, {
+      code: "EXPIRED_TOKEN",
+    });
+  }
+
+  if (invitationBlockReason === "NOT_FOUND") {
     return jsonError("No valid session was found. Please reopen the invitation link.", 401, {
       code: "SESSION_REQUIRED",
     });

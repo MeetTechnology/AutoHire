@@ -26,6 +26,7 @@ import {
   isScreeningContactFieldKey,
 } from "@/lib/application/screening-contact";
 import { createSessionToken } from "@/lib/auth/session";
+import { getInvitationAccessBlockReason } from "@/lib/auth/invitation-access";
 import { hashInviteToken } from "@/lib/auth/token";
 import {
   buildApplicationSnapshot,
@@ -2034,6 +2035,10 @@ export async function validateSessionAccess(input: {
     application.invitationId !== invitation.id ||
     application.id !== input.applicationId
   ) {
+    return null;
+  }
+
+  if (getInvitationAccessBlockReason(invitation)) {
     return null;
   }
 

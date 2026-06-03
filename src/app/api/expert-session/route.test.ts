@@ -99,4 +99,47 @@ describe("GET /api/expert-session", () => {
     expect(application?.firstAccessedAt).not.toBeNull();
     expect(application?.lastAccessedAt).not.toBeNull();
   });
+
+  it("rejects session restore when the invitation was disabled after login", async () => {
+    const initialResponse = await expertSessionGet(
+      new NextRequest(
+        "http://localhost/api/expert-session?token=sample-init-token",
+      ),
+    );
+
+    expect(initialResponse.status).toBe(200);
+
+    const cookieValue =
+      initialResponse.headers
+        .get("set-cookie")
+        ?.match(new RegExp(`${getSessionCookieName()}=([^;]+)`))?.[1] ?? "";
+
+    const store = (
+      globalThis as typeof globalThis & {
+        __autohireStore?: {
+          invitations: Array<{
+            id: string;
+            tokenStatus: "ACTIVE" | "EXPIRED" | "DISABLED";
+          }>;
+        };
+      }
+    ).__autohireStore;
+
+    const invitation = store?.invitations.find((item) => item.id === "invitation_init");
+    expect(invitation).toBeDefined();
+    invitation!.tokenStatus = "DISABLED";
+
+    const restoredResponse = await expertSessionGet(
+      new NextRequest("http://localhost/api/expert-session", {
+        headers: {
+          cookie: `${getSessionCookieName()}=${cookieValue}`,
+        },
+      }),
+    );
+
+    expect(restoredResponse.status).toBe(403);
+    await expect(restoredResponse.json()).resolves.toMatchObject({
+      code: "DISABLED_TOKEN",
+    });
+  });
 });

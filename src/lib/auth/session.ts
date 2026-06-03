@@ -2,12 +2,31 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { getEnv } from "@/lib/env";
 
-type SessionPayload = {
+export type SessionPayload = {
   invitationId: string;
   applicationId: string;
   expertId: string;
   issuedAt: number;
 };
+
+function timingSafeStringEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function isSessionPayloadExpired(issuedAt: unknown, maxAgeSeconds: number) {
+  if (typeof issuedAt !== "number" || !Number.isFinite(issuedAt)) {
+    return true;
+  }
+
+  return Date.now() - issuedAt > maxAgeSeconds * 1000;
+}
 
 function encode(value: string) {
   return Buffer.from(value).toString("base64url");
@@ -56,11 +75,17 @@ export function verifySessionToken(token: string | undefined | null) {
   try {
     const expected = sign(encodedPayload);
 
-    if (!timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    if (!timingSafeStringEqual(signature, expected)) {
       return null;
     }
 
-    return JSON.parse(decode(encodedPayload)) as SessionPayload;
+    const payload = JSON.parse(decode(encodedPayload)) as SessionPayload;
+
+    if (isSessionPayloadExpired(payload.issuedAt, getSessionMaxAgeSeconds())) {
+      return null;
+    }
+
+    return payload;
   } catch {
     return null;
   }

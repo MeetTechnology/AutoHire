@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "better-auth-best-practices": {
+      "source": "EpicenterHQ/epicenter",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/better-auth-best-practices/SKILL.md",
+      "computedHash": "e11a47616a19954c4c99792a040643e764c4c6b7b53544d78f873ce0c0f6e8ab"
+    },
     "code-reviewer": {
       "source": "Shubhamsaboo/awesome-llm-apps",
       "sourceType": "github",
