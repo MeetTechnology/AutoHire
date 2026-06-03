@@ -218,6 +218,10 @@ function isMissingExtractionValue(value: string) {
   return !trimmed || /^!!!\s*null\s*!!!$/i.test(trimmed);
 }
 
+function includesRecognizedGraduationYear(value: string) {
+  return /(?:^|\D)(?:19|20)\d{2}(?=\D|$)/.test(value.trim());
+}
+
 function validateExtractionCorrectionFields(
   fields: ExtractionCorrectionFields,
 ): ExtractionCorrectionErrors {
@@ -255,6 +259,14 @@ function validateExtractionCorrectionFields(
       row.key === "doctoral_graduation_time" &&
       normalizedFields.doctoral_degree_status === DOCTORAL_DEGREE_NO_STATUS
     ) {
+      continue;
+    }
+
+    if (row.key === "doctoral_graduation_time") {
+      if (!includesRecognizedGraduationYear(value)) {
+        errors[row.key] =
+          `${row.label} must include a four-digit graduation year, for example 2021 or 2021 (Month not specified).`;
+      }
       continue;
     }
 
@@ -1844,6 +1856,9 @@ export function CvReviewExperience({
     () => validateExtractionCorrectionFields(extractionCorrectionFields),
     [extractionCorrectionFields],
   );
+  const showExtractionCorrectionErrors =
+    hasAttemptedExtractionSubmit ||
+    Object.keys(extractionCorrectionErrors).length > 0;
   const missingFields = useMemo(
     () => snapshot?.latestResult?.missingFields ?? [],
     [snapshot?.latestResult?.missingFields],
@@ -2214,7 +2229,7 @@ export function CvReviewExperience({
                   errors={extractionCorrectionErrors}
                   activeField={activeExtractionField}
                   draftValue={extractionDraftValue}
-                  showErrors={hasAttemptedExtractionSubmit}
+                  showErrors={showExtractionCorrectionErrors}
                   isConfirming={isConfirmingExtraction}
                   fieldRefs={extractionFieldRefs}
                   onStartEdit={handleStartExtractionFieldEdit}

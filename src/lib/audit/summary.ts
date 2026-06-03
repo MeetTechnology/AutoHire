@@ -83,14 +83,14 @@ const RANGE_DAYS: Record<Exclude<AuditRange, "all">, number> = {
 };
 
 const MILESTONE_LABELS = {
-  firstAccessedAt: "First access",
-  introConfirmedAt: "Intro confirmed",
-  resumeUploadStartedAt: "Resume upload started",
-  resumeUploadedAt: "Resume uploaded",
-  analysisStartedAt: "Analysis started",
-  analysisCompletedAt: "Analysis completed",
-  materialsEnteredAt: "Materials viewed",
-  submittedAt: "Submitted",
+  firstAccessedAt: "首次访问",
+  introConfirmedAt: "确认引导页",
+  resumeUploadStartedAt: "开始上传简历",
+  resumeUploadedAt: "简历已上传",
+  analysisStartedAt: "开始分析",
+  analysisCompletedAt: "分析完成",
+  materialsEnteredAt: "进入材料页",
+  submittedAt: "已提交申请",
 } as const;
 
 export function resolveAuditRange(value: string | null | undefined): AuditRange {

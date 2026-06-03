@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/page-shell";
 import { fetchSession, postIntroConfirm } from "@/features/application/client";
 import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
+import { removeInviteTokenFromUrl } from "@/features/application/invite-url-token";
 import {
   buildApplyFlowStepLinks,
   getReachableFlowStep,
@@ -147,6 +148,14 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
             resolveRouteFromStatus(nextSnapshot.applicationStatus),
           );
           return;
+        }
+
+        if (token && typeof window !== "undefined") {
+          window.history.replaceState(
+            window.history.state,
+            "",
+            removeInviteTokenFromUrl(window.location.href),
+          );
         }
 
         setSnapshot(nextSnapshot);

@@ -1,7 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import { AskAiEntry } from "@/features/ask-ai/components/ask-ai-entry";
-
 const APPLY_FLOW_BACKDROP_STYLE: CSSProperties = {
   backgroundImage:
     'linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(244, 247, 251, 0.78) 38%, rgba(244, 247, 251, 0.7) 100%), url("/apply/entry-background.png")',
@@ -23,7 +21,6 @@ export default function ApplyLayout({
         style={APPLY_FLOW_BACKDROP_STYLE}
       />
       <div className="relative z-10">{children}</div>
-      <AskAiEntry pageName="apply" />
     </div>
   );
 }
