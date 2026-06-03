@@ -48,6 +48,16 @@ const envSchema = z.object({
   ASK_AI_SOURCE_PREVIEW_ALLOWED_HOSTS: z
     .string()
     .default("dashscope-file-datacenter-prod-01.oss-cn-beijing.aliyuncs.com"),
+  AUDIT_DASHBOARD_TOKENS: z.string().optional().default(""),
+  AUDIT_DASHBOARD_COOKIE_NAME: z
+    .string()
+    .min(1)
+    .default("autohire_audit_session"),
+  AUDIT_DASHBOARD_COOKIE_MAX_AGE_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(28800),
   SENTRY_DSN: z.string().optional().default(""),
 });
 
