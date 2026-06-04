@@ -12,6 +12,10 @@
 .DS_Store
 *.pem
 
+# agent skills & config
+.claude
+.agents
+
 # logs
 npm-debug.log*
 yarn-debug.log*
@@ -51,3 +55,7 @@ GESF Recruitment Website
 
 # mock storage
 mock-storage
+docs/13_UAT_Test_Plan_And_Manual_Checklist.md
+docs/测试文档.docx
+scripts/generate-uat-docx.mjs
+skills-lock.json

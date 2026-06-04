@@ -98,7 +98,7 @@ function historyResponse(
 }
 
 describe("SupplementHistoryView", () => {
-  it("renders history records with files, AI messages, and satisfied requests", () => {
+  it("renders history records with files and request messages only", () => {
     render(
       <SupplementHistoryView
         history={historyResponse()}
@@ -110,12 +110,64 @@ describe("SupplementHistoryView", () => {
     expect(screen.getByText("Run 2 - Education Documents")).toBeInTheDocument();
     expect(screen.getByText("degree-clear.pdf")).toBeInTheDocument();
     expect(
-      screen.getByText("The latest education supplement was accepted."),
-    ).toBeInTheDocument();
+      screen.queryByText("The latest education supplement was accepted."),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Clear degree certificate")).toBeInTheDocument();
-    expect(screen.getByText("Request satisfied.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The clearer document satisfies the request."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Request satisfied.")).not.toBeInTheDocument();
     expect(screen.getByText("satisfied")).toBeInTheDocument();
     expect(screen.getByText("Run 1 - Patent Documents")).toBeInTheDocument();
+  });
+
+  it("renders each request message once and falls back to aiMessage when reason is missing", () => {
+    render(
+      <SupplementHistoryView
+        history={historyResponse({
+          items: [
+            {
+              reviewRunId: "run_1",
+              runNo: 1,
+              category: "HONOR",
+              categoryReviewId: "cat_review_1",
+              status: "COMPLETED",
+              isLatest: true,
+              reviewedAt: "2026-06-03T08:39:11.000Z",
+              aiMessage: null,
+              files: [],
+              requests: [
+                {
+                  id: "req_same",
+                  title: "Honor Documents supplement required",
+                  reason: "Please provide **honor evidence**.",
+                  aiMessage: "Please provide **honor evidence**.",
+                  status: "PENDING",
+                  isSatisfied: false,
+                },
+                {
+                  id: "req_fallback",
+                  title: "Fallback message",
+                  reason: null,
+                  aiMessage: "Fallback **markdown** message.",
+                  status: "PENDING",
+                  isSatisfied: false,
+                },
+              ],
+            },
+          ],
+        })}
+        isRefreshing={false}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(
+      document.body.textContent?.match(/Please provide/g) ?? [],
+    ).toHaveLength(1);
+    expect(screen.getByText("honor evidence")).toBeInTheDocument();
+    expect(document.body.textContent).toContain("Fallback");
+    expect(screen.getByText("markdown")).toBeInTheDocument();
   });
 
   it("builds category and run filter links from the current selection", () => {
@@ -141,7 +193,10 @@ describe("SupplementHistoryView", () => {
     );
     expect(
       screen.getByRole("link", { name: "Patent Documents" }),
-    ).toHaveAttribute("href", "/apply/supplement/history?category=PATENT&runNo=2");
+    ).toHaveAttribute(
+      "href",
+      "/apply/supplement/history?category=PATENT&runNo=2",
+    );
     expect(screen.getByRole("link", { name: "Run 1" })).toHaveAttribute(
       "href",
       "/apply/supplement/history?category=EDUCATION&runNo=1",
@@ -175,10 +230,9 @@ describe("SupplementHistoryView", () => {
     expect(
       screen.getByText("No history records match the current filters."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View all history" })).toHaveAttribute(
-      "href",
-      "/apply/supplement/history",
-    );
+    expect(
+      screen.getByRole("link", { name: "View all history" }),
+    ).toHaveAttribute("href", "/apply/supplement/history");
   });
 
   it("refreshes history and disables refresh while refreshing", async () => {
@@ -204,6 +258,8 @@ describe("SupplementHistoryView", () => {
     );
 
     expect(screen.getByRole("button", { name: /Refresh/i })).toBeDisabled();
-    expect(screen.getByText("Refreshing supplement history")).toBeInTheDocument();
+    expect(
+      screen.getByText("Refreshing supplement history"),
+    ).toBeInTheDocument();
   });
 });

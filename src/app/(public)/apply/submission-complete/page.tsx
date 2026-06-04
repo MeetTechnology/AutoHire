@@ -44,6 +44,7 @@ import type {
   ApplicationSnapshot,
   FeedbackDeviceType,
 } from "@/features/application/types";
+import { ensureInitialReview } from "@/features/material-supplement/client";
 import {
   trackPageView,
   getOrCreateTrackingSessionId,
@@ -156,6 +157,7 @@ export default function SubmissionCompletePage() {
   >("idle");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const saveResetTimerRef = useRef<number | null>(null);
+  const initialReviewAttemptedRef = useRef<Set<string>>(new Set());
   const lastPersistedFeedbackRef = useRef(
     serializeFeedbackDraft({ rating: null, comment: "" }),
   );
@@ -262,6 +264,21 @@ export default function SubmissionCompletePage() {
       applicationId: snapshot.applicationId,
     });
   }, [isLoading, snapshot]);
+
+  useEffect(() => {
+    if (!snapshot || snapshot.applicationStatus !== "SUBMITTED") {
+      return;
+    }
+
+    if (initialReviewAttemptedRef.current.has(snapshot.applicationId)) {
+      return;
+    }
+
+    initialReviewAttemptedRef.current.add(snapshot.applicationId);
+    void ensureInitialReview(snapshot.applicationId).catch(() => {
+      initialReviewAttemptedRef.current.delete(snapshot.applicationId);
+    });
+  }, [snapshot]);
 
   const trimmedComment = feedback.comment.trim();
   const hasComment = trimmedComment.length > 0;

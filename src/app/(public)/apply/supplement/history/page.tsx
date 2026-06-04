@@ -29,7 +29,10 @@ import {
   type SupplementHistoryResponse,
 } from "@/features/material-supplement/client";
 import { SupplementAccessError } from "@/features/material-supplement/components/supplement-access-error";
-import { SupplementHistoryView } from "@/features/material-supplement/components/supplement-history-view";
+import {
+  SupplementHistoryLoadingPlaceholder,
+  SupplementHistoryView,
+} from "@/features/material-supplement/components/supplement-history-view";
 import { isSupplementCategory } from "@/features/material-supplement/constants";
 import type { SupplementCategory } from "@/features/material-supplement/types";
 import { trackPageView } from "@/lib/tracking/client";
@@ -231,13 +234,7 @@ function SupplementHistoryPageContent() {
         maxAccessibleStep={3}
       >
         <div className="mx-auto max-w-5xl space-y-4">
-          {isLoading ? (
-            <StatusBanner
-              tone="loading"
-              title="Loading supplement history"
-              description="Restoring your submitted application and historical AI review records."
-            />
-          ) : null}
+          {isLoading ? <SupplementHistoryLoadingPlaceholder /> : null}
 
           {!isLoading && accessError ? (
             <SupplementAccessError
