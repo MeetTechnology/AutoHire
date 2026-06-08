@@ -55,6 +55,9 @@ GESF Recruitment Website
 
 # mock storage
 mock-storage
+
+# local test invitation token sequence state
+scripts/.test-invitation-token-seq.json
 docs/13_UAT_Test_Plan_And_Manual_Checklist.md
 docs/测试文档.docx
 scripts/generate-uat-docx.mjs

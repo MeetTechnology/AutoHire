@@ -16,6 +16,13 @@ const envSchema = z.object({
   ALIYUN_OSS_REGION: z.string().optional(),
   ALIYUN_OSS_BUCKET: z.string().optional(),
   ALIYUN_OSS_ENDPOINT: z.string().optional(),
+  ALIYUN_OSS_TRANSFER_ACCELERATION_ENABLED: z.coerce
+    .boolean()
+    .default(false),
+  ALIYUN_OSS_ACCELERATE_ENDPOINT: z
+    .string()
+    .url()
+    .default("https://oss-accelerate.aliyuncs.com"),
   ALIYUN_OSS_ACCESS_KEY_ID: z.string().optional(),
   ALIYUN_OSS_ACCESS_KEY_SECRET: z.string().optional(),
   RESUME_ANALYSIS_MODE: z.enum(["mock", "live"]).default("mock"),
