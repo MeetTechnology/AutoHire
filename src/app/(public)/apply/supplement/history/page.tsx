@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { PageFrame, PageShell, StatusBanner } from "@/components/ui/page-shell";
 import { fetchSession } from "@/features/application/client";
@@ -76,6 +76,7 @@ function parseHistoryFilters(searchParams: URLSearchParams) {
 
 function SupplementHistoryPageContent() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [history, setHistory] = useState<SupplementHistoryResponse | null>(
@@ -198,7 +199,7 @@ function SupplementHistoryPageContent() {
     return () => {
       active = false;
     };
-  }, [loadSupplementHistory, router]);
+  }, [loadSupplementHistory, pathname, router]);
 
   useEffect(() => {
     if (

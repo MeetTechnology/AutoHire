@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { PageFrame, PageShell, StatusBanner } from "@/components/ui/page-shell";
 import { fetchSession } from "@/features/application/client";
@@ -25,6 +25,7 @@ import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracki
 
 export default function SupplementPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [supplementSnapshot, setSupplementSnapshot] =
     useState<SupplementSnapshot | null>(null);
@@ -98,6 +99,9 @@ export default function SupplementPage() {
     let active = true;
 
     async function load() {
+      setIsLoading(true);
+      setAccessError(null);
+
       try {
         const nextSnapshot = await fetchSession();
 
@@ -133,7 +137,7 @@ export default function SupplementPage() {
     return () => {
       active = false;
     };
-  }, [loadSupplementSnapshot, router]);
+  }, [loadSupplementSnapshot, pathname, router]);
 
   useEffect(() => {
     if (

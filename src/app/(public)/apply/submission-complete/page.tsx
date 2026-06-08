@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 
 import {
@@ -138,6 +138,7 @@ function buildFeedbackContext(): ApplicationFeedbackContext {
 
 export default function SubmissionCompletePage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +178,10 @@ export default function SubmissionCompletePage() {
 
     async function load() {
       let nextSnapshot: ApplicationSnapshot;
+
+      setIsLoading(true);
+      setIsFeedbackLoading(true);
+      setError(null);
 
       try {
         nextSnapshot = await fetchSession();
@@ -245,7 +250,7 @@ export default function SubmissionCompletePage() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [pathname, router]);
 
   useEffect(() => {
     if (

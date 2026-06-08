@@ -8,7 +8,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
   ActionButton,
@@ -69,6 +69,7 @@ function getMailtoHref() {
 
 function MaterialsPageContent() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [materials, setMaterials] = useState<MaterialsResponse | null>(null);
@@ -90,6 +91,9 @@ function MaterialsPageContent() {
     let active = true;
 
     async function load() {
+      setIsLoading(true);
+      setError(null);
+
       try {
         let nextSnapshot = await fetchSession();
 
@@ -151,7 +155,7 @@ function MaterialsPageContent() {
     return () => {
       active = false;
     };
-  }, [isReviewRequest, router]);
+  }, [isReviewRequest, pathname, router]);
 
   useEffect(() => {
     setMailtoHref(getMailtoHref());

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ChevronRight } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import {
   ActionButton,
@@ -107,6 +107,7 @@ type IntroSectionId = (typeof INTRO_SECTION_ITEMS)[number]["id"];
 
 export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const flowStepLinks = useMemo(
     () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
@@ -181,7 +182,7 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
     return () => {
       active = false;
     };
-  }, [router, token]);
+  }, [pathname, router, token]);
 
   useEffect(() => {
     if (!snapshot || hasTrackedPageView.current) {

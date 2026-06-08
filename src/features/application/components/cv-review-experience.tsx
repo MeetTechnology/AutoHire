@@ -14,7 +14,7 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 
 import type { MissingField } from "@/features/analysis/types";
@@ -1149,6 +1149,7 @@ export function CvReviewExperience({
   trackingPageName = "apply_resume",
 }: CvReviewExperienceProps = {}) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const resumeFileInputRef = useRef<HTMLInputElement>(null);
@@ -1247,6 +1248,9 @@ export function CvReviewExperience({
     let active = true;
 
     async function load() {
+      setIsLoading(true);
+      setError(null);
+
       try {
         const nextSnapshot = await fetchSession();
 
@@ -1301,7 +1305,7 @@ export function CvReviewExperience({
     return () => {
       active = false;
     };
-  }, [requestedResultView, router, trackingPageName]);
+  }, [pathname, requestedResultView, router, trackingPageName]);
 
   useEffect(() => {
     const review = snapshot?.latestExtractionReview;

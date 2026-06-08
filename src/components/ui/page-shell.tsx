@@ -6,6 +6,7 @@ import {
   type ButtonHTMLAttributes,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import { ChevronRight, Mail, type LucideIcon } from "lucide-react";
 import {
   AnimatePresence,
@@ -193,8 +194,12 @@ export function PageShell({
   stepLinks,
   maxAccessibleStep,
 }: PageShellProps) {
+  const pathname = usePathname();
   const shouldReduceMotion = useReducedMotion();
   const trimmedDescription = description.trim();
+  const pageEnterMotion = shouldReduceMotion
+    ? false
+    : { opacity: 1, y: 0 };
 
   return (
     <>
@@ -207,15 +212,17 @@ export function PageShell({
               stepIndexing={stepIndexing}
               stepLinks={stepLinks}
               maxAccessibleStep={maxAccessibleStep}
+              remountKey={pathname}
             />
           </div>
         </div>
       ) : null}
 
       <motion.section
+        key={pathname}
         className={cn(PAGE_CONTENT_CLASS, className)}
-        initial={shouldReduceMotion ? undefined : { opacity: 0, y: 10 }}
-        animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+        initial={false}
+        animate={pageEnterMotion}
       >
         <div className="flex flex-col gap-4">
         {headerVariant === "centered" ? (
@@ -294,17 +301,18 @@ function FlowArrowStepper({
   stepIndexing = "one",
   stepLinks,
   maxAccessibleStep,
+  remountKey,
 }: {
   steps: readonly FlowStep[];
   currentStep: number;
   stepIndexing?: "zero" | "one";
   stepLinks?: readonly string[];
   maxAccessibleStep?: number;
+  remountKey: string;
 }) {
-  const shouldReduceMotion = useReducedMotion();
-
   return (
     <div
+      key={remountKey}
       className="max-w-full min-w-0 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       role="list"
       aria-label="Application progress"
@@ -371,30 +379,15 @@ function FlowArrowStepper({
                     aria-current={isActive ? "step" : undefined}
                     className={wrapperClassName}
                   >
-                    <motion.div
-                      initial={
-                        shouldReduceMotion ? undefined : { opacity: 0, y: 6 }
-                      }
-                      animate={
-                        shouldReduceMotion ? undefined : { opacity: 1, y: 0 }
-                      }
-                    >
-                      {content}
-                    </motion.div>
+                    {content}
                   </a>
                 ) : (
-                  <motion.div
+                  <div
                     aria-current={isActive ? "step" : undefined}
                     className={wrapperClassName}
-                    initial={
-                      shouldReduceMotion ? undefined : { opacity: 0, y: 6 }
-                    }
-                    animate={
-                      shouldReduceMotion ? undefined : { opacity: 1, y: 0 }
-                    }
                   >
                     {content}
-                  </motion.div>
+                  </div>
                 )}
               </div>
               {!isLast ? (
@@ -433,7 +426,7 @@ export function StatusBanner({
         styles.shell,
         className,
       )}
-      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+      initial={false}
       animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
     >
       <div className="flex items-start gap-3">
@@ -467,9 +460,8 @@ export function SectionCard({
         "rounded-2xl border border-[color:var(--border)] bg-[color:var(--card)] px-4 py-4 shadow-[var(--shadow-card)] sm:px-5 sm:py-5",
         className,
       )}
-      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 10 }}
-      whileInView={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.15 }}
+      initial={false}
+      animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
     >
       {title || description || action ? (
         <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -507,9 +499,8 @@ export function DetailCard({
         "rounded-xl border border-[color:var(--border)] bg-[color:var(--muted)]/70 p-3.5",
         className,
       )}
-      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 6 }}
-      whileInView={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
+      initial={false}
+      animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
     >
       {eyebrow ? (
         <p className="text-[0.68rem] font-semibold tracking-[0.16em] text-slate-500 uppercase">
@@ -553,7 +544,7 @@ export function DisclosureSection({
         "overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--background-elevated)] shadow-[var(--shadow-card)]",
         className,
       )}
-      initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+      initial={false}
       animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
       transition={
         shouldReduceMotion
