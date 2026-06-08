@@ -44,6 +44,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 
   if (status.jobStatus === "FAILED" && previousJob?.jobStatus !== "FAILED") {
+    const latestJob = await getLatestAnalysisJob(applicationId);
+
     await trackEventFromRequest(request, {
       eventType: "analysis_failed",
       applicationId,
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       actionName: "page_view",
       eventStatus: "FAIL",
       errorCode: "analysis_trigger_failed",
-      errorMessage: status.errorMessage ?? null,
+      errorMessage: latestJob?.errorMessage ?? status.errorMessage ?? null,
     });
   }
 

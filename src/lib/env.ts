@@ -66,6 +66,7 @@ const envSchema = z.object({
     .positive()
     .default(28800),
   SENTRY_DSN: z.string().optional().default(""),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().optional().default(""),
 });
 
 let cachedEnv: z.infer<typeof envSchema> | undefined;

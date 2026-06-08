@@ -7,7 +7,7 @@ import {
 } from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError, parseJsonBody } from "@/lib/http";
-import { getResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
+import { getPublicResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
 import { trackEventFromRequest } from "@/lib/tracking/service";
 
 type Params = {
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       });
     }
 
-    return jsonError(getResumeAnalysisErrorMessage(error), 502, {
+    return jsonError(getPublicResumeAnalysisErrorMessage(error, "analysis"), 502, {
       code: "REANALYSIS_START_FAILED",
     });
   }

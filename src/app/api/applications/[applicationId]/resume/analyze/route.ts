@@ -6,7 +6,7 @@ import {
 } from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError } from "@/lib/http";
-import { getResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
+import { getPublicResumeAnalysisErrorMessage } from "@/lib/resume-analysis/client";
 import { trackEventFromRequest } from "@/lib/tracking/service";
 
 type Params = {
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       });
     }
 
-    const message = getResumeAnalysisErrorMessage(error);
+    const message = getPublicResumeAnalysisErrorMessage(error, "extraction");
 
     await trackEventFromRequest(request, {
       eventType: "analysis_start_failed",

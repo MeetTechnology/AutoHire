@@ -77,6 +77,7 @@ import {
   triggerEligibilityJudgment,
   triggerSecondaryAnalysis,
 } from "@/lib/resume-analysis/client";
+import { sanitizeAnalysisStatusForClient } from "@/lib/resume-analysis/public-errors";
 import {
   buildSupplementalFieldPayload,
   enrichMissingFieldWithRegistry,
@@ -600,14 +601,14 @@ export async function refreshAnalysisState(applicationId: string) {
   }
 
   if (job.jobStatus === "FAILED") {
-    return {
+    return sanitizeAnalysisStatusForClient({
       jobStatus: "FAILED" as const,
       stageText: job.stageText ?? "Analysis failed",
       progressMessage:
         "The analysis failed. Please review the input and try again.",
       errorMessage:
         job.errorMessage ?? "The analysis failed. Please try again later.",
-    };
+    });
   }
 
   const existingResult = await getLatestAnalysisResult(applicationId);
@@ -624,13 +625,13 @@ export async function refreshAnalysisState(applicationId: string) {
 
     const snapshot = await buildApplicationSnapshot(applicationId);
 
-    return {
+    return sanitizeAnalysisStatusForClient({
       jobStatus: "COMPLETED" as const,
       stageText: job.stageText ?? "Analysis completed",
       progressMessage:
         snapshot?.latestResult?.displaySummary ?? "The analysis has completed.",
       errorMessage: null,
-    };
+    });
   }
 
   let status;
@@ -653,7 +654,7 @@ export async function refreshAnalysisState(applicationId: string) {
         });
       }
 
-      return {
+      return sanitizeAnalysisStatusForClient({
         jobStatus: progressJobStatus,
         stageText:
           progressJobStatus === "QUEUED"
@@ -662,7 +663,7 @@ export async function refreshAnalysisState(applicationId: string) {
         progressMessage:
           "The upstream service is temporarily unavailable. The system will keep retrying.",
         errorMessage: null,
-      };
+      });
     }
 
     const errorMessage = getResumeAnalysisErrorMessage(error);
@@ -674,13 +675,13 @@ export async function refreshAnalysisState(applicationId: string) {
       finishedAt: new Date(),
     });
 
-    return {
+    return sanitizeAnalysisStatusForClient({
       jobStatus: "FAILED" as const,
       stageText: "Analysis failed",
       progressMessage:
         "The analysis failed. Please review the input and try again.",
       errorMessage,
-    };
+    });
   }
 
   const mappedJobStatus = mapExternalJobStatus(status.jobStatus);
@@ -710,7 +711,7 @@ export async function refreshAnalysisState(applicationId: string) {
         });
       }
 
-      return {
+      return sanitizeAnalysisStatusForClient({
         jobStatus: mappedJobStatus,
         stageText: status.stageText ?? "Extracting CV information",
         progressMessage:
@@ -719,7 +720,7 @@ export async function refreshAnalysisState(applicationId: string) {
             : (status.progressMessage ??
               "The system is extracting key information from your CV. Please wait."),
         errorMessage: status.errorMessage ?? null,
-      };
+      });
     }
 
     try {
@@ -751,13 +752,13 @@ export async function refreshAnalysisState(applicationId: string) {
         currentStep: "result",
       });
 
-      return {
+      return sanitizeAnalysisStatusForClient({
         jobStatus: "COMPLETED" as const,
         stageText: "CV information extraction completed",
         progressMessage:
           "The key information has been extracted. Please review and confirm it.",
         errorMessage: null,
-      };
+      });
     } catch (error) {
       if (isRetryableResumeAnalysisError(error)) {
         await updateAnalysisJob(job.id, {
@@ -767,13 +768,13 @@ export async function refreshAnalysisState(applicationId: string) {
           finishedAt: null,
         });
 
-        return {
+        return sanitizeAnalysisStatusForClient({
           jobStatus: "PROCESSING" as const,
           stageText: "Syncing extraction result",
           progressMessage:
             "The upstream extraction has completed. The system is syncing the extracted information.",
           errorMessage: null,
-        };
+        });
       }
 
       const errorMessage = getResumeAnalysisErrorMessage(error);
@@ -788,18 +789,18 @@ export async function refreshAnalysisState(applicationId: string) {
         finishedAt: new Date(),
       });
 
-      return {
+      return sanitizeAnalysisStatusForClient({
         jobStatus: "FAILED" as const,
         stageText: "Extraction failed",
         progressMessage:
           "The extraction failed. Please review the input and try again.",
         errorMessage,
-      };
+      });
     }
   }
 
   if (mappedJobStatus !== "COMPLETED") {
-    return {
+    return sanitizeAnalysisStatusForClient({
       jobStatus: mappedJobStatus,
       stageText: status.stageText ?? "Processing",
       progressMessage:
@@ -808,7 +809,7 @@ export async function refreshAnalysisState(applicationId: string) {
           : (status.progressMessage ??
             "The system is processing your request. Please wait."),
       errorMessage: status.errorMessage ?? null,
-    };
+    });
   }
 
   if (!existingResult || existingResult.analysisJobId !== job.id) {
@@ -891,13 +892,13 @@ export async function refreshAnalysisState(applicationId: string) {
           finishedAt: null,
         });
 
-        return {
+        return sanitizeAnalysisStatusForClient({
           jobStatus: "PROCESSING" as const,
           stageText: "Syncing analysis result",
           progressMessage:
             "The upstream analysis has completed. The system is syncing the result.",
           errorMessage: null,
-        };
+        });
       }
 
       const errorMessage = getResumeAnalysisErrorMessage(error);
@@ -909,24 +910,24 @@ export async function refreshAnalysisState(applicationId: string) {
         finishedAt: new Date(),
       });
 
-      return {
+      return sanitizeAnalysisStatusForClient({
         jobStatus: "FAILED" as const,
         stageText: "Analysis failed",
         progressMessage:
           "The analysis failed. Please review the input and try again.",
         errorMessage,
-      };
+      });
     }
   }
 
   const snapshot = await buildApplicationSnapshot(applicationId);
 
-  return {
+  return sanitizeAnalysisStatusForClient({
     jobStatus: "COMPLETED" as const,
     stageText: "Analysis completed",
     progressMessage:
       snapshot?.latestResult?.displaySummary ?? "The analysis has completed.",
-  };
+  });
 }
 
 export async function submitSupplementalFields(input: {

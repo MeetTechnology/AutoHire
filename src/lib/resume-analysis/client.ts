@@ -14,6 +14,7 @@ import {
   normalizeAnalysisResultPayload,
   normalizeExtractionResultPayload,
 } from "@/lib/resume-analysis/result-normalizer";
+import { toPublicResumeAnalysisErrorMessage } from "@/lib/resume-analysis/public-errors";
 import { readStoredObject } from "@/lib/storage/object-store";
 
 type ExternalJobStatus = "queued" | "processing" | "completed" | "failed";
@@ -1326,4 +1327,16 @@ export function getResumeAnalysisErrorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
     : "CV review service request failed.";
+}
+
+export function getPublicResumeAnalysisErrorMessage(
+  error: unknown,
+  context: "analysis" | "extraction" | "generic" = "generic",
+) {
+  return (
+    toPublicResumeAnalysisErrorMessage(
+      getResumeAnalysisErrorMessage(error),
+      context,
+    ) ?? "CV review failed. Please try again later."
+  );
 }

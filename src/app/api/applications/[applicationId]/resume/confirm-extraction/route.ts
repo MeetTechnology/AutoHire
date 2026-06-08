@@ -8,7 +8,7 @@ import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError } from "@/lib/http";
 import {
   ResumeAnalysisError,
-  getResumeAnalysisErrorMessage,
+  getPublicResumeAnalysisErrorMessage,
 } from "@/lib/resume-analysis/client";
 import { trackEventFromRequest } from "@/lib/tracking/service";
 
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       });
     }
 
-    const message = getResumeAnalysisErrorMessage(error);
+    const message = getPublicResumeAnalysisErrorMessage(error, "analysis");
     const status =
       error instanceof ResumeAnalysisError && error.httpStatus
         ? error.httpStatus
