@@ -277,7 +277,7 @@ export async function uploadBinary(
     category?: MaterialCategory | null;
   },
 ) {
-  await trackUploadStage({
+  void trackUploadStage({
     eventType:
       tracking.kind === "resume"
         ? "resume_upload_started"

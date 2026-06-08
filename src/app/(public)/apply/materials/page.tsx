@@ -20,19 +20,21 @@ import {
   StatusBanner,
 } from "@/components/ui/page-shell";
 import { MaterialCategoryGuidance } from "@/features/application/components/material-category-guidance";
+import { MaterialFileRow } from "@/features/application/components/material-file-row";
 import { MATERIAL_CATEGORIES } from "@/features/application/constants";
 import {
-  confirmMaterialUpload,
-  createMaterialUploadIntent,
   deleteMaterial,
   enterMaterialsStage,
   fetchMaterials,
   fetchSession,
   type MaterialsResponse,
-  uploadBinary,
 } from "@/features/application/client";
 import { submitApplicationAction } from "@/features/application/actions";
 import { APPLICATION_FLOW_STEPS_WITH_INTRO } from "@/features/application/constants";
+import {
+  getConfirmedMaterialRecords,
+  useMaterialUpload,
+} from "@/features/application/hooks/use-material-upload";
 import {
   buildApplyFlowStepLinks,
   getReachableFlowStep,
@@ -44,7 +46,6 @@ import type {
   MaterialCategory,
 } from "@/features/application/types";
 import {
-  createUploadId,
   trackClick,
   trackPageView,
   getOrCreateTrackingSessionId,
@@ -59,6 +60,7 @@ const REQUIRED_CATEGORIES: Array<{
   { key: "education", label: "Doctoral education evidence" },
   { key: "employment", label: "Latest employment evidence" },
 ];
+
 function getMailtoHref() {
   if (typeof window === "undefined") {
     return undefined;
@@ -85,6 +87,29 @@ function MaterialsPageContent() {
     pageName: "apply_materials",
     stepName: "materials",
     applicationId: snapshot?.applicationId,
+  });
+
+  const isFlowReadOnlyReview = snapshot
+    ? isFlowStepReadOnly(snapshot.applicationStatus, 2)
+    : false;
+  const canEditSubmittedReview = Boolean(
+    snapshot?.applicationStatus === "SUBMITTED" && isReviewRequest,
+  );
+  const isReadOnlyReview = isFlowReadOnlyReview && !canEditSubmittedReview;
+
+  const {
+    optimisticMaterials,
+    uploadFiles,
+    uploadErrors,
+    uploadStages,
+    hasActiveUploads,
+    isCategoryUploading,
+    clearUploadErrors,
+  } = useMaterialUpload({
+    applicationId: snapshot?.applicationId ?? null,
+    materials,
+    setMaterials,
+    disabled: isReadOnlyReview,
   });
 
   useEffect(() => {
@@ -174,60 +199,6 @@ function MaterialsPageContent() {
     });
   }, [snapshot]);
 
-  const isFlowReadOnlyReview = snapshot
-    ? isFlowStepReadOnly(snapshot.applicationStatus, 2)
-    : false;
-  const canEditSubmittedReview = Boolean(
-    snapshot?.applicationStatus === "SUBMITTED" && isReviewRequest,
-  );
-  const isReadOnlyReview = isFlowReadOnlyReview && !canEditSubmittedReview;
-
-  function handleUpload(category: MaterialCategory, files: FileList | null) {
-    if (!snapshot || isReadOnlyReview || !files?.length) {
-      return;
-    }
-
-    const nextFiles = Array.from(files);
-
-    startTransition(async () => {
-      try {
-        setError(null);
-
-        for (const file of nextFiles) {
-          const uploadId = createUploadId();
-          const intent = await createMaterialUploadIntent(
-            snapshot.applicationId,
-            category,
-            file,
-            uploadId,
-          );
-          await uploadBinary(intent, file, {
-            applicationId: snapshot.applicationId,
-            uploadId,
-            kind: "material",
-            category,
-          });
-          await confirmMaterialUpload(
-            snapshot.applicationId,
-            category,
-            file,
-            intent.objectKey,
-            uploadId,
-          );
-        }
-
-        setMaterials(await fetchMaterials(snapshot.applicationId));
-        setSnapshot(await fetchSession());
-      } catch (nextError) {
-        setError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Material upload failed.",
-        );
-      }
-    });
-  }
-
   function handleDelete(fileId: string) {
     if (!snapshot || isReadOnlyReview) {
       return;
@@ -235,6 +206,8 @@ function MaterialsPageContent() {
 
     startTransition(async () => {
       try {
+        setError(null);
+        clearUploadErrors();
         setMaterials(await deleteMaterial(snapshot.applicationId, fileId));
       } catch (nextError) {
         setError(
@@ -272,14 +245,22 @@ function MaterialsPageContent() {
     });
   }
 
-  const missingRequiredCategories = REQUIRED_CATEGORIES.filter(
-    (category) => (materials?.[category.key]?.length ?? 0) < 1,
-  );
+  const missingRequiredCategories = REQUIRED_CATEGORIES.filter((category) => {
+    const records = optimisticMaterials?.[category.key] ?? [];
+    return getConfirmedMaterialRecords(records).length < 1;
+  });
   const minimumRequirementsMet = missingRequiredCategories.length === 0;
   const flowStepLinks = useMemo(
     () => buildApplyFlowStepLinks(snapshot?.applicationStatus),
     [snapshot?.applicationStatus],
   );
+  const uploadErrorMessage =
+    uploadErrors.length > 0
+      ? uploadErrors
+          .map((item) => `${item.fileName}: ${item.message}`)
+          .join(" ")
+      : null;
+  const bannerError = error ?? uploadErrorMessage;
 
   return (
     <PageFrame>
@@ -295,14 +276,14 @@ function MaterialsPageContent() {
           snapshot ? getReachableFlowStep(snapshot.applicationStatus) : 2
         }
       >
-        <div className="mx-auto max-w-4xl space-y-4">
+        <div className="mx-auto flex max-w-4xl flex-col gap-4">
           <MobileSupportCard href={mailtoHref} />
 
-          {error ? (
+          {bannerError ? (
             <StatusBanner
               tone="danger"
               title="A materials action could not be completed"
-              description={error}
+              description={bannerError}
             />
           ) : null}
 
@@ -322,19 +303,28 @@ function MaterialsPageContent() {
                 : "Please upload files by category. Categories marked with an asterisk (*) are mandatory."
             }
           >
-            <div className="space-y-3">
+            <div className="flex flex-col gap-3">
               {MATERIAL_CATEGORIES.map((category) => {
                 const categoryKey =
                   category.key.toLowerCase() as Lowercase<MaterialCategory>;
-                const records = materials?.[categoryKey] ?? [];
+                const records = optimisticMaterials?.[categoryKey] ?? [];
+                const confirmedRecords = getConfirmedMaterialRecords(records);
+                const pendingCount = records.length - confirmedRecords.length;
                 const isRequiredCategory = REQUIRED_CATEGORIES.some(
                   (item) => item.key === categoryKey,
                 );
-                const requirementMet = records.length > 0;
+                const requirementMet = confirmedRecords.length > 0;
                 const fileCountLabel =
-                  records.length === 1
+                  confirmedRecords.length === 1
                     ? "1 File Uploaded"
-                    : `${records.length} Files Uploaded`;
+                    : `${confirmedRecords.length} Files Uploaded`;
+                const metaLabel = requirementMet
+                  ? pendingCount > 0
+                    ? `${fileCountLabel} (${pendingCount} uploading)`
+                    : fileCountLabel
+                  : pendingCount > 0
+                    ? `${pendingCount} uploading`
+                    : "⚠ Missing";
 
                 return (
                   <DisclosureSection
@@ -356,17 +346,17 @@ function MaterialsPageContent() {
                       <div className="flex items-center">
                         <span
                           className={
-                            requirementMet
+                            requirementMet || pendingCount > 0
                               ? "inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.06em] text-emerald-700"
                               : "inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.06em] text-amber-700"
                           }
                         >
-                          {requirementMet ? fileCountLabel : "⚠ Missing"}
+                          {metaLabel}
                         </span>
                       </div>
                     }
                   >
-                    <div className="space-y-4">
+                    <div className="flex flex-col gap-4">
                       <div className="text-sm leading-6 text-[color:var(--foreground-soft)]">
                         <MaterialCategoryGuidance category={category.key} />
                       </div>
@@ -385,10 +375,13 @@ function MaterialsPageContent() {
                           <input
                             type="file"
                             multiple
-                            disabled={isPending}
-                            onChange={(event) =>
-                              handleUpload(category.key, event.target.files)
-                            }
+                            disabled={isCategoryUploading(category.key)}
+                            onChange={(event) => {
+                              setError(null);
+                              clearUploadErrors();
+                              uploadFiles(category.key, event.target.files);
+                              event.target.value = "";
+                            }}
                             className="sr-only"
                           />
                           <div className="rounded-xl border border-dashed border-[color:var(--border-strong)] bg-white px-4 py-4 text-center transition hover:border-[color:var(--primary)] hover:bg-slate-50">
@@ -419,31 +412,23 @@ function MaterialsPageContent() {
                         </label>
                       ) : null}
 
-                      <div className="space-y-2">
-                        {records.map((record) => (
-                          <div
-                            key={record.id}
-                            className="rounded-xl border border-[color:var(--border)] bg-white px-3 py-2.5 text-sm text-[color:var(--foreground-soft)]"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <span
-                                className="truncate"
-                                title={record.fileName}
-                              >
-                                {record.fileName}
-                              </span>
-                              {!isReadOnlyReview ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(record.id)}
-                                  className="shrink-0 text-xs font-medium text-[color:var(--accent)] transition hover:text-[#14532d]"
-                                >
-                                  Delete
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        ))}
+                      <div className="flex flex-col gap-2">
+                        {records.map((record) => {
+                          const uploadError = uploadErrors.find(
+                            (item) => item.clientId === record.id,
+                          );
+
+                          return (
+                            <MaterialFileRow
+                              key={record.id}
+                              record={record}
+                              isReadOnly={isReadOnlyReview}
+                              uploadProgress={uploadStages[record.id] ?? null}
+                              errorMessage={uploadError?.message ?? null}
+                              onDelete={handleDelete}
+                            />
+                          );
+                        })}
                         {records.length === 0 ? (
                           <p className="rounded-xl border border-dashed border-[color:var(--border)] bg-white px-3 py-3 text-xs tracking-[0.12em] text-slate-500 uppercase">
                             No files uploaded yet
@@ -462,7 +447,7 @@ function MaterialsPageContent() {
               title="Final submission"
               description="Confirm only when the evidence package is complete enough for review."
             >
-              <div className="space-y-4">
+              <div className="flex flex-col gap-4">
                 <p className="text-sm leading-6 text-[color:var(--foreground-soft)]">
                   You may upload evidence in multiple rounds before final
                   confirmation. Once submitted, the page becomes a tracking
@@ -485,7 +470,12 @@ function MaterialsPageContent() {
                 <div className="flex justify-center">
                   <ActionButton
                     onClick={handleSubmit}
-                    disabled={isPending || isLoading || !minimumRequirementsMet}
+                    disabled={
+                      isPending ||
+                      isLoading ||
+                      hasActiveUploads ||
+                      !minimumRequirementsMet
+                    }
                     className="min-w-[12rem]"
                   >
                     Confirm Submission
