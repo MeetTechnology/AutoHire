@@ -5225,7 +5225,10 @@ function toSnapshotFromMemory(
   );
   const mergedExtractedFields = latestResult
     ? mergeStoredScreeningContactValuesIntoExtractedFields(
-        latestResult.extractedFields,
+        {
+          ...(latestExtractionReview?.extractedFields ?? {}),
+          ...latestResult.extractedFields,
+        },
         application,
       )
     : null;
@@ -5335,9 +5338,17 @@ export async function buildApplicationSnapshot(
     (latestResult?.missingFields as MissingField[] | null) ?? [];
   const latestResultExtractedFields =
     (latestResult?.extractedFields as Record<string, unknown> | null) ?? {};
+  const latestExtractionReviewExtractedFields =
+    (latestExtractionReview?.extractedFields as Record<
+      string,
+      unknown
+    > | null) ?? {};
   const mergedExtractedFields =
     mergeStoredScreeningContactValuesIntoExtractedFields(
-      latestResultExtractedFields,
+      {
+        ...latestExtractionReviewExtractedFields,
+        ...latestResultExtractedFields,
+      },
       applicationRow,
     );
   const mergedMissingFields =

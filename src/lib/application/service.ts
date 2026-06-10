@@ -5,9 +5,7 @@ import {
   getSecondaryFieldDefinition,
 } from "@/features/analysis/secondary-fields";
 import { translateVisibleFieldValue } from "@/features/analysis/display";
-import type {
-  EditableSecondaryField,
-} from "@/features/analysis/types";
+import type { EditableSecondaryField } from "@/features/analysis/types";
 import type {
   AnalysisJobStatus,
   ApplicationFeedbackContext,
@@ -157,6 +155,55 @@ function resolvePostReviewApplicationStatus(input: {
   }
 
   return mapEligibilityToApplicationStatus(input.eligibilityResult);
+}
+
+async function syncPostReviewApplicationState(input: {
+  applicationId: string;
+  eligibilityResult: EligibilityResult;
+  extractedFields: Record<string, unknown>;
+}) {
+  const application = await getApplicationById(input.applicationId);
+  const currentApplicationContactState = application as {
+    screeningPassportFullName?: string | null;
+    screeningContactEmail?: string | null;
+    screeningWorkEmail?: string | null;
+    screeningPhoneNumber?: string | null;
+  } | null;
+  const screeningContactPatch = getScreeningContactPatchFromExtractedFields(
+    input.extractedFields,
+  );
+  const nextApplicationContactState = {
+    screeningPassportFullName:
+      screeningContactPatch.screeningPassportFullName ??
+      currentApplicationContactState?.screeningPassportFullName ??
+      null,
+    screeningContactEmail:
+      screeningContactPatch.screeningContactEmail ??
+      currentApplicationContactState?.screeningContactEmail ??
+      null,
+    screeningWorkEmail:
+      screeningContactPatch.screeningWorkEmail ??
+      currentApplicationContactState?.screeningWorkEmail ??
+      null,
+    screeningPhoneNumber:
+      screeningContactPatch.screeningPhoneNumber ??
+      currentApplicationContactState?.screeningPhoneNumber ??
+      null,
+  };
+  const nextStatus = resolvePostReviewApplicationStatus({
+    eligibilityResult: input.eligibilityResult,
+    extractedFields: input.extractedFields,
+    application: nextApplicationContactState,
+  });
+
+  await updateApplication(input.applicationId, {
+    applicationStatus: nextStatus,
+    currentStep: "result",
+    eligibilityResult: input.eligibilityResult,
+    ...screeningContactPatch,
+  });
+
+  return nextStatus;
 }
 
 export async function resolveInviteToken(token: string) {
@@ -494,7 +541,11 @@ export async function confirmExtractionAndStartEligibilityJudgment(
 
   const review = await getLatestExtractionReview(applicationId);
 
-  if (!review || review.analysisJobId !== latestJob.id || review.status !== "READY") {
+  if (
+    !review ||
+    review.analysisJobId !== latestJob.id ||
+    review.status !== "READY"
+  ) {
     throw new ApplicationServiceError(
       "Extracted CV information is not ready for confirmation.",
       409,
@@ -505,7 +556,9 @@ export async function confirmExtractionAndStartEligibilityJudgment(
   const correctedExtractionRawResponse = input?.extractionRawResponse?.trim();
 
   if (correctedExtractionRawResponse) {
-    if (!correctedExtractionRawResponse.includes("### 1. Extracted Information")) {
+    if (
+      !correctedExtractionRawResponse.includes("### 1. Extracted Information")
+    ) {
       throw new ApplicationServiceError(
         "Corrected extraction information must include the complete extracted information section.",
         400,
@@ -562,8 +615,7 @@ export async function removeLatestResumeUpload(applicationId: string) {
   await requireApplicationStage({
     applicationId,
     allowedStatuses: ["INTRO_VIEWED", "CV_UPLOADED"],
-    message:
-      "Uploaded CV files can only be deleted before analysis starts.",
+    message: "Uploaded CV files can only be deleted before analysis starts.",
     code: "RESUME_DELETE_NOT_ALLOWED",
   });
 
@@ -617,6 +669,43 @@ export async function refreshAnalysisState(applicationId: string) {
     job.jobStatus === "COMPLETED" &&
     existingResult?.analysisJobId === job.id
   ) {
+    const application = await getApplicationById(applicationId);
+
+    if (
+      application &&
+      [
+        "CV_ANALYZING",
+        "REANALYZING",
+        "INFO_REQUIRED",
+        "ELIGIBLE",
+        "INELIGIBLE",
+      ].includes(application.applicationStatus)
+    ) {
+      const latestExtractionReview =
+        await getLatestExtractionReview(applicationId);
+      const confirmedExtractedFields =
+        latestExtractionReview?.extractedFields &&
+        typeof latestExtractionReview.extractedFields === "object" &&
+        !Array.isArray(latestExtractionReview.extractedFields)
+          ? (latestExtractionReview.extractedFields as Record<string, unknown>)
+          : {};
+      const existingExtractedFields =
+        existingResult.extractedFields &&
+        typeof existingResult.extractedFields === "object" &&
+        !Array.isArray(existingResult.extractedFields)
+          ? (existingResult.extractedFields as Record<string, unknown>)
+          : {};
+
+      await syncPostReviewApplicationState({
+        applicationId,
+        eligibilityResult: existingResult.eligibilityResult,
+        extractedFields: {
+          ...confirmedExtractedFields,
+          ...existingExtractedFields,
+        },
+      });
+    }
+
     await syncExpertJobUpstreamMapping({
       applicationId,
       expertAnalysisJobId: job.id,
@@ -817,7 +906,25 @@ export async function refreshAnalysisState(applicationId: string) {
       const result = await getResumeAnalysisResult({
         externalJobId: job.externalJobId ?? "",
       });
-      const extractedFields = result.extractedFields ?? {};
+      const latestExtractionReview =
+        await getLatestExtractionReview(applicationId);
+      const confirmedExtractedFields =
+        latestExtractionReview?.extractedFields &&
+        typeof latestExtractionReview.extractedFields === "object" &&
+        !Array.isArray(latestExtractionReview.extractedFields)
+          ? (latestExtractionReview.extractedFields as Record<string, unknown>)
+          : {};
+      const previousExtractedFields =
+        existingResult?.extractedFields &&
+        typeof existingResult.extractedFields === "object" &&
+        !Array.isArray(existingResult.extractedFields)
+          ? (existingResult.extractedFields as Record<string, unknown>)
+          : {};
+      const extractedFields = {
+        ...confirmedExtractedFields,
+        ...previousExtractedFields,
+        ...(result.extractedFields ?? {}),
+      };
 
       if (result.rawReasoning) {
         extractedFields.__rawReasoning = result.rawReasoning;
@@ -834,48 +941,10 @@ export async function refreshAnalysisState(applicationId: string) {
         missingFields: result.missingFields ?? [],
       });
 
-      const application = await getApplicationById(applicationId);
-      const currentApplicationContactState = application as
-        | {
-            screeningPassportFullName?: string | null;
-            screeningContactEmail?: string | null;
-            screeningWorkEmail?: string | null;
-            screeningPhoneNumber?: string | null;
-          }
-        | null;
-      const screeningContactPatch = getScreeningContactPatchFromExtractedFields(
-        extractedFields,
-      );
-      const nextApplicationContactState = {
-        screeningPassportFullName:
-          screeningContactPatch.screeningPassportFullName ??
-          currentApplicationContactState?.screeningPassportFullName ??
-          null,
-        screeningContactEmail:
-          screeningContactPatch.screeningContactEmail ??
-          currentApplicationContactState?.screeningContactEmail ??
-          null,
-        screeningWorkEmail:
-          screeningContactPatch.screeningWorkEmail ??
-          currentApplicationContactState?.screeningWorkEmail ??
-          null,
-        screeningPhoneNumber:
-          screeningContactPatch.screeningPhoneNumber ??
-          currentApplicationContactState?.screeningPhoneNumber ??
-          null,
-      };
-
-      const nextStatus = resolvePostReviewApplicationStatus({
+      await syncPostReviewApplicationState({
+        applicationId,
         eligibilityResult: result.eligibilityResult,
         extractedFields,
-        application: nextApplicationContactState,
-      });
-
-      await updateApplication(applicationId, {
-        applicationStatus: nextStatus,
-        currentStep: "result",
-        eligibilityResult: result.eligibilityResult,
-        ...screeningContactPatch,
       });
 
       await syncExpertJobUpstreamMapping({
@@ -945,12 +1014,13 @@ export async function submitSupplementalFields(input: {
   const latestJob = await getLatestAnalysisJob(input.applicationId);
   const latestResumeFile = await getLatestResumeFile(input.applicationId);
   const snapshot = await buildApplicationSnapshot(input.applicationId);
-  const currentMissingFields = (snapshot?.latestResult?.missingFields ?? []).map(
-    (field) =>
-      enrichMissingFieldWithRegistry({
-        ...field,
-        sourceItemName: field.sourceItemName || field.label || field.fieldKey,
-      }),
+  const currentMissingFields = (
+    snapshot?.latestResult?.missingFields ?? []
+  ).map((field) =>
+    enrichMissingFieldWithRegistry({
+      ...field,
+      sourceItemName: field.sourceItemName || field.label || field.fieldKey,
+    }),
   );
   const normalizedPayload = buildSupplementalFieldPayload(
     input.fields,
@@ -976,15 +1046,17 @@ export async function submitSupplementalFields(input: {
     await updateApplication(input.applicationId, screeningContactPatch);
   }
 
-  if (!hasNonContactMissingFields && application.eligibilityResult === "ELIGIBLE") {
+  if (
+    !hasNonContactMissingFields &&
+    application.eligibilityResult === "ELIGIBLE"
+  ) {
     const nextApplicationContactState = {
-      screeningPassportFullName:
-        Object.prototype.hasOwnProperty.call(
-          screeningContactPatch,
-          "screeningPassportFullName",
-        )
-          ? screeningContactPatch.screeningPassportFullName
-          : application.screeningPassportFullName,
+      screeningPassportFullName: Object.prototype.hasOwnProperty.call(
+        screeningContactPatch,
+        "screeningPassportFullName",
+      )
+        ? screeningContactPatch.screeningPassportFullName
+        : application.screeningPassportFullName,
       screeningContactEmail: Object.prototype.hasOwnProperty.call(
         screeningContactPatch,
         "screeningContactEmail",
@@ -1876,13 +1948,15 @@ export async function enterMaterialsStage(applicationId: string) {
   return updated;
 }
 
-function toFeedbackSnapshot(input?: {
-  status: "DRAFT" | "SUBMITTED";
-  rating: number | null;
-  comment: string | null;
-  draftSavedAt: Date | null;
-  submittedAt: Date | null;
-} | null): ApplicationFeedbackSnapshot {
+function toFeedbackSnapshot(
+  input?: {
+    status: "DRAFT" | "SUBMITTED";
+    rating: number | null;
+    comment: string | null;
+    draftSavedAt: Date | null;
+    submittedAt: Date | null;
+  } | null,
+): ApplicationFeedbackSnapshot {
   return {
     status: input?.status ?? "DRAFT",
     rating: input?.rating ?? null,

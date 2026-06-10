@@ -1841,16 +1841,19 @@ export function CvReviewExperience({
     router.push("/apply/materials");
   }
 
-  const activeInitialCvReviewExtract = useMemo(
-    () =>
-      snapshot?.latestResult ??
-      (snapshot?.latestExtractionReview
-        ? {
-            extractedFields: snapshot.latestExtractionReview.extractedFields,
-          }
-        : null),
-    [snapshot?.latestExtractionReview, snapshot?.latestResult],
-  );
+  const activeInitialCvReviewExtract = useMemo(() => {
+    if (hasInitialCvReviewExtract(snapshot?.latestResult?.extractedFields)) {
+      return snapshot?.latestResult ?? null;
+    }
+
+    if (snapshot?.latestExtractionReview) {
+      return {
+        extractedFields: snapshot.latestExtractionReview.extractedFields,
+      };
+    }
+
+    return snapshot?.latestResult ?? null;
+  }, [snapshot?.latestExtractionReview, snapshot?.latestResult]);
   const hasInitialCvReviewExtractData = useMemo(
     () =>
       hasInitialCvReviewExtract(activeInitialCvReviewExtract?.extractedFields),
@@ -2243,12 +2246,13 @@ export function CvReviewExperience({
                 />
               ) : null}
 
-              {hasInitialCvReviewExtractData && snapshot.latestResult ? (
+              {snapshot.latestResult ? (
                 <InitialCvReviewDeterminationCard snapshot={snapshot} />
               ) : null}
 
               {snapshot.latestResult?.reasonText &&
-              snapshot.applicationStatus !== "INELIGIBLE" &&  snapshot.applicationStatus !== "SECONDARY_FAILED" &&
+              snapshot.applicationStatus !== "INELIGIBLE" &&
+              snapshot.applicationStatus !== "SECONDARY_FAILED" &&
               !hasInitialCvReviewExtractData ? (
                 <SectionCard
                   title="CV review summary"
@@ -2276,8 +2280,8 @@ export function CvReviewExperience({
                 <SectionCard
                   title={
                     isEligibleContactCompletion
-                        ? "Complete your contact details"
-                        : "Additional information requested"
+                      ? "Complete your contact details"
+                      : "Additional information requested"
                   }
                   description={
                     isEligibleContactCompletion

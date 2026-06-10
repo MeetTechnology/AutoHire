@@ -59,7 +59,8 @@ const BORDERLINE_BIRTH_PREFIX =
 function isNewThreeStepContractText(text: string) {
   return (
     text.includes(NEW_CONTRACT_SECTION_1) &&
-    (text.includes(NEW_CONTRACT_SECTION_3) || text.includes("### 2. Analysis Process"))
+    (text.includes(NEW_CONTRACT_SECTION_3) ||
+      text.includes("### 2. Analysis Process"))
   );
 }
 
@@ -77,7 +78,9 @@ function normalizeInitialCvReviewRawValue(raw: string) {
   return stripped;
 }
 
-function parseExtractedInformationSection(text: string): Record<string, string> {
+function parseExtractedInformationSection(
+  text: string,
+): Record<string, string> {
   const start = text.indexOf(NEW_CONTRACT_SECTION_1);
 
   if (start < 0) {
@@ -163,7 +166,10 @@ function parseMissingFieldNamesAfterMarker(formal: string) {
   }
 
   let rest = formal.slice(idx + marker.length).trim();
-  rest = rest.replace(/^\[/, "").replace(/\]\s*$/, "").trim();
+  rest = rest
+    .replace(/^\[/, "")
+    .replace(/\]\s*$/, "")
+    .trim();
   const parts = rest
     .split(/[,，;；]|\s+and\s+/i)
     .map((part) => normalizeSourceItemName(part))
@@ -181,10 +187,15 @@ function criticalFieldLabelsForInference(): Record<string, string> {
     current_country_of_employment: "Current Country of Employment",
     work_experience_2020_present: "Work Experience (2020-Present)",
     research_area: "Research Area",
-  } satisfies Record<(typeof INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS)[number], string>;
+  } satisfies Record<
+    (typeof INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS)[number],
+    string
+  >;
 }
 
-function inferMissingItemNamesFromCriticalFields(seven: Record<string, string>) {
+function inferMissingItemNamesFromCriticalFields(
+  seven: Record<string, string>,
+) {
   const labels = criticalFieldLabelsForInference();
   const names: string[] = [];
 
@@ -217,7 +228,9 @@ function parseNewThreeStepContract(
   const formalResult = extractFirstBlock(text, "{{{", "}}}");
 
   if (!formalResult) {
-    throw new Error("New CV review contract text is missing the determination {{{ }}} block.");
+    throw new Error(
+      "New CV review contract text is missing the determination {{{ }}} block.",
+    );
   }
 
   const trimmedFormal = formalResult.trim();
@@ -296,7 +309,9 @@ function parseNewThreeStepContract(
     };
   }
 
-  throw new Error("Unrecognized determination block for the new CV review output contract.");
+  throw new Error(
+    "Unrecognized determination block for the new CV review output contract.",
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -344,7 +359,9 @@ function extractIneligibleReason(formalResult: string) {
   if (enParts.length > 1) {
     const beforeFollowUp = enParts[0] ?? "";
     const enReasonLabel = "The specific reasons are:";
-    const idx = beforeFollowUp.toLowerCase().indexOf(enReasonLabel.toLowerCase());
+    const idx = beforeFollowUp
+      .toLowerCase()
+      .indexOf(enReasonLabel.toLowerCase());
 
     if (idx >= 0) {
       const rawReason = beforeFollowUp.slice(idx + enReasonLabel.length).trim();
@@ -356,7 +373,9 @@ function extractIneligibleReason(formalResult: string) {
     }
   }
 
-  const cnMatch = trimmed.match(/以下是具体原因[:：]\s*([\s\S]*?)(?:，若您有疑问|$)/);
+  const cnMatch = trimmed.match(
+    /以下是具体原因[:：]\s*([\s\S]*?)(?:，若您有疑问|$)/,
+  );
   const reason = cnMatch?.[1]?.trim() || trimmed;
 
   return reason
@@ -430,7 +449,9 @@ function coerceExtractedFields(payload: Record<string, unknown>) {
 
   const filtered = filterExtractedFields(payload);
 
-  return Object.keys(filtered).length > 0 ? normalizeExtractedFieldKeys(filtered) : {};
+  return Object.keys(filtered).length > 0
+    ? normalizeExtractedFieldKeys(filtered)
+    : {};
 }
 
 function buildDecisionFromText(
@@ -538,7 +559,9 @@ function normalizeMissingFieldsFromPayload(payload: Record<string, unknown>) {
   return buildMissingFieldsFromItemNames(sourceItemNames);
 }
 
-export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision {
+export function normalizeAnalysisResultPayload(
+  payload: unknown,
+): ParsedDecision {
   if (!isRecord(payload)) {
     throw new Error("CV analysis payload must be an object.");
   }
@@ -560,8 +583,11 @@ export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision
     return {
       eligibilityResult: payload.eligibilityResult as EligibilityResult,
       displaySummary:
-        typeof payload.displaySummary === "string" ? payload.displaySummary : null,
-      reasonText: typeof payload.reasonText === "string" ? payload.reasonText : null,
+        typeof payload.displaySummary === "string"
+          ? payload.displaySummary
+          : null,
+      reasonText:
+        typeof payload.reasonText === "string" ? payload.reasonText : null,
       missingFields: normalizedMissingFields,
       extractedFields: isRecord(payload.extractedFields)
         ? normalizeExtractedFieldKeys(payload.extractedFields)
@@ -577,8 +603,19 @@ export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision
       ? payload.parsedResult
       : null;
   const baseRecord = parsedResult ?? payload;
-  const extractedFields = coerceExtractedFields(baseRecord);
-  const normalizedText = normalizeTextPayload(baseRecord) ?? normalizeTextPayload(payload);
+  const extractionParsedResult = isRecord(payload.extraction_parsed_result)
+    ? payload.extraction_parsed_result
+    : isRecord(payload.extractionParsedResult)
+      ? payload.extractionParsedResult
+      : null;
+  const extractedFields = {
+    ...(extractionParsedResult
+      ? coerceExtractedFields(extractionParsedResult)
+      : {}),
+    ...coerceExtractedFields(baseRecord),
+  };
+  const normalizedText =
+    normalizeTextPayload(baseRecord) ?? normalizeTextPayload(payload);
 
   if (normalizedText) {
     if (isNewThreeStepContractText(normalizedText)) {
@@ -589,14 +626,17 @@ export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision
   }
 
   const missingFields = normalizeMissingFieldsFromPayload(baseRecord);
-  const eligibilityValue = baseRecord.eligibility_result ?? baseRecord.eligibilityResult;
+  const eligibilityValue =
+    baseRecord.eligibility_result ?? baseRecord.eligibilityResult;
 
   if (typeof eligibilityValue === "string") {
     return {
       eligibilityResult: eligibilityValue as EligibilityResult,
       displaySummary:
-        typeof (baseRecord.display_summary ?? baseRecord.displaySummary) === "string"
-          ? ((baseRecord.display_summary ?? baseRecord.displaySummary) as string)
+        typeof (baseRecord.display_summary ?? baseRecord.displaySummary) ===
+        "string"
+          ? ((baseRecord.display_summary ??
+              baseRecord.displaySummary) as string)
           : null,
       reasonText:
         typeof (baseRecord.reason_text ?? baseRecord.reasonText) === "string"
@@ -605,13 +645,16 @@ export function normalizeAnalysisResultPayload(payload: unknown): ParsedDecision
       missingFields,
       extractedFields,
       rawReasoning:
-        typeof (baseRecord.raw_reasoning ?? baseRecord.rawReasoning) === "string"
+        typeof (baseRecord.raw_reasoning ?? baseRecord.rawReasoning) ===
+        "string"
           ? ((baseRecord.raw_reasoning ?? baseRecord.rawReasoning) as string)
           : null,
     };
   }
 
-  throw new Error("CV analysis result is missing both text payload and structured fields.");
+  throw new Error(
+    "CV analysis result is missing both text payload and structured fields.",
+  );
 }
 
 export function normalizeExtractionResultPayload(payload: unknown) {

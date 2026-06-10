@@ -175,7 +175,9 @@ describe("normalizeAnalysisResultPayload", () => {
     });
     expect(eligible.eligibilityResult).toBe("ELIGIBLE");
     expect(eligible.reasonText).toBeNull();
-    expect(eligible.extractedFields.personal_email).toBe("jane.doe@example.com");
+    expect(eligible.extractedFields.personal_email).toBe(
+      "jane.doe@example.com",
+    );
     expect(eligible.extractedFields.work_email).toBe("jane.doe@university.edu");
     expect(eligible.extractedFields.current_country_of_employment).toBe("UK");
 
@@ -195,7 +197,42 @@ describe("normalizeAnalysisResultPayload", () => {
       raw_response: `${base}{{{Cannot make a final determination. The exact birth year is missing, and the inferred birth year (1992) is within 2 years of the threshold (1990), requiring further confirmation.}}}`,
     });
     expect(borderline.eligibilityResult).toBe("INSUFFICIENT_INFO");
-    expect(borderline.missingFields.map((f) => f.fieldKey)).toEqual(["birth_date"]);
+    expect(borderline.missingFields.map((f) => f.fieldKey)).toEqual([
+      "birth_date",
+    ]);
+  });
+
+  it("preserves extraction fields when the judgment uses the two-step contract", () => {
+    const result = normalizeAnalysisResultPayload({
+      extraction_parsed_result: {
+        extracted_fields: {
+          name: "Jane Doe",
+          personal_email: "jane.doe@example.com",
+          year_of_birth: "1989",
+          current_title_equivalence: "Associate Professor",
+          current_job_country: "United States",
+          research_area: "Artificial Intelligence",
+        },
+      },
+      parsed_result: {
+        text: `### 1. Analysis Process
+[[[The scholar meets the requirements via the title bypass.]]]
+
+### 2. Determination Result
+{{{After evaluation, your qualifications meet the basic application requirements of this talent program}}}`,
+      },
+    });
+
+    expect(result.eligibilityResult).toBe("ELIGIBLE");
+    expect(result.extractedFields).toMatchObject({
+      name: "Jane Doe",
+      personal_email: "jane.doe@example.com",
+      year_of_birth: "1989",
+      current_title_equivalence: "Associate Professor",
+      current_country_of_employment: "United States",
+      research_area: "Artificial Intelligence",
+    });
+    expect(result.rawReasoning).toContain("title bypass");
   });
 
   it("does not infer missing contact fields as critical when the determination says critical information is missing", () => {
