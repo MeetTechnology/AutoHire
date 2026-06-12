@@ -5,6 +5,7 @@ import { requireApplicationSession } from "@/lib/auth/access";
 import { getApplicationById, getLatestAnalysisJob } from "@/lib/data/store";
 import { jsonError } from "@/lib/http";
 import { trackEventFromRequest } from "@/lib/tracking/service";
+import { syncAutoSecondaryForApplication } from "@/lib/resume-analysis/direct-secondary";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   const previousApplication = await getApplicationById(applicationId);
   const previousJob = await getLatestAnalysisJob(applicationId);
   const status = await refreshAnalysisState(applicationId);
+  await syncAutoSecondaryForApplication(applicationId).catch(() => null);
 
   if (!status) {
     return jsonError("No analysis job has been created yet.", 404);

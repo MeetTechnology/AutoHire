@@ -10,6 +10,7 @@ import {
 import { createSessionToken, getSessionCookieName } from "@/lib/auth/session";
 import {
   buildApplicationSnapshot,
+  getLatestAutoSecondaryRun,
   listApplicationEvents,
   listFileUploadAttempts,
 } from "@/lib/data/store";
@@ -74,6 +75,11 @@ describe("POST /api/applications/[applicationId]/resume", () => {
     expect(snapshot?.screeningPhoneNumber).toBeNull();
     expect(snapshot?.applicationStatus).toBe("CV_UPLOADED");
     expect(snapshot?.latestResumeFile?.fileName).toBe("cv.pdf");
+    const autoRun = await getLatestAutoSecondaryRun("app_intro");
+    expect(autoRun).toMatchObject({
+      triggerSource: "AUTO_UPLOAD",
+      status: "pending",
+    });
   });
 
   it("persists CV review identity on confirm", async () => {
@@ -130,17 +136,20 @@ describe("POST /api/applications/[applicationId]/resume", () => {
 
   it("starts CV review after explicit analyze action", async () => {
     await resumePost(
-      buildAuthorizedRequest("http://localhost/api/applications/app_intro/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uploadId: "upload_resume_for_analysis",
-          fileName: "candidate.pdf",
-          fileType: "application/pdf",
-          fileSize: 1800,
-          objectKey: "applications/app_intro/resume/candidate.pdf",
-        }),
-      }),
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_intro/resume",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uploadId: "upload_resume_for_analysis",
+            fileName: "candidate.pdf",
+            fileType: "application/pdf",
+            fileSize: 1800,
+            objectKey: "applications/app_intro/resume/candidate.pdf",
+          }),
+        },
+      ),
       { params: Promise.resolve({ applicationId: "app_intro" }) },
     );
 
@@ -181,17 +190,20 @@ describe("POST /api/applications/[applicationId]/resume", () => {
 - Research Area: Advanced manufacturing materials`;
 
     await resumePost(
-      buildAuthorizedRequest("http://localhost/api/applications/app_intro/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uploadId: "upload_resume_for_confirmation",
-          fileName: "candidate-eligible.pdf",
-          fileType: "application/pdf",
-          fileSize: 1800,
-          objectKey: "applications/app_intro/resume/candidate-eligible.pdf",
-        }),
-      }),
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_intro/resume",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uploadId: "upload_resume_for_confirmation",
+            fileName: "candidate-eligible.pdf",
+            fileType: "application/pdf",
+            fileSize: 1800,
+            objectKey: "applications/app_intro/resume/candidate-eligible.pdf",
+          }),
+        },
+      ),
       { params: Promise.resolve({ applicationId: "app_intro" }) },
     );
     await analyzeResumePost(
@@ -255,24 +267,30 @@ describe("POST /api/applications/[applicationId]/resume", () => {
 
   it("deletes uploaded CV before analysis starts", async () => {
     await resumePost(
-      buildAuthorizedRequest("http://localhost/api/applications/app_intro/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uploadId: "upload_resume_delete",
-          fileName: "candidate-delete.pdf",
-          fileType: "application/pdf",
-          fileSize: 2000,
-          objectKey: "applications/app_intro/resume/candidate-delete.pdf",
-        }),
-      }),
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_intro/resume",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uploadId: "upload_resume_delete",
+            fileName: "candidate-delete.pdf",
+            fileType: "application/pdf",
+            fileSize: 2000,
+            objectKey: "applications/app_intro/resume/candidate-delete.pdf",
+          }),
+        },
+      ),
       { params: Promise.resolve({ applicationId: "app_intro" }) },
     );
 
     const response = await resumeDelete(
-      buildAuthorizedRequest("http://localhost/api/applications/app_intro/resume", {
-        method: "DELETE",
-      }),
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_intro/resume",
+        {
+          method: "DELETE",
+        },
+      ),
       { params: Promise.resolve({ applicationId: "app_intro" }) },
     );
 

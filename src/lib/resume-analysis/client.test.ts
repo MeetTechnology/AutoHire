@@ -143,15 +143,15 @@ describe("resume analysis adapter", () => {
       Promise.resolve(
         new Response(
           JSON.stringify({
-          job: {
-            id: 88,
-            status: "completed",
-            error_message: null,
-          },
-          initial_result: {
-            status: "completed",
-            extraction_status: "completed",
-            extraction_raw_response: `### 1. Extracted Information
+            job: {
+              id: 88,
+              status: "completed",
+              error_message: null,
+            },
+            initial_result: {
+              status: "completed",
+              extraction_status: "completed",
+              extraction_raw_response: `### 1. Extracted Information
 - Name: Jane Doe
 - Personal Email: jane@example.com
 - Work Email: jane@university.edu
@@ -163,7 +163,7 @@ describe("resume analysis adapter", () => {
 - Current Country of Employment: United States
 - Work Experience (2020-Present): 2020-Present, United States, Example University, Associate Professor
 - Research Area: Semiconductor materials`,
-          },
+            },
           }),
           {
             status: 200,
@@ -445,6 +445,67 @@ Highest Degree: To be confirmed
       failureCode: "UPSTREAM_HTTP_ERROR",
       retryable: true,
       httpStatus: 503,
+      upstreamPayload: {
+        code: "busy",
+        message: "service busy",
+      },
     });
+  });
+
+  it("creates a direct secondary run with external references", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          job_id: 123,
+          run_id: 456,
+          status: "pending",
+          external_reference: {
+            application_id: "app_live",
+            expert_id: "expert_live",
+            resume_file_id: "resume_live",
+          },
+        }),
+        {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { createDirectSecondaryRun } = await loadClient({
+      RESUME_ANALYSIS_MODE: "live",
+      RESUME_ANALYSIS_BASE_URL: "http://resume.test/api/v1",
+      RESUME_ANALYSIS_API_KEY: "secret",
+      RESUME_ANALYSIS_CALLBACK_URL:
+        "https://autohire.test/api/internal/resume-analysis/secondary/callback",
+    });
+    const created = await createDirectSecondaryRun({
+      applicationId: "app_live",
+      expertId: "expert_live",
+      resumeFileId: "resume_live",
+      versionNo: 3,
+      fileName: "candidate.pdf",
+      fileType: "application/pdf",
+      objectKey: "applications/app_live/resume/candidate.pdf",
+    });
+
+    expect(created).toEqual({
+      jobId: "123",
+      runId: "456",
+      status: "pending",
+      idempotencyKey: "resume-secondary:app_live:resume_live:3",
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://resume.test/api/v1/internal/resume-analysis/secondary-runs",
+    );
+    const formData = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+    expect(formData.get("applicationId")).toBe("app_live");
+    expect(formData.get("expertId")).toBe("expert_live");
+    expect(formData.get("resumeFileId")).toBe("resume_live");
+    expect(formData.get("exportOnPartial")).toBe("true");
+    expect(formData.get("callbackUrl")).toBe(
+      "https://autohire.test/api/internal/resume-analysis/secondary/callback",
+    );
   });
 });

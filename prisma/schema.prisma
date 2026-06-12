@@ -50,6 +50,11 @@ enum AnalysisJobType {
   REANALYSIS
 }
 
+enum SecondaryAnalysisTriggerSource {
+  MANUAL
+  AUTO_UPLOAD
+}
+
 enum ResumeExtractionReviewStatus {
   PROCESSING
   READY
@@ -243,8 +248,9 @@ model ResumeFile {
   versionNo     Int      @default(1)
   uploadedAt    DateTime @default(now())
 
-  application  Application         @relation(fields: [applicationId], references: [id])
-  analysisJobs ResumeAnalysisJob[]
+  application           Application            @relation(fields: [applicationId], references: [id])
+  analysisJobs          ResumeAnalysisJob[]
+  secondaryAnalysisRuns SecondaryAnalysisRun[]
 
   @@unique([applicationId, versionNo])
   @@index([applicationId])
@@ -312,24 +318,58 @@ model ResumeExtractionReview {
 }
 
 model SecondaryAnalysisRun {
-  id            String   @id @default(cuid())
-  applicationId String
-  analysisJobId String?
-  externalRunId String
-  status        String
-  errorMessage  String?
-  runSummary    Json?
-  rawResults    Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                 String                         @id @default(cuid())
+  applicationId      String
+  analysisJobId      String?
+  resumeFileId       String?
+  triggerSource      SecondaryAnalysisTriggerSource @default(MANUAL)
+  externalJobId      String?
+  externalRunId      String?
+  idempotencyKey     String?                        @unique
+  status             String
+  errorMessage       String?
+  runSummary         Json?
+  rawResults         Json?
+  exportStatus       String?
+  exportObjectKey    String?
+  exportFileName     String?
+  exportContentType  String?
+  exportFileSize     Int?
+  exportSha256       String?
+  exportErrorMessage String?
+  lastSyncAt         DateTime?
+  nextRetryAt        DateTime?
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
 
-  application Application                   @relation(fields: [applicationId], references: [id])
-  analysisJob ResumeAnalysisJob?            @relation(fields: [analysisJobId], references: [id])
-  fieldValues SecondaryAnalysisFieldValue[]
+  application    Application                      @relation(fields: [applicationId], references: [id])
+  analysisJob    ResumeAnalysisJob?               @relation(fields: [analysisJobId], references: [id])
+  resumeFile     ResumeFile?                      @relation(fields: [resumeFileId], references: [id], onDelete: SetNull)
+  fieldValues    SecondaryAnalysisFieldValue[]
+  callbackEvents SecondaryAnalysisCallbackEvent[]
 
   @@unique([applicationId, externalRunId])
   @@index([applicationId])
   @@index([analysisJobId])
+  @@index([resumeFileId])
+  @@index([triggerSource, status])
+  @@index([externalJobId, externalRunId])
+}
+
+model SecondaryAnalysisCallbackEvent {
+  id             String    @id @default(cuid())
+  eventId        String    @unique
+  secondaryRunId String
+  eventType      String
+  status         String
+  errorMessage   String?
+  processedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  secondaryRun SecondaryAnalysisRun @relation(fields: [secondaryRunId], references: [id])
+
+  @@index([secondaryRunId, createdAt])
 }
 
 model SecondaryAnalysisFieldValue {

@@ -124,6 +124,61 @@ const liveSecondaryTriggerResponseSchema = z
   })
   .passthrough();
 
+const directSecondaryFieldSchema = z.object({
+  no: z.number().int().min(1).max(41),
+  column: z.string().nullable(),
+  label: z.string(),
+  value: z.string(),
+  missing: z.boolean(),
+});
+
+const directSecondaryExportSchema = z
+  .object({
+    status: z.string(),
+    file_name: z.string().nullable().optional(),
+    download_url: z.string().nullable().optional(),
+    content_type: z.string().nullable().optional(),
+    file_size: z.number().int().nonnegative().nullable().optional(),
+    sha256: z.string().nullable().optional(),
+    error_message: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const directSecondaryRunResponseSchema = z
+  .object({
+    job_id: numericIdSchema,
+    run_id: numericIdSchema,
+    status: z.string(),
+    total_prompts: z.number().int().nonnegative().optional(),
+    completed_prompts: z.number().int().nonnegative().optional(),
+    error_prompts: z.number().int().nonnegative().optional(),
+    failed_prompt_ids: z.array(z.union([z.string(), z.number()])).optional(),
+    retryable: z.boolean().optional(),
+    external_reference: z
+      .object({
+        application_id: z.string(),
+        expert_id: z.string(),
+        resume_file_id: z.string(),
+      })
+      .optional(),
+    fields: z.array(directSecondaryFieldSchema).optional(),
+    raw_results: z.array(z.record(z.string(), z.unknown())).optional(),
+    export: directSecondaryExportSchema.optional(),
+  })
+  .passthrough();
+
+const directSecondaryCreateResponseSchema =
+  directSecondaryRunResponseSchema.pick({
+    job_id: true,
+    run_id: true,
+    status: true,
+    external_reference: true,
+  });
+
+export type DirectSecondaryRunResponse = z.infer<
+  typeof directSecondaryRunResponseSchema
+>;
+
 const liveExtractionCorrectionResponseSchema = z
   .object({
     message: z.string().optional(),
@@ -155,6 +210,7 @@ export class ResumeAnalysisError extends Error {
   retryable: boolean;
   retryAfterSeconds: number | null;
   httpStatus: number | null;
+  upstreamPayload: unknown;
 
   constructor(input: {
     message: string;
@@ -162,6 +218,7 @@ export class ResumeAnalysisError extends Error {
     retryable?: boolean;
     retryAfterSeconds?: number | null;
     httpStatus?: number | null;
+    upstreamPayload?: unknown;
   }) {
     super(input.message);
     this.name = "ResumeAnalysisError";
@@ -169,6 +226,7 @@ export class ResumeAnalysisError extends Error {
     this.retryable = input.retryable ?? false;
     this.retryAfterSeconds = input.retryAfterSeconds ?? null;
     this.httpStatus = input.httpStatus ?? null;
+    this.upstreamPayload = input.upstreamPayload ?? null;
   }
 }
 
@@ -382,7 +440,9 @@ function buildMockResult(
 }
 
 function buildMockExtractionRawText(scenario: string) {
-  return buildMockRawText(scenario).split("### 2. Analysis Process")[0]?.trim() ?? "";
+  return (
+    buildMockRawText(scenario).split("### 2. Analysis Process")[0]?.trim() ?? ""
+  );
 }
 
 function buildMockExtractionResult(scenario: string) {
@@ -448,7 +508,10 @@ function normalizeSecondaryStatus(
   return "idle";
 }
 
-function buildMockSecondaryResponse(externalJobId: string, runId?: string | null) {
+function buildMockSecondaryResponse(
+  externalJobId: string,
+  runId?: string | null,
+) {
   const scenario = parseMockExternalJobId(externalJobId);
 
   return {
@@ -569,7 +632,9 @@ function buildLiveUrl(path: string) {
   return `${env.RESUME_ANALYSIS_BASE_URL?.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-function normalizeLiveStatus(value: string | null | undefined): ExternalJobStatus {
+function normalizeLiveStatus(
+  value: string | null | undefined,
+): ExternalJobStatus {
   const normalized = value?.trim().toLowerCase();
 
   if (normalized === "completed") {
@@ -600,10 +665,12 @@ function buildLiveProgressMessage(
   detail?: LiveJobDetail,
 ) {
   const initialStatus = detail?.initial_result?.status?.trim().toLowerCase();
-  const extractionStatus =
-    detail?.initial_result?.extraction_status?.trim().toLowerCase();
-  const judgmentStatus =
-    detail?.initial_result?.judgment_status?.trim().toLowerCase();
+  const extractionStatus = detail?.initial_result?.extraction_status
+    ?.trim()
+    .toLowerCase();
+  const judgmentStatus = detail?.initial_result?.judgment_status
+    ?.trim()
+    .toLowerCase();
 
   if (jobStatus === "queued") {
     return extractionStatus
@@ -637,10 +704,12 @@ function buildLiveProgressMessage(
 function getLiveStatusFromDetail(detail: LiveJobDetail) {
   const jobStatus = normalizeLiveStatus(detail.job.status);
   const initialStatus = detail.initial_result?.status?.trim().toLowerCase();
-  const extractionStatus =
-    detail.initial_result?.extraction_status?.trim().toLowerCase();
-  const judgmentStatus =
-    detail.initial_result?.judgment_status?.trim().toLowerCase();
+  const extractionStatus = detail.initial_result?.extraction_status
+    ?.trim()
+    .toLowerCase();
+  const judgmentStatus = detail.initial_result?.judgment_status
+    ?.trim()
+    .toLowerCase();
   const errorMessage =
     detail.initial_result?.judgment_error_message ??
     detail.initial_result?.extraction_error_message ??
@@ -784,14 +853,14 @@ async function callLiveService(path: string, init?: RequestInit) {
         response.status === 429 || response.status >= 500
           ? true
           : parsedError.success
-            ? parsedError.data.retryable ?? false
+            ? (parsedError.data.retryable ?? false)
             : false;
       const retryAfterSeconds = parsedError.success
-        ? parsedError.data.retry_after ?? null
+        ? (parsedError.data.retry_after ?? null)
         : null;
       const message = parsedError.success
-        ? parsedError.data.message ??
-          `CV review service error: ${response.status}`
+        ? (parsedError.data.message ??
+          `CV review service error: ${response.status}`)
         : `CV review service error: ${response.status}`;
 
       throw new ResumeAnalysisError({
@@ -800,6 +869,7 @@ async function callLiveService(path: string, init?: RequestInit) {
         retryable,
         retryAfterSeconds,
         httpStatus: response.status,
+        upstreamPayload: rawPayload,
       });
     }
 
@@ -830,6 +900,128 @@ async function callLiveService(path: string, init?: RequestInit) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function callLiveBinary(path: string) {
+  const env = getEnv();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(buildLiveUrl(path), {
+      headers: {
+        Authorization: `Bearer ${env.RESUME_ANALYSIS_API_KEY}`,
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new ResumeAnalysisError({
+        message: `CV review service error: ${response.status}`,
+        failureCode: "UPSTREAM_HTTP_ERROR",
+        retryable: response.status === 429 || response.status >= 500,
+        httpStatus: response.status,
+      });
+    }
+
+    return Buffer.from(await response.arrayBuffer());
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function createDirectSecondaryRun(input: {
+  applicationId: string;
+  expertId: string;
+  resumeFileId: string;
+  versionNo: number;
+  fileName: string;
+  fileType: string;
+  objectKey: string;
+}) {
+  const idempotencyKey = `resume-secondary:${input.applicationId}:${input.resumeFileId}:${input.versionNo}`;
+
+  if (!isLiveMode()) {
+    return {
+      jobId: `mock-direct-job-${input.resumeFileId}`,
+      runId: `mock-direct-run-${input.resumeFileId}`,
+      status: "pending",
+      idempotencyKey,
+    };
+  }
+
+  const env = getEnv();
+  const bytes = await readStoredObject(input.objectKey);
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new Blob([new Uint8Array(bytes)], {
+      type: input.fileType || "application/octet-stream",
+    }),
+    input.fileName,
+  );
+  formData.append("applicationId", input.applicationId);
+  formData.append("expertId", input.expertId);
+  formData.append("resumeFileId", input.resumeFileId);
+  formData.append("idempotencyKey", idempotencyKey);
+  formData.append("exportOnPartial", "true");
+  if (env.RESUME_ANALYSIS_CALLBACK_URL) {
+    formData.append("callbackUrl", env.RESUME_ANALYSIS_CALLBACK_URL);
+  }
+
+  const payload = directSecondaryCreateResponseSchema.parse(
+    await callLiveService("/internal/resume-analysis/secondary-runs", {
+      method: "POST",
+      body: formData,
+    }),
+  );
+
+  return {
+    jobId: String(payload.job_id),
+    runId: String(payload.run_id),
+    status: normalizeSecondaryStatus(payload.status),
+    idempotencyKey,
+  };
+}
+
+export async function getDirectSecondaryRun(input: {
+  jobId: string;
+  runId: string;
+  applicationId: string;
+}): Promise<DirectSecondaryRunResponse> {
+  if (!isLiveMode()) {
+    return directSecondaryRunResponseSchema.parse({
+      job_id: input.jobId.replace(/\D/g, "") || 1,
+      run_id: input.runId.replace(/\D/g, "") || 1,
+      status: "completed",
+      fields: Array.from({ length: 41 }, (_, index) => ({
+        no: index + 1,
+        column: null,
+        label: `NO.${index + 1}`,
+        value: "",
+        missing: true,
+      })),
+      raw_results: [],
+      export: { status: "skipped" },
+    });
+  }
+
+  return directSecondaryRunResponseSchema.parse(
+    await callLiveService(
+      `/internal/resume-analysis/jobs/${encodeURIComponent(input.jobId)}/runs/${encodeURIComponent(input.runId)}?applicationId=${encodeURIComponent(input.applicationId)}`,
+    ),
+  );
+}
+
+export async function downloadDirectSecondaryExport(input: {
+  jobId: string;
+  runId: string;
+  applicationId: string;
+}) {
+  return callLiveBinary(
+    `/internal/resume-analysis/jobs/${encodeURIComponent(input.jobId)}/runs/${encodeURIComponent(input.runId)}/export?applicationId=${encodeURIComponent(input.applicationId)}`,
+  );
 }
 
 export async function createResumeAnalysisJob(input: {
@@ -980,7 +1172,9 @@ export async function reanalyzeWithSupplementalFields(input: {
 
     return {
       externalJobId,
-      jobStatus: normalizeLiveStatus(payload.jobStatus ?? payload.status ?? "queued"),
+      jobStatus: normalizeLiveStatus(
+        payload.jobStatus ?? payload.status ?? "queued",
+      ),
       stageText:
         payload.stageText ??
         payload.stage_text ??
@@ -995,7 +1189,7 @@ export async function reanalyzeWithSupplementalFields(input: {
   );
   const hasAllRequiredFields = Boolean(
     supplementalPayload.valuesByFieldKey.highest_degree &&
-      supplementalPayload.valuesByFieldKey.current_employer,
+    supplementalPayload.valuesByFieldKey.current_employer,
   );
   const scenario = hasAllRequiredFields ? "eligible" : "insufficient_info";
 
@@ -1045,10 +1239,12 @@ export async function getSecondaryAnalysisResult(input: {
         `/resume-process/jobs/${encodeURIComponent(input.externalJobId)}${search}`,
       ),
     );
-    const secondaryStatus = normalizeSecondaryStatus(detail.job.secondary_status);
+    const secondaryStatus = normalizeSecondaryStatus(
+      detail.job.secondary_status,
+    );
     const runId = detail.secondary_run?.id
       ? String(detail.secondary_run.id)
-      : input.runId ?? null;
+      : (input.runId ?? null);
 
     return {
       runId,
@@ -1059,7 +1255,9 @@ export async function getSecondaryAnalysisResult(input: {
         null,
       run: detail.secondary_run
         ? {
-            id: detail.secondary_run.id ? String(detail.secondary_run.id) : null,
+            id: detail.secondary_run.id
+              ? String(detail.secondary_run.id)
+              : null,
             status: normalizeSecondaryStatus(detail.secondary_run.status),
             totalPrompts: detail.secondary_run.total_prompts ?? null,
             completedPrompts: detail.secondary_run.completed_prompts ?? null,
@@ -1139,8 +1337,9 @@ export async function getResumeExtractionResult(input: {
       });
     }
 
-    const extractionStatus =
-      detail.initial_result.extraction_status?.trim().toLowerCase();
+    const extractionStatus = detail.initial_result.extraction_status
+      ?.trim()
+      .toLowerCase();
 
     if (extractionStatus !== "completed") {
       throw new ResumeAnalysisError({
@@ -1264,14 +1463,16 @@ export async function getResumeAnalysisResult(input: {
     if (detail.initial_result.status?.trim().toLowerCase() === "error") {
       throw new ResumeAnalysisError({
         message:
-          detail.initial_result.error_message ?? "Upstream job returned error result.",
+          detail.initial_result.error_message ??
+          "Upstream job returned error result.",
         failureCode: "UPSTREAM_JOB_FAILED",
         httpStatus: 502,
       });
     }
 
-    const judgmentStatus =
-      detail.initial_result.judgment_status?.trim().toLowerCase();
+    const judgmentStatus = detail.initial_result.judgment_status
+      ?.trim()
+      .toLowerCase();
 
     if (
       detail.initial_result.extraction_status &&

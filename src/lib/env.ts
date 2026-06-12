@@ -16,9 +16,7 @@ const envSchema = z.object({
   ALIYUN_OSS_REGION: z.string().optional(),
   ALIYUN_OSS_BUCKET: z.string().optional(),
   ALIYUN_OSS_ENDPOINT: z.string().optional(),
-  ALIYUN_OSS_TRANSFER_ACCELERATION_ENABLED: z.coerce
-    .boolean()
-    .default(false),
+  ALIYUN_OSS_TRANSFER_ACCELERATION_ENABLED: z.coerce.boolean().default(false),
   ALIYUN_OSS_ACCELERATE_ENDPOINT: z
     .string()
     .url()
@@ -30,6 +28,8 @@ const envSchema = z.object({
   RESUME_ANALYSIS_API_KEY: z.string().optional(),
   RESUME_ANALYSIS_REANALYZE_PATH: z.string().optional(),
   RESUME_ANALYSIS_MAPPINGS_PATH: z.string().optional(),
+  RESUME_ANALYSIS_CALLBACK_SECRET: z.string().optional(),
+  RESUME_ANALYSIS_CALLBACK_URL: z.string().url().optional(),
   MATERIAL_REVIEW_MODE: z.enum(["mock", "live"]).default("mock"),
   MATERIAL_REVIEW_MOCK_SCENARIO: z.string().default("supplement_required"),
   MATERIAL_REVIEW_BASE_URL: z.string().optional(),

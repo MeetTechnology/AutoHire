@@ -1285,7 +1285,7 @@ function buildEditableFieldsFromSource(input: {
 function isPlaceholderSecondaryRun(
   run:
     | {
-        externalRunId: string;
+        externalRunId: string | null;
         status: string;
         runSummary: unknown;
         rawResults: unknown;

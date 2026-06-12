@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSnapshot, refreshAnalysisState } from "@/lib/application/service";
 import { requireApplicationSession } from "@/lib/auth/access";
 import { jsonError } from "@/lib/http";
+import { syncAutoSecondaryForApplication } from "@/lib/resume-analysis/direct-secondary";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 
   await refreshAnalysisState(applicationId);
+  await syncAutoSecondaryForApplication(applicationId).catch(() => null);
   const snapshot = await getSnapshot(applicationId);
 
   if (!snapshot) {

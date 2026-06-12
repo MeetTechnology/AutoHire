@@ -11,6 +11,7 @@ import { requireApplicationSession } from "@/lib/auth/access";
 import { parseJsonBody, jsonError } from "@/lib/http";
 import { trackEventFromRequest } from "@/lib/tracking/service";
 import { validateUpload } from "@/lib/validation/upload";
+import { startAutoSecondaryForResume } from "@/lib/resume-analysis/direct-secondary";
 
 type Params = {
   params: Promise<{ applicationId: string }>;
@@ -86,6 +87,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       screeningWorkEmail,
       screeningPhoneNumber,
     });
+    await startAutoSecondaryForResume(resumeFile.id).catch(() => null);
 
     await trackEventFromRequest(request, {
       eventType: "resume_upload_confirmed",
@@ -128,7 +130,9 @@ export async function POST(request: NextRequest, { params }: Params) {
           ? error.code
           : "upload_confirm_failed",
       errorMessage:
-        error instanceof Error ? error.message : "Resume upload confirm failed.",
+        error instanceof Error
+          ? error.message
+          : "Resume upload confirm failed.",
       upload: {
         uploadId,
         kind: "resume",

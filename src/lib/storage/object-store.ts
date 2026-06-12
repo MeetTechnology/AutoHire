@@ -1,4 +1,4 @@
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -12,9 +12,7 @@ function getMockStoragePath(objectKey: string) {
     .split("/")
     .filter(Boolean)
     .map((segment) =>
-      segment
-        .replace(/\.\./g, "_")
-        .replace(/[<>:"|?*\u0000-\u001f]/g, "_"),
+      segment.replace(/\.\./g, "_").replace(/[<>:"|?*\u0000-\u001f]/g, "_"),
     );
 
   if (segments.length === 0) {
@@ -80,9 +78,7 @@ async function readOssObject(objectKey: string) {
     body !== null &&
     Symbol.asyncIterator in body
   ) {
-    return readAsyncIterable(
-      body as AsyncIterable<Uint8Array | string>,
-    );
+    return readAsyncIterable(body as AsyncIterable<Uint8Array | string>);
   }
 
   throw new Error("Unsupported object storage response body.");
@@ -110,4 +106,28 @@ export async function readStoredObject(objectKey: string) {
   }
 
   return readMockObject(objectKey);
+}
+
+export async function writeStoredObject(
+  objectKey: string,
+  payload: ArrayBuffer | Buffer | Uint8Array,
+  contentType?: string,
+) {
+  const env = getEnv();
+  const body = toBuffer(payload);
+
+  if (env.FILE_STORAGE_MODE === "oss") {
+    const client = createOssClient();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: env.ALIYUN_OSS_BUCKET,
+        Key: objectKey,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+    return;
+  }
+
+  await writeMockObject(objectKey, body);
 }

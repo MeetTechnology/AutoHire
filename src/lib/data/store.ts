@@ -185,11 +185,36 @@ type SecondaryAnalysisRunRecord = {
   id: string;
   applicationId: string;
   analysisJobId: string | null;
-  externalRunId: string;
+  resumeFileId: string | null;
+  triggerSource: "MANUAL" | "AUTO_UPLOAD";
+  externalJobId: string | null;
+  externalRunId: string | null;
+  idempotencyKey: string | null;
   status: string;
   errorMessage: string | null;
   runSummary: Record<string, unknown> | null;
   rawResults: Record<string, unknown>[] | null;
+  exportStatus: string | null;
+  exportObjectKey: string | null;
+  exportFileName: string | null;
+  exportContentType: string | null;
+  exportFileSize: number | null;
+  exportSha256: string | null;
+  exportErrorMessage: string | null;
+  lastSyncAt: Date | null;
+  nextRetryAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type SecondaryAnalysisCallbackEventRecord = {
+  id: string;
+  eventId: string;
+  secondaryRunId: string;
+  eventType: string;
+  status: string;
+  errorMessage: string | null;
+  processedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -411,6 +436,7 @@ type PersistedStore = {
   extractionReviews: ResumeExtractionReviewRecord[];
   secondaryAnalysisRuns: SecondaryAnalysisRunRecord[];
   secondaryAnalysisFieldValues: SecondaryAnalysisFieldValueRecord[];
+  secondaryAnalysisCallbackEvents: SecondaryAnalysisCallbackEventRecord[];
   supplementalFields: SupplementalFieldRecord[];
   materials: MaterialRecord[];
   materialReviewRuns: MaterialReviewRunRecord[];
@@ -823,6 +849,7 @@ function buildSampleStore(): PersistedStore {
     ],
     secondaryAnalysisRuns: [],
     secondaryAnalysisFieldValues: [],
+    secondaryAnalysisCallbackEvents: [],
     supplementalFields: [],
     materials: [
       ...submittedApplicationRecords.map((sample) => sample.material),
@@ -1407,6 +1434,17 @@ export async function getLatestResumeFile(applicationId: string) {
   });
 }
 
+export async function getResumeFileById(fileId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().resumeFiles.find((item) => item.id === fileId) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.resumeFile.findUnique({ where: { id: fileId } });
+}
+
 export async function deleteResumeFileById(fileId: string) {
   if (getRuntimeMode() === "memory") {
     const store = getMemoryStore();
@@ -1630,7 +1668,9 @@ export async function getLatestSecondaryAnalysisRun(applicationId: string) {
     return (
       getMemoryStore()
         .secondaryAnalysisRuns.filter(
-          (item) => item.applicationId === applicationId,
+          (item) =>
+            item.applicationId === applicationId &&
+            item.triggerSource === "MANUAL",
         )
         .sort(byDateDesc)[0] ?? null
     );
@@ -1638,7 +1678,7 @@ export async function getLatestSecondaryAnalysisRun(applicationId: string) {
 
   const prisma = await getPrisma();
   return prisma.secondaryAnalysisRun.findFirst({
-    where: { applicationId },
+    where: { applicationId, triggerSource: "MANUAL" },
     orderBy: { updatedAt: "desc" },
   });
 }
@@ -1652,18 +1692,18 @@ export async function findSecondaryAnalysisRunByExternalRunId(input: {
       getMemoryStore().secondaryAnalysisRuns.find(
         (item) =>
           item.applicationId === input.applicationId &&
+          item.triggerSource === "MANUAL" &&
           item.externalRunId === input.externalRunId,
       ) ?? null
     );
   }
 
   const prisma = await getPrisma();
-  return prisma.secondaryAnalysisRun.findUnique({
+  return prisma.secondaryAnalysisRun.findFirst({
     where: {
-      applicationId_externalRunId: {
-        applicationId: input.applicationId,
-        externalRunId: input.externalRunId,
-      },
+      applicationId: input.applicationId,
+      externalRunId: input.externalRunId,
+      triggerSource: "MANUAL",
     },
   });
 }
@@ -1700,6 +1740,19 @@ export async function upsertSecondaryAnalysisRun(input: {
 
     const record: SecondaryAnalysisRunRecord = {
       id: createId("secondary_run"),
+      resumeFileId: null,
+      triggerSource: "MANUAL",
+      externalJobId: null,
+      idempotencyKey: null,
+      exportStatus: null,
+      exportObjectKey: null,
+      exportFileName: null,
+      exportContentType: null,
+      exportFileSize: null,
+      exportSha256: null,
+      exportErrorMessage: null,
+      lastSyncAt: null,
+      nextRetryAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       ...input,
@@ -1727,12 +1780,246 @@ export async function upsertSecondaryAnalysisRun(input: {
     create: {
       applicationId: input.applicationId,
       analysisJobId: input.analysisJobId,
+      triggerSource: "MANUAL",
       externalRunId: input.externalRunId,
       status: input.status,
       errorMessage: input.errorMessage,
       runSummary: input.runSummary as Prisma.InputJsonValue | undefined,
       rawResults: input.rawResults as Prisma.InputJsonValue | undefined,
     },
+  });
+}
+
+export async function findAutoSecondaryRunByIdempotencyKey(
+  idempotencyKey: string,
+) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().secondaryAnalysisRuns.find(
+        (item) =>
+          item.triggerSource === "AUTO_UPLOAD" &&
+          item.idempotencyKey === idempotencyKey,
+      ) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.secondaryAnalysisRun.findUnique({
+    where: { idempotencyKey },
+  });
+}
+
+export async function findAutoSecondaryRunByExternalIds(input: {
+  applicationId: string;
+  externalJobId: string;
+  externalRunId: string;
+}) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore().secondaryAnalysisRuns.find(
+        (item) =>
+          item.triggerSource === "AUTO_UPLOAD" &&
+          item.applicationId === input.applicationId &&
+          item.externalJobId === input.externalJobId &&
+          item.externalRunId === input.externalRunId,
+      ) ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.secondaryAnalysisRun.findFirst({
+    where: {
+      triggerSource: "AUTO_UPLOAD",
+      applicationId: input.applicationId,
+      externalJobId: input.externalJobId,
+      externalRunId: input.externalRunId,
+    },
+  });
+}
+
+export async function getLatestAutoSecondaryRun(applicationId: string) {
+  if (getRuntimeMode() === "memory") {
+    return (
+      getMemoryStore()
+        .secondaryAnalysisRuns.filter(
+          (item) =>
+            item.applicationId === applicationId &&
+            item.triggerSource === "AUTO_UPLOAD",
+        )
+        .sort(byDateDesc)[0] ?? null
+    );
+  }
+
+  const prisma = await getPrisma();
+  return prisma.secondaryAnalysisRun.findFirst({
+    where: { applicationId, triggerSource: "AUTO_UPLOAD" },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function upsertAutoSecondaryRun(input: {
+  applicationId: string;
+  resumeFileId: string;
+  idempotencyKey: string;
+  externalJobId?: string | null;
+  externalRunId?: string | null;
+  status: string;
+  errorMessage?: string | null;
+  runSummary?: Record<string, unknown> | null;
+  rawResults?: Record<string, unknown>[] | null;
+  exportStatus?: string | null;
+  exportObjectKey?: string | null;
+  exportFileName?: string | null;
+  exportContentType?: string | null;
+  exportFileSize?: number | null;
+  exportSha256?: string | null;
+  exportErrorMessage?: string | null;
+  lastSyncAt?: Date | null;
+  nextRetryAt?: Date | null;
+}) {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const existing = store.secondaryAnalysisRuns.find(
+      (item) => item.idempotencyKey === input.idempotencyKey,
+    );
+    const patch = {
+      applicationId: input.applicationId,
+      resumeFileId: input.resumeFileId,
+      triggerSource: "AUTO_UPLOAD" as const,
+      externalJobId: input.externalJobId ?? existing?.externalJobId ?? null,
+      externalRunId: input.externalRunId ?? existing?.externalRunId ?? null,
+      idempotencyKey: input.idempotencyKey,
+      status: input.status,
+      errorMessage: input.errorMessage ?? null,
+      runSummary: input.runSummary ?? existing?.runSummary ?? null,
+      rawResults: input.rawResults ?? existing?.rawResults ?? null,
+      exportStatus: input.exportStatus ?? existing?.exportStatus ?? null,
+      exportObjectKey:
+        input.exportObjectKey ?? existing?.exportObjectKey ?? null,
+      exportFileName: input.exportFileName ?? existing?.exportFileName ?? null,
+      exportContentType:
+        input.exportContentType ?? existing?.exportContentType ?? null,
+      exportFileSize: input.exportFileSize ?? existing?.exportFileSize ?? null,
+      exportSha256: input.exportSha256 ?? existing?.exportSha256 ?? null,
+      exportErrorMessage:
+        input.exportErrorMessage ?? existing?.exportErrorMessage ?? null,
+      lastSyncAt: input.lastSyncAt ?? existing?.lastSyncAt ?? null,
+      nextRetryAt:
+        input.nextRetryAt !== undefined
+          ? input.nextRetryAt
+          : (existing?.nextRetryAt ?? null),
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      Object.assign(existing, patch);
+      return existing;
+    }
+
+    const record: SecondaryAnalysisRunRecord = {
+      id: createId("secondary_run"),
+      analysisJobId: null,
+      createdAt: new Date(),
+      ...patch,
+    };
+    store.secondaryAnalysisRuns.push(record);
+    return record;
+  }
+
+  const prisma = await getPrisma();
+  const data = {
+    applicationId: input.applicationId,
+    resumeFileId: input.resumeFileId,
+    triggerSource: "AUTO_UPLOAD" as const,
+    externalJobId: input.externalJobId,
+    externalRunId: input.externalRunId,
+    status: input.status,
+    errorMessage: input.errorMessage,
+    runSummary: input.runSummary as Prisma.InputJsonValue | undefined,
+    rawResults: input.rawResults as Prisma.InputJsonValue[] | undefined,
+    exportStatus: input.exportStatus,
+    exportObjectKey: input.exportObjectKey,
+    exportFileName: input.exportFileName,
+    exportContentType: input.exportContentType,
+    exportFileSize: input.exportFileSize,
+    exportSha256: input.exportSha256,
+    exportErrorMessage: input.exportErrorMessage,
+    lastSyncAt: input.lastSyncAt,
+    nextRetryAt: input.nextRetryAt,
+  };
+
+  return prisma.secondaryAnalysisRun.upsert({
+    where: { idempotencyKey: input.idempotencyKey },
+    update: data,
+    create: {
+      ...data,
+      idempotencyKey: input.idempotencyKey,
+    },
+  });
+}
+
+export async function createSecondaryCallbackEvent(input: {
+  eventId: string;
+  secondaryRunId: string;
+  eventType: string;
+}) {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const existing = store.secondaryAnalysisCallbackEvents.find(
+      (item) => item.eventId === input.eventId,
+    );
+    if (existing) {
+      return { event: existing, created: false };
+    }
+    const event: SecondaryAnalysisCallbackEventRecord = {
+      id: createId("secondary_callback"),
+      ...input,
+      status: "PROCESSING",
+      errorMessage: null,
+      processedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    store.secondaryAnalysisCallbackEvents.push(event);
+    return { event, created: true };
+  }
+
+  const prisma = await getPrisma();
+  const existing = await prisma.secondaryAnalysisCallbackEvent.findUnique({
+    where: { eventId: input.eventId },
+  });
+  if (existing) {
+    return { event: existing, created: false };
+  }
+  return {
+    event: await prisma.secondaryAnalysisCallbackEvent.create({
+      data: { ...input, status: "PROCESSING" },
+    }),
+    created: true,
+  };
+}
+
+export async function updateSecondaryCallbackEvent(
+  eventId: string,
+  input: {
+    status: string;
+    errorMessage?: string | null;
+    processedAt?: Date | null;
+  },
+) {
+  if (getRuntimeMode() === "memory") {
+    const event = getMemoryStore().secondaryAnalysisCallbackEvents.find(
+      (item) => item.eventId === eventId,
+    );
+    if (!event) return null;
+    Object.assign(event, input, { updatedAt: new Date() });
+    return event;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.secondaryAnalysisCallbackEvent.update({
+    where: { eventId },
+    data: input,
   });
 }
 
