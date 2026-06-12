@@ -125,10 +125,7 @@ const EXTRACTION_EMAIL_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
   "work_email",
 ]);
 
-const EXTRACTION_YEAR_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
-  "year_of_birth",
-  "doctoral_graduation_time",
-]);
+const YEAR_OF_BIRTH_FIELD_KEY: InitialCvReviewFieldKey = "year_of_birth";
 
 const DOCTORAL_DEGREE_STATUS_OPTIONS = [
   "Yes,obtained",
@@ -277,7 +274,7 @@ function validateExtractionCorrectionFields(
     }
 
     if (
-      EXTRACTION_YEAR_FIELD_KEYS.has(row.key) &&
+      row.key === YEAR_OF_BIRTH_FIELD_KEY &&
       !/^\d{4}$/.test(value.trim())
     ) {
       errors[row.key] = `${row.label} must be a four-digit year.`;
@@ -806,9 +803,10 @@ function EditableExtractionReviewCard({
           | ChangeEvent<HTMLTextAreaElement>
           | ChangeEvent<HTMLSelectElement>,
       ) => {
-        const nextValue = EXTRACTION_YEAR_FIELD_KEYS.has(row.key)
-          ? event.currentTarget.value.replace(/\D/g, "").slice(0, 4)
-          : event.currentTarget.value;
+        const nextValue =
+          row.key === YEAR_OF_BIRTH_FIELD_KEY
+            ? event.currentTarget.value.replace(/\D/g, "").slice(0, 4)
+            : event.currentTarget.value;
 
         onDraftChange(nextValue);
       },
@@ -869,10 +867,8 @@ function EditableExtractionReviewCard({
       <input
         autoFocus
         type={EXTRACTION_EMAIL_FIELD_KEYS.has(row.key) ? "email" : "text"}
-        inputMode={
-          EXTRACTION_YEAR_FIELD_KEYS.has(row.key) ? "numeric" : undefined
-        }
-        maxLength={EXTRACTION_YEAR_FIELD_KEYS.has(row.key) ? 4 : undefined}
+        inputMode={row.key === YEAR_OF_BIRTH_FIELD_KEY ? "numeric" : undefined}
+        maxLength={row.key === YEAR_OF_BIRTH_FIELD_KEY ? 4 : undefined}
         className={inputClassName}
         onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
           if (event.key === "Enter") {
@@ -1501,7 +1497,7 @@ export function CvReviewExperience({
     const nextValue =
       activeExtractionField === "doctoral_degree_status"
         ? normalizeDoctoralDegreeStatus(value ?? extractionDraftValue)
-        : EXTRACTION_YEAR_FIELD_KEYS.has(activeExtractionField)
+        : activeExtractionField === YEAR_OF_BIRTH_FIELD_KEY
           ? (value ?? extractionDraftValue).replace(/\D/g, "").slice(0, 4)
           : (value ?? extractionDraftValue).trim();
 
@@ -1994,6 +1990,15 @@ export function CvReviewExperience({
                           when the CV package needs to stay bundled. Maximum 20
                           MB per file, or up to 100 MB for ZIP.
                         </p>
+                        {!uploadedResumeFile && !isUploadingResume ? (
+                          <p className="mt-3 text-left text-sm leading-6 text-[color:var(--foreground-soft)]">
+                            Please submit your most up-to-date CV to ensure
+                            accurate and complete information for the
+                            qualification review, and to avoid any adverse
+                            impact on the evaluation result due to outdated or
+                            incomplete information.
+                          </p>
+                        ) : null}
                       </div>
                     </label>
 

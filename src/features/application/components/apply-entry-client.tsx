@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 
 import {
@@ -48,11 +48,32 @@ const COMPETITIVE_PACKAGE_ITEMS = [
   'Title: the prestigious "National High-Level Talent" title.',
 ] as const;
 
-const ELIGIBILITY_RULES = [
-  "Ph.D. degree required.",
-  "Minimum of 3 consecutive years of work experience outside mainland China after obtaining the Ph.D.",
-  "For applicants over 40, a position equivalent to Associate Professor or higher is required.",
-] as const;
+const ELIGIBILITY_INTRO =
+  "Candidates should meet one of the following conditions:";
+
+const ELIGIBILITY_CATEGORY_A = {
+  title: "Category A — Doctoral Talent",
+  items: [
+    "Hold a doctoral degree (Ph.D.).",
+    "Have more than 3 years of overseas work experience.",
+    "No professional title requirement for applicants aged 40 or under (inclusive).",
+  ],
+  over40Title:
+    "For applicants over 40 years of age, one of the following is required:",
+  over40Items: [
+    "Associate professor or above at a university.",
+    "Mid-level or senior technical position in an enterprise.",
+  ],
+} as const;
+
+const ELIGIBILITY_CATEGORY_B = {
+  title: "Category B — Industry Leading Talent",
+  items: [
+    "Hold a bachelor's degree or above.",
+    "Have accumulated more than 10 years of work experience at Fortune Global 500 companies.",
+    "Currently hold a senior position in R&D or a technical field.",
+  ],
+} as const;
 
 const TIMELINE_ITEMS = [
   "Rolling Admissions: We accept applications year-round.",
@@ -81,7 +102,8 @@ const INTRO_SECTION_ITEMS = [
   {
     id: "eligibility",
     title: "Eligibility",
-    summary: "Check the minimum degree, experience, and role criteria.",
+    summary:
+      "Category A (doctoral talent) or Category B (industry leading talent).",
   },
   {
     id: "process",
@@ -105,6 +127,27 @@ const INTRO_SECTION_ITEMS = [
 
 type IntroSectionId = (typeof INTRO_SECTION_ITEMS)[number]["id"];
 
+const INTRO_SECTION_TRIGGER_CLASS =
+  "grid w-full grid-cols-[minmax(0,1fr)_2.5rem] items-start gap-3 px-5 py-5 text-left transition hover:bg-[color:var(--muted)]/55 sm:px-6";
+
+const INTRO_SECTION_PANEL_CLASS =
+  "w-full min-w-0 border-t border-[color:var(--border)] bg-[color:var(--muted)]/38 px-5 py-5 sm:px-6";
+
+function toggleIntroSection(
+  openSections: Set<IntroSectionId>,
+  sectionId: IntroSectionId,
+): Set<IntroSectionId> {
+  const next = new Set(openSections);
+
+  if (next.has(sectionId)) {
+    next.delete(sectionId);
+  } else {
+    next.add(sectionId);
+  }
+
+  return next;
+}
+
 export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -116,8 +159,9 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
-  const [activeSection, setActiveSection] =
-    useState<IntroSectionId>("overview");
+  const [openSections, setOpenSections] = useState<Set<IntroSectionId>>(
+    () => new Set(["overview"]),
+  );
   const hasTrackedPageView = useRef(false);
 
   usePageDurationTracking({
@@ -261,13 +305,43 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
         );
       case "eligibility":
         return (
-          <ol className="list-decimal space-y-3 pl-5 text-sm leading-7 text-[color:var(--foreground-soft)] marker:font-semibold">
-            {ELIGIBILITY_RULES.map((item) => (
-              <li key={item} className="pl-1">
-                {item}
-              </li>
-            ))}
-          </ol>
+          <div className="space-y-5 text-sm leading-7 text-[color:var(--foreground-soft)]">
+            <p>{ELIGIBILITY_INTRO}</p>
+
+            <div className="space-y-3">
+              <p className="font-semibold text-[color:var(--foreground)]">
+                {ELIGIBILITY_CATEGORY_A.title}
+              </p>
+              <ol className="list-decimal space-y-3 pl-5 marker:font-semibold">
+                {ELIGIBILITY_CATEGORY_A.items.map((item) => (
+                  <li key={item} className="pl-1">
+                    {item}
+                  </li>
+                ))}
+              </ol>
+              <p className="pl-5 font-medium text-[color:var(--foreground)]">
+                {ELIGIBILITY_CATEGORY_A.over40Title}
+              </p>
+              <ul className="list-disc space-y-2 pl-10">
+                {ELIGIBILITY_CATEGORY_A.over40Items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="space-y-3">
+              <p className="font-semibold text-[color:var(--foreground)]">
+                {ELIGIBILITY_CATEGORY_B.title}
+              </p>
+              <ol className="list-decimal space-y-3 pl-5 marker:font-semibold">
+                {ELIGIBILITY_CATEGORY_B.items.map((item) => (
+                  <li key={item} className="pl-1">
+                    {item}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
         );
       case "process":
         return (
@@ -469,19 +543,26 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
             </StatusBanner>
           ) : null}
 
-          <section className="overflow-hidden rounded-[1.75rem] border border-[color:var(--border)] bg-[color:var(--background-elevated)] shadow-[var(--shadow-card)]">
+          <section
+            className="overflow-hidden rounded-[1.75rem] border border-[color:var(--border)] bg-[color:var(--background-elevated)] shadow-[var(--shadow-card)]"
+            aria-label="Program introduction"
+          >
             <div className="divide-y divide-[color:var(--border)]">
               {INTRO_SECTION_ITEMS.map((section) => {
-                const isOpen = activeSection === section.id;
+                const isOpen = openSections.has(section.id);
+                const panelId = `apply-intro-panel-${section.id}`;
 
                 return (
                   <div key={section.id} className="bg-white/72">
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left transition hover:bg-[color:var(--muted)]/55 sm:px-6"
+                      id={`apply-intro-trigger-${section.id}`}
+                      className={INTRO_SECTION_TRIGGER_CLASS}
+                      aria-expanded={isOpen}
+                      aria-controls={panelId}
                       onClick={() =>
-                        setActiveSection((current) =>
-                          current === section.id ? current : section.id,
+                        setOpenSections((current) =>
+                          toggleIntroSection(current, section.id),
                         )
                       }
                     >
@@ -493,19 +574,41 @@ export function ApplyEntryClient({ token }: ApplyEntryClientProps) {
                           {section.summary}
                         </p>
                       </div>
-                      <ChevronRight
-                        className={cn(
-                          "h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200",
-                          isOpen ? "rotate-90 text-[color:var(--primary)]" : "",
-                        )}
+                      <span
+                        className="flex size-10 items-center justify-center self-start"
                         aria-hidden
-                      />
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "size-5 text-slate-400 transition-transform duration-200 ease-out motion-reduce:transition-none",
+                            isOpen
+                              ? "rotate-180 text-[color:var(--primary)]"
+                              : "",
+                          )}
+                        />
+                      </span>
                     </button>
-                    {isOpen ? (
-                      <div className="border-t border-[color:var(--border)] bg-[color:var(--muted)]/38 px-5 py-5 sm:px-6">
-                        {renderSectionContent(section.id)}
+                    <div
+                      id={panelId}
+                      role="region"
+                      aria-labelledby={`apply-intro-trigger-${section.id}`}
+                      aria-hidden={!isOpen}
+                      className={cn(
+                        "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+                        isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+                      )}
+                    >
+                      <div
+                        className="overflow-hidden"
+                        inert={!isOpen ? true : undefined}
+                      >
+                        <div className={INTRO_SECTION_PANEL_CLASS}>
+                          <div className="w-full min-w-0 max-w-none">
+                            {renderSectionContent(section.id)}
+                          </div>
+                        </div>
                       </div>
-                    ) : null}
+                    </div>
                   </div>
                 );
               })}
