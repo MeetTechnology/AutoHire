@@ -546,6 +546,31 @@ function isLiveMode() {
   );
 }
 
+export function isResumeAnalysisLiveMode() {
+  return isLiveMode();
+}
+
+/**
+ * Controls whether upload confirm auto-starts direct secondary (41-field) analysis.
+ * Explicit env wins; otherwise enabled only in live mode (mock skips upstream).
+ */
+export function isAutoSecondaryOnUploadEnabled() {
+  const env = getEnv();
+  const configured = env.RESUME_ANALYSIS_AUTO_SECONDARY_ON_UPLOAD
+    ?.trim()
+    .toLowerCase();
+
+  if (configured === "true" || configured === "1") {
+    return true;
+  }
+
+  if (configured === "false" || configured === "0") {
+    return false;
+  }
+
+  return isLiveMode();
+}
+
 /**
  * Parses `ResumeAnalysisJob.externalJobId` from resume-process upload / polling
  * into a positive integer job_id. Returns null for mock ids or non-numeric values.

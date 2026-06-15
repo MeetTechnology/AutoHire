@@ -14,6 +14,7 @@ import {
   listApplicationEvents,
   listFileUploadAttempts,
 } from "@/lib/data/store";
+import { resetEnvForTests } from "@/lib/env";
 import { refreshAnalysisState } from "@/lib/application/service";
 
 function resetMemoryStore() {
@@ -45,6 +46,9 @@ function buildAuthorizedRequest(url: string, init?: RequestInit) {
 describe("POST /api/applications/[applicationId]/resume", () => {
   beforeEach(() => {
     resetMemoryStore();
+    process.env.NODE_ENV = "test";
+    process.env.RESUME_ANALYSIS_AUTO_SECONDARY_ON_UPLOAD = "true";
+    resetEnvForTests();
   });
 
   it("stores uploaded CV before analysis starts", async () => {
@@ -80,6 +84,32 @@ describe("POST /api/applications/[applicationId]/resume", () => {
       triggerSource: "AUTO_UPLOAD",
       status: "pending",
     });
+  });
+
+  it("skips auto secondary when upload switch is disabled", async () => {
+    process.env.RESUME_ANALYSIS_AUTO_SECONDARY_ON_UPLOAD = "false";
+    resetEnvForTests();
+
+    const response = await resumePost(
+      buildAuthorizedRequest(
+        "http://localhost/api/applications/app_intro/resume",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uploadId: "upload_resume_no_auto_secondary",
+            fileName: "cv.pdf",
+            fileType: "application/pdf",
+            fileSize: 1500,
+            objectKey: "applications/app_intro/resume/cv.pdf",
+          }),
+        },
+      ),
+      { params: Promise.resolve({ applicationId: "app_intro" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await getLatestAutoSecondaryRun("app_intro")).toBeNull();
   });
 
   it("persists CV review identity on confirm", async () => {

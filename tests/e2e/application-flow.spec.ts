@@ -117,10 +117,9 @@ test("eligible resume flow can reach materials and submit", async ({
   await confirmExtractedCvInformation(page);
 
   await expect(
-    page.getByText("Initial CV review passed", {
-      exact: true,
-    }),
+    page.getByRole("heading", { name: "Preliminary Assessment Result" }),
   ).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("Eligible", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Start detailed|Start Detailed/i }),
   ).toHaveCount(0);
@@ -166,10 +165,9 @@ test("insufficient info flow supports supplemental fields", async ({
     .click();
 
   await expect(
-    page.getByText("Initial CV review passed", {
-      exact: true,
-    }),
+    page.getByRole("heading", { name: "Preliminary Assessment Result" }),
   ).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("Eligible", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Start detailed|Start Detailed/i }),
   ).toHaveCount(0);
@@ -197,10 +195,9 @@ test("eligible review with corrected required contact field can continue to mate
   });
 
   await expect(
-    page.getByText("Initial CV review passed", {
-      exact: true,
-    }),
+    page.getByRole("heading", { name: "Preliminary Assessment Result" }),
   ).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText("Eligible", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: /Complete your contact details to continue/i,

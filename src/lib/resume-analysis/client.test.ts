@@ -41,6 +41,36 @@ describe("resume analysis adapter", () => {
     expect(job.externalJobId).toContain("eligible");
   });
 
+  it("defaults auto secondary on upload to live mode only", async () => {
+    const { isAutoSecondaryOnUploadEnabled } = await loadClient({
+      RESUME_ANALYSIS_MODE: "mock",
+    });
+    expect(isAutoSecondaryOnUploadEnabled()).toBe(false);
+
+    const liveClient = await loadClient({
+      RESUME_ANALYSIS_MODE: "live",
+      RESUME_ANALYSIS_BASE_URL: "http://resume.test/api/v1",
+      RESUME_ANALYSIS_API_KEY: "secret",
+    });
+    expect(liveClient.isAutoSecondaryOnUploadEnabled()).toBe(true);
+  });
+
+  it("honors explicit auto secondary on upload override", async () => {
+    const enabledInMock = await loadClient({
+      RESUME_ANALYSIS_MODE: "mock",
+      RESUME_ANALYSIS_AUTO_SECONDARY_ON_UPLOAD: "true",
+    });
+    expect(enabledInMock.isAutoSecondaryOnUploadEnabled()).toBe(true);
+
+    const disabledInLive = await loadClient({
+      RESUME_ANALYSIS_MODE: "live",
+      RESUME_ANALYSIS_BASE_URL: "http://resume.test/api/v1",
+      RESUME_ANALYSIS_API_KEY: "secret",
+      RESUME_ANALYSIS_AUTO_SECONDARY_ON_UPLOAD: "false",
+    });
+    expect(disabledInLive.isAutoSecondaryOnUploadEnabled()).toBe(false);
+  });
+
   it("returns missing fields for insufficient info scenarios", async () => {
     const { getResumeAnalysisResult } = await loadClient({
       RESUME_ANALYSIS_MODE: "mock",

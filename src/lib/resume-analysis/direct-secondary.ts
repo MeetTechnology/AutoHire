@@ -23,6 +23,7 @@ import {
   createDirectSecondaryRun,
   downloadDirectSecondaryExport,
   getDirectSecondaryRun,
+  isAutoSecondaryOnUploadEnabled,
   ResumeAnalysisError,
   type DirectSecondaryRunResponse,
 } from "@/lib/resume-analysis/client";
@@ -257,6 +258,10 @@ async function persistRunPayload(input: {
 }
 
 export async function startAutoSecondaryForResume(resumeFileId: string) {
+  if (!isAutoSecondaryOnUploadEnabled()) {
+    return null;
+  }
+
   const resumeFile = await getResumeFileById(resumeFileId);
   if (!resumeFile) return null;
   const application = await getApplicationById(resumeFile.applicationId);
@@ -331,6 +336,10 @@ export async function startAutoSecondaryForResume(resumeFileId: string) {
 }
 
 export async function syncAutoSecondaryForApplication(applicationId: string) {
+  if (!isAutoSecondaryOnUploadEnabled()) {
+    return null;
+  }
+
   let run = await getLatestAutoSecondaryRun(applicationId);
   if (!run) return null;
   if (run.status === "create_failed_permanent") return run;

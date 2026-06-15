@@ -12,6 +12,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   type MutableRefObject,
+  type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -34,6 +35,7 @@ import {
   StatusBanner,
   getInputClassName,
 } from "@/components/ui/page-shell";
+import { MarkdownProse } from "@/components/ui/markdown-prose";
 import {
   confirmResumeUpload,
   confirmResumeExtraction,
@@ -76,6 +78,7 @@ import {
 } from "@/lib/tracking/client";
 import type { TrackingPageName, TrackingStepName } from "@/lib/tracking/types";
 import { usePageDurationTracking } from "@/lib/tracking/use-page-duration-tracking";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 type SupplementalFormValues = Record<string, string>;
@@ -211,6 +214,47 @@ function isMissingExtractionValue(value: string) {
   const trimmed = value.trim();
 
   return !trimmed || /^!!!\s*null\s*!!!$/i.test(trimmed);
+}
+
+const extractionFieldMarkdownClassName =
+  "max-w-none break-words text-[color:var(--foreground-soft)] [&_p]:mb-2 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ol]:my-2 [&_ul:last-child]:mb-0 [&_ol:last-child]:mb-0";
+
+function ExtractionFieldDisplayValue({
+  fieldKey,
+  value,
+  className,
+}: {
+  fieldKey: InitialCvReviewFieldKey;
+  value: string;
+  className?: string;
+}) {
+  if (isMissingExtractionValue(value)) {
+    return (
+      <span
+        className={cn(
+          "text-[color:var(--muted-foreground)]",
+          className,
+        )}
+      >
+        Not provided
+      </span>
+    );
+  }
+
+  if (EXTRACTION_MULTILINE_FIELD_KEYS.has(fieldKey)) {
+    return (
+      <MarkdownProse
+        markdown={value}
+        className={cn(extractionFieldMarkdownClassName, className)}
+      />
+    );
+  }
+
+  return (
+    <span className={cn("break-words whitespace-pre-wrap", className)}>
+      {value}
+    </span>
+  );
 }
 
 function includesRecognizedGraduationYear(value: string) {
@@ -660,13 +704,7 @@ function getInitialBanner(
   }
 
   if (snapshot.applicationStatus === "ELIGIBLE") {
-    return (
-      <StatusBanner
-        tone="success"
-        title="Initial CV review passed"
-        description="Continue to Additional Information to upload supporting materials."
-      />
-    );
+    return null;
   }
 
   if (snapshot.applicationStatus === "SECONDARY_ANALYZING") {
@@ -737,7 +775,10 @@ function InitialCvReviewExtractCard({
                     {row.label}
                   </th>
                   <td className="px-4 py-3 text-sm break-words whitespace-normal text-[color:var(--foreground-soft)]">
-                    {value ? value : "Not provided"}
+                    <ExtractionFieldDisplayValue
+                      fieldKey={row.key}
+                      value={value}
+                    />
                   </td>
                 </tr>
               );
@@ -902,9 +943,7 @@ function EditableExtractionReviewCard({
                   row.key === "doctoral_graduation_time" &&
                   doctoralGraduationLocked
                     ? "none"
-                    : isMissingExtractionValue(value)
-                      ? "Not provided"
-                      : value;
+                    : value;
 
                 return (
                   <tr
@@ -938,9 +977,11 @@ function EditableExtractionReviewCard({
                           )}
                         </div>
                       ) : isReadonly ? (
-                        <span className="block break-words whitespace-pre-wrap text-[color:var(--muted-foreground)]">
-                          {displayValue}
-                        </span>
+                        <ExtractionFieldDisplayValue
+                          fieldKey={row.key}
+                          value={displayValue}
+                          className="block text-[color:var(--muted-foreground)]"
+                        />
                       ) : (
                         <button
                           type="button"
@@ -954,9 +995,10 @@ function EditableExtractionReviewCard({
                               : "text-[color:var(--foreground-soft)]",
                           )}
                         >
-                          <span className="break-words whitespace-pre-wrap">
-                            {displayValue}
-                          </span>
+                          <ExtractionFieldDisplayValue
+                            fieldKey={row.key}
+                            value={displayValue}
+                          />
                           <span className="ml-2 text-xs font-medium text-[color:var(--muted-foreground)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
                             Edit
                           </span>
@@ -992,6 +1034,149 @@ function EditableExtractionReviewCard({
           </ActionButton>
         </div>
       </div>
+    </SectionCard>
+  );
+}
+
+function PreliminaryAssessmentResultBody({
+  statusBadge,
+  description,
+  extraNote,
+  appearance = "default",
+}: {
+  statusBadge: ReactNode;
+  description: string;
+  extraNote?: string | null;
+  /** `success` matches Submission Complete: emerald panel typography. */
+  appearance?: "default" | "success";
+}) {
+  const isSuccessPanel = appearance === "success";
+
+  return (
+    <div
+      className={cn(
+        "border-l-2 pl-4",
+        isSuccessPanel ? "border-emerald-300" : "border-[color:var(--border)]",
+      )}
+    >
+      <div className="flex flex-col gap-3">
+        <h2
+          className={cn(
+            "text-base font-semibold tracking-[-0.02em]",
+            isSuccessPanel ? "text-emerald-950" : "text-[color:var(--primary)]",
+          )}
+        >
+          Preliminary Assessment Result
+        </h2>
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className={cn(
+              "text-sm",
+              isSuccessPanel
+                ? "text-emerald-800"
+                : "text-[color:var(--foreground-soft)]",
+            )}
+          >
+            Status:
+          </span>
+          {statusBadge}
+        </div>
+        <p
+          className={cn(
+            "text-sm leading-6",
+            isSuccessPanel
+              ? "text-emerald-950/90"
+              : "text-[color:var(--foreground-soft)]",
+          )}
+        >
+          {description}
+        </p>
+        {extraNote ? (
+          <p
+            className={cn(
+              "text-sm leading-6",
+              isSuccessPanel
+                ? "text-emerald-900/85"
+                : "text-[color:var(--muted-foreground)]",
+            )}
+          >
+            {extraNote}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function InitialCvReviewDeterminationCard({
+  snapshot,
+}: {
+  snapshot: ApplicationSnapshot;
+}) {
+  const latest = snapshot.latestResult;
+  const displaySummary = latest?.displaySummary ?? null;
+  const reasonText = latest?.reasonText ?? null;
+  const { eligibilityResult } = snapshot;
+
+  if (eligibilityResult === "INELIGIBLE") {
+    const description =
+      displaySummary ??
+      "This submission does not meet the published requirements for the current review stage.";
+    return (
+      <SectionCard>
+        <PreliminaryAssessmentResultBody
+          statusBadge={<Badge variant="destructive">Not eligible</Badge>}
+          description={description}
+          extraNote={reasonText}
+        />
+      </SectionCard>
+    );
+  }
+
+  if (
+    eligibilityResult === "INSUFFICIENT_INFO" ||
+    snapshot.applicationStatus === "INFO_REQUIRED"
+  ) {
+    return null;
+  }
+
+  if (eligibilityResult === "ELIGIBLE") {
+    const primary =
+      reasonText ??
+      displaySummary ??
+      "Your profile meets the basic application requirements for this talent program. Please proceed to the next step to provide the required documents.";
+    const secondary =
+      reasonText &&
+      displaySummary &&
+      displaySummary.trim() !== reasonText.trim()
+        ? displaySummary
+        : null;
+
+    return (
+      <SectionCard className="border-emerald-200 bg-emerald-50">
+        <PreliminaryAssessmentResultBody
+          appearance="success"
+          statusBadge={<Badge variant="success">Eligible</Badge>}
+          description={primary}
+          extraNote={secondary}
+        />
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard>
+      <PreliminaryAssessmentResultBody
+        statusBadge={<Badge variant="outline">Outcome</Badge>}
+        description={
+          displaySummary ??
+          "Initial CV review returned an outcome. Review the extract and any messages above."
+        }
+      />
     </SectionCard>
   );
 }
@@ -2104,6 +2289,10 @@ export function CvReviewExperience({
                   onCommitEdit={handleCommitExtractionFieldEdit}
                   onConfirm={handleConfirmExtraction}
                 />
+              ) : null}
+
+              {snapshot.latestResult ? (
+                <InitialCvReviewDeterminationCard snapshot={snapshot} />
               ) : null}
 
               {snapshot.latestResult?.reasonText &&
