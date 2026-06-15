@@ -20,8 +20,10 @@ import { useForm } from "react-hook-form";
 import type { MissingField } from "@/features/analysis/types";
 import {
   buildInitialCvReviewExtractionText,
+  formatInitialCvReviewDisplayValue,
   getInitialCvReviewFieldValue,
   hasInitialCvReviewExtract,
+  INITIAL_CV_REVIEW_EDITABLE_FIELD_KEYS,
   INITIAL_CV_REVIEW_FIELD_ROWS,
   type InitialCvReviewFieldKey,
 } from "@/features/analysis/initial-cv-review-extract";
@@ -109,9 +111,15 @@ type CvReviewExperienceProps = {
   trackingPageName?: Extract<TrackingPageName, "apply_resume" | "apply_result">;
 };
 
-const EXTRACTION_READONLY_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
-  "name",
-]);
+const EXTRACTION_EDITABLE_FIELD_KEYS = new Set<InitialCvReviewFieldKey>(
+  INITIAL_CV_REVIEW_EDITABLE_FIELD_KEYS,
+);
+
+const EXTRACTION_READONLY_FIELD_KEYS = new Set<InitialCvReviewFieldKey>(
+  INITIAL_CV_REVIEW_FIELD_ROWS.map((row) => row.key).filter(
+    (key) => !EXTRACTION_EDITABLE_FIELD_KEYS.has(key),
+  ),
+);
 
 const EXTRACTION_OPTIONAL_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
   "work_email",
@@ -119,8 +127,19 @@ const EXTRACTION_OPTIONAL_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
 ]);
 
 const EXTRACTION_MULTILINE_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
+  "education_history",
+  "doctoral_degree_institution_country_region",
+  "current_raw_title",
+  "current_country_of_employment",
+  "current_employment_nature",
   "work_experience_2020_present",
+  "complete_overseas_work_experience_timeline",
+  "overseas_enterprise_work_experience_timeline",
+  "postdoctoral_experience_timeline",
+  "overseas_postdoctoral_experience_timeline",
+  "work_experience_date_ambiguity_notes",
   "research_area",
+  "applied_industrial_relevance",
 ]);
 
 const EXTRACTION_EMAIL_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
@@ -131,12 +150,12 @@ const EXTRACTION_EMAIL_FIELD_KEYS = new Set<InitialCvReviewFieldKey>([
 const YEAR_OF_BIRTH_FIELD_KEY: InitialCvReviewFieldKey = "year_of_birth";
 
 const DOCTORAL_DEGREE_STATUS_OPTIONS = [
-  "Yes,obtained",
+  "Yes, obtained",
   "In progress/Candidate",
-  "No,highest is Master's/Bachelor's",
+  "No, highest is Master's/Bachelor's",
 ] as const;
 
-const DOCTORAL_DEGREE_NO_STATUS = "No,highest is Master's/Bachelor's";
+const DOCTORAL_DEGREE_NO_STATUS = "No, highest is Master's/Bachelor's";
 
 function normalizeDoctoralDegreeStatus(value: string) {
   const normalized = value.trim().toLowerCase();
@@ -146,13 +165,14 @@ function normalizeDoctoralDegreeStatus(value: string) {
   }
 
   if (
+    normalized === "yes, obtained" ||
     normalized === "yes,obtained" ||
     normalized === "obtained" ||
     normalized === "doctorate completed" ||
     normalized.includes("obtained") ||
     normalized.includes("completed")
   ) {
-    return "Yes,obtained";
+    return "Yes, obtained";
   }
 
   if (
@@ -167,6 +187,7 @@ function normalizeDoctoralDegreeStatus(value: string) {
   }
 
   if (
+    normalized === "no, highest is master's/bachelor's" ||
     normalized === "no,highest is master's/bachelor's" ||
     normalized.includes("not obtained") ||
     normalized.includes("master") ||
@@ -241,10 +262,12 @@ function ExtractionFieldDisplayValue({
     );
   }
 
+  const displayValue = formatInitialCvReviewDisplayValue(value);
+
   if (EXTRACTION_MULTILINE_FIELD_KEYS.has(fieldKey)) {
     return (
       <MarkdownProse
-        markdown={value}
+        markdown={displayValue}
         className={cn(extractionFieldMarkdownClassName, className)}
       />
     );
@@ -252,7 +275,7 @@ function ExtractionFieldDisplayValue({
 
   return (
     <span className={cn("break-words whitespace-pre-wrap", className)}>
-      {value}
+      {displayValue}
     </span>
   );
 }
@@ -1168,17 +1191,7 @@ function InitialCvReviewDeterminationCard({
     );
   }
 
-  return (
-    <SectionCard>
-      <PreliminaryAssessmentResultBody
-        statusBadge={<Badge variant="outline">Outcome</Badge>}
-        description={
-          displaySummary ??
-          "Initial CV review returned an outcome. Review the extract and any messages above."
-        }
-      />
-    </SectionCard>
-  );
+  return null;
 }
 
 export function CvReviewExperience({
@@ -1714,6 +1727,7 @@ export function CvReviewExperience({
       return;
     }
 
+    const extractionReview = snapshot.latestExtractionReview;
     const normalizedCorrectionFields = normalizeExtractionCorrectionFields(
       extractionCorrectionFields,
     );
@@ -1747,7 +1761,10 @@ export function CvReviewExperience({
         });
         await confirmResumeExtraction(snapshot.applicationId, {
           extractionRawResponse: buildInitialCvReviewExtractionText(
-            normalizedCorrectionFields,
+            {
+              ...extractionReview.extractedFields,
+              ...normalizedCorrectionFields,
+            },
           ),
         });
         setSnapshot((current) =>
@@ -2291,7 +2308,11 @@ export function CvReviewExperience({
                 />
               ) : null}
 
-              {snapshot.latestResult ? (
+              {snapshot.latestResult &&
+              (snapshot.eligibilityResult === "ELIGIBLE" ||
+                snapshot.eligibilityResult === "INELIGIBLE") &&
+              !showUploadState &&
+              !isAnalyzingStage ? (
                 <InitialCvReviewDeterminationCard snapshot={snapshot} />
               ) : null}
 

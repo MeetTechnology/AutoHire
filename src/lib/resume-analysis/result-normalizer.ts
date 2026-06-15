@@ -1,6 +1,6 @@
 import type { MissingField } from "@/features/analysis/types";
 import {
-  INITIAL_CV_REVIEW_CONTACT_FIELD_KEYS,
+  ALL_CV_EXTRACTION_FIELD_ROWS,
   INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS,
 } from "@/features/analysis/initial-cv-review-extract";
 import type { EligibilityResult } from "@/features/application/types";
@@ -42,19 +42,191 @@ const INSUFFICIENT_INFO_SUMMARY_EN =
 const NEW_CONTRACT_SECTION_1 = "### 1. Extracted Information";
 const NEW_CONTRACT_SECTION_3 = "### 3. Determination Result";
 
-const INITIAL_CV_REVIEW_TEN_KEYS = [
-  ...INITIAL_CV_REVIEW_CONTACT_FIELD_KEYS,
-  ...INITIAL_CV_REVIEW_CRITICAL_FIELD_KEYS,
-] as const;
+const INITIAL_CV_REVIEW_FIELD_KEYS = ALL_CV_EXTRACTION_FIELD_ROWS.map(
+  (row) => row.key,
+);
+
+const INITIAL_CV_REVIEW_FIELD_ALIASES: Record<string, string> = {
+  "Current Country of Employment": "current_country_of_employment",
+  "Current Job Country": "current_country_of_employment",
+  "Work Experience (2020-Present)": "work_experience_2020_present",
+  "Work Experience (2020–present)": "work_experience_2020_present",
+};
 
 const BYPASS_POSTDOC_PREFIX =
   "Only eligible to apply as an overseas postdoctoral researcher coming to work in China";
 const BYPASS_YOUNG_RESEARCHER_PREFIX =
   "Only eligible to apply as an overseas young researcher coming to China for postdoctoral work";
+const BYPASS_POSTDOC_SPECIAL_TRACK_PREFIX =
+  "Only eligible for the Postdoctoral Special Track: Overseas postdoctoral researchers returning to China for work";
+const BYPASS_YOUNG_RESEARCHER_SPECIAL_TRACK_PREFIX =
+  "Only eligible for the Postdoctoral Special Track: Overseas doctoral graduates returning to China to conduct postdoctoral research";
+const BYPASS_YOUNG_RESEARCHER_SPECIAL_TRACK_TYPO_PREFIX =
+  "Only eligible for or the Postdoctoral Special Track: Overseas doctoral graduates returning to China to conduct postdoctoral research";
 const MISSING_CRITICAL_PREFIX =
   "Cannot make a final determination due to missing critical information";
 const BORDERLINE_BIRTH_PREFIX =
   "Cannot make a final determination. The exact birth year is missing";
+const BORDERLINE_BIRTH_INFERRED_PREFIX =
+  "Cannot determine due to borderline inferred birth year";
+const AMBIGUOUS_WORK_EXPERIENCE_PREFIX =
+  "Cannot determine due to ambiguous work-experience dates";
+const INELIGIBLE_SPECIAL_TRACK_AMBIGUOUS_PREFIX =
+  "Not eligible, but special-track eligibility cannot be determined due to ambiguous work-experience dates";
+
+function isBorderlineBirthDetermination(trimmedFormal: string) {
+  return (
+    trimmedFormal.startsWith(BORDERLINE_BIRTH_PREFIX) ||
+    trimmedFormal.startsWith(BORDERLINE_BIRTH_INFERRED_PREFIX)
+  );
+}
+
+function isPostdocBypassDetermination(trimmedFormal: string) {
+  return (
+    trimmedFormal.startsWith(BYPASS_POSTDOC_PREFIX) ||
+    trimmedFormal.startsWith(BYPASS_YOUNG_RESEARCHER_PREFIX) ||
+    trimmedFormal.startsWith(BYPASS_POSTDOC_SPECIAL_TRACK_PREFIX) ||
+    trimmedFormal.startsWith(BYPASS_YOUNG_RESEARCHER_SPECIAL_TRACK_PREFIX) ||
+    trimmedFormal.startsWith(BYPASS_YOUNG_RESEARCHER_SPECIAL_TRACK_TYPO_PREFIX)
+  );
+}
+
+function buildBorderlineBirthDecision(
+  trimmedFormal: string,
+  extractedFields: Record<string, unknown>,
+  rawReasoning: string | null,
+): ParsedDecision {
+  return {
+    eligibilityResult: "INSUFFICIENT_INFO",
+    displaySummary: trimmedFormal,
+    reasonText: trimmedFormal,
+    missingFields: buildMissingFieldsFromItemNames(["Year of Birth"]),
+    extractedFields,
+    rawReasoning,
+  };
+}
+
+function buildAmbiguousWorkExperienceDecision(
+  trimmedFormal: string,
+  extractedFields: Record<string, unknown>,
+  rawReasoning: string | null,
+): ParsedDecision | null {
+  if (!trimmedFormal.startsWith(AMBIGUOUS_WORK_EXPERIENCE_PREFIX)) {
+    return null;
+  }
+
+  return {
+    eligibilityResult: "INSUFFICIENT_INFO",
+    displaySummary: trimmedFormal,
+    reasonText: trimmedFormal,
+    missingFields: buildMissingFieldsFromItemNames([
+      "Work Experience (2020-Present)",
+    ]),
+    extractedFields,
+    rawReasoning,
+  };
+}
+
+function parseFormalDeterminationBlock(input: {
+  trimmedFormal: string;
+  extractedFields: Record<string, unknown>;
+  rawReasoning: string | null;
+  inferredMissingItemNames?: string[];
+}): ParsedDecision | null {
+  const {
+    trimmedFormal,
+    extractedFields,
+    rawReasoning,
+    inferredMissingItemNames = [],
+  } = input;
+
+  if (trimmedFormal.startsWith(MISSING_CRITICAL_PREFIX)) {
+    let names = parseMissingFieldNamesAfterMarker(trimmedFormal);
+
+    if (names.length === 0) {
+      names = inferredMissingItemNames;
+    }
+
+    return {
+      eligibilityResult: "INSUFFICIENT_INFO",
+      displaySummary: trimmedFormal,
+      reasonText: trimmedFormal,
+      missingFields: buildMissingFieldsFromItemNames(names),
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  if (isBorderlineBirthDetermination(trimmedFormal)) {
+    return buildBorderlineBirthDecision(
+      trimmedFormal,
+      extractedFields,
+      rawReasoning,
+    );
+  }
+
+  const ambiguousWorkExperience = buildAmbiguousWorkExperienceDecision(
+    trimmedFormal,
+    extractedFields,
+    rawReasoning,
+  );
+
+  if (ambiguousWorkExperience) {
+    return ambiguousWorkExperience;
+  }
+
+  if (trimmedFormal.startsWith(INELIGIBLE_SPECIAL_TRACK_AMBIGUOUS_PREFIX)) {
+    return {
+      eligibilityResult: "INELIGIBLE",
+      displaySummary: INELIGIBLE_SUMMARY_EN,
+      reasonText: trimmedFormal,
+      missingFields: [],
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  if (isPostdocBypassDetermination(trimmedFormal)) {
+    return {
+      eligibilityResult: "ELIGIBLE",
+      displaySummary: ELIGIBLE_SUMMARY_EN,
+      reasonText: trimmedFormal,
+      missingFields: [],
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  if (
+    trimmedFormal.includes(ELIGIBLE_SENTENCE_EN) ||
+    trimmedFormal.includes(ELIGIBLE_SENTENCE_CN)
+  ) {
+    return {
+      eligibilityResult: "ELIGIBLE",
+      displaySummary: ELIGIBLE_SUMMARY_EN,
+      reasonText: null,
+      missingFields: [],
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  if (
+    trimmedFormal.includes(INELIGIBLE_MARKER_EN) ||
+    trimmedFormal.includes(INELIGIBLE_SENTENCE_CN)
+  ) {
+    return {
+      eligibilityResult: "INELIGIBLE",
+      displaySummary: INELIGIBLE_SUMMARY_EN,
+      reasonText: extractIneligibleReason(trimmedFormal),
+      missingFields: [],
+      extractedFields,
+      rawReasoning,
+    };
+  }
+
+  return null;
+}
 
 function isNewThreeStepContractText(text: string) {
   return (
@@ -106,53 +278,49 @@ function parseExtractedInformationSection(
     return {};
   }
 
-  const patterns: Array<{ key: string; re: RegExp }> = [
-    { key: "name", re: /^-\s*Name:\s*(.+)$/gim },
-    { key: "personal_email", re: /^-\s*Personal Email:\s*(.+)$/gim },
-    { key: "work_email", re: /^-\s*Work Email:\s*(.+)$/gim },
-    { key: "phone_number", re: /^-\s*Phone Number:\s*(.+)$/gim },
-    { key: "year_of_birth", re: /^-\s*Year of Birth:\s*(.+)$/gim },
-    {
-      key: "doctoral_degree_status",
-      re: /^-\s*Doctoral Degree Status:\s*(.+)$/gim,
-    },
-    {
-      key: "doctoral_graduation_time",
-      re: /^-\s*Doctoral Graduation Time:\s*(.+)$/gim,
-    },
-    {
-      key: "current_title_equivalence",
-      re: /^-\s*Current Title Equivalence:\s*(.+)$/gim,
-    },
-    {
-      key: "current_country_of_employment",
-      re: /^-\s*Current Country of Employment:\s*(.+)$/gim,
-    },
-    {
-      key: "current_country_of_employment",
-      re: /^-\s*Current Job Country:\s*(.+)$/gim,
-    },
-    {
-      key: "work_experience_2020_present",
-      re: /^-\s*Work Experience \(2020-Present\):\s*(.+)$/gim,
-    },
-    { key: "research_area", re: /^-\s*Research Area:\s*(.+)$/gim },
-  ];
+  const fieldKeyByLabel = new Map<string, string>(
+    ALL_CV_EXTRACTION_FIELD_ROWS.map((row) => [row.label, row.key]),
+  );
+  for (const [label, key] of Object.entries(INITIAL_CV_REVIEW_FIELD_ALIASES)) {
+    fieldKeyByLabel.set(label, key);
+  }
 
   const out: Record<string, string> = {};
-
-  for (const key of INITIAL_CV_REVIEW_TEN_KEYS) {
+  for (const key of INITIAL_CV_REVIEW_FIELD_KEYS) {
     out[key] = "";
   }
 
-  for (const { key, re } of patterns) {
-    re.lastIndex = 0;
-    const match = re.exec(body);
+  let activeKey: string | null = null;
+  let activeLines: string[] = [];
 
-    if (match?.[1] && !out[key]) {
-      out[key] = normalizeInitialCvReviewRawValue(match[1]);
+  const commitActiveField = () => {
+    if (activeKey && !out[activeKey]) {
+      out[activeKey] = normalizeInitialCvReviewRawValue(
+        activeLines.join("\n").trim(),
+      );
+    }
+    activeKey = null;
+    activeLines = [];
+  };
+
+  for (const line of body.split(/\r?\n/)) {
+    const fieldMatch = line.match(/^-\s*([^:\n]+):\s*(.*)$/);
+    const matchedKey = fieldMatch
+      ? fieldKeyByLabel.get(fieldMatch[1].trim())
+      : undefined;
+
+    if (matchedKey) {
+      commitActiveField();
+      activeKey = matchedKey;
+      activeLines = fieldMatch?.[2] ? [fieldMatch[2]] : [];
+      continue;
+    }
+
+    if (activeKey) {
+      activeLines.push(line);
     }
   }
+  commitActiveField();
 
   return out;
 }
@@ -215,7 +383,7 @@ function parseNewThreeStepContract(
   const fromSection1 = parseExtractedInformationSection(text);
   const tenFieldLayer: Record<string, unknown> = {};
 
-  for (const key of INITIAL_CV_REVIEW_TEN_KEYS) {
+  for (const key of INITIAL_CV_REVIEW_FIELD_KEYS) {
     tenFieldLayer[key] = fromSection1[key] ?? "";
   }
 
@@ -234,79 +402,17 @@ function parseNewThreeStepContract(
   }
 
   const trimmedFormal = formalResult.trim();
+  const parsed = parseFormalDeterminationBlock({
+    trimmedFormal,
+    extractedFields,
+    rawReasoning,
+    inferredMissingItemNames: inferMissingItemNamesFromCriticalFields(
+      fromSection1 as Record<string, string>,
+    ),
+  });
 
-  if (trimmedFormal.startsWith(MISSING_CRITICAL_PREFIX)) {
-    let names = parseMissingFieldNamesAfterMarker(trimmedFormal);
-
-    if (names.length === 0) {
-      names = inferMissingItemNamesFromCriticalFields(
-        fromSection1 as Record<string, string>,
-      );
-    }
-
-    return {
-      eligibilityResult: "INSUFFICIENT_INFO",
-      displaySummary: trimmedFormal,
-      reasonText: trimmedFormal,
-      missingFields: buildMissingFieldsFromItemNames(names),
-      extractedFields,
-      rawReasoning,
-    };
-  }
-
-  if (trimmedFormal.startsWith(BORDERLINE_BIRTH_PREFIX)) {
-    return {
-      eligibilityResult: "INSUFFICIENT_INFO",
-      displaySummary: trimmedFormal,
-      reasonText: trimmedFormal,
-      missingFields: buildMissingFieldsFromItemNames(["Year of Birth"]),
-      extractedFields,
-      rawReasoning,
-    };
-  }
-
-  if (
-    trimmedFormal.startsWith(BYPASS_POSTDOC_PREFIX) ||
-    trimmedFormal.startsWith(BYPASS_YOUNG_RESEARCHER_PREFIX)
-  ) {
-    return {
-      eligibilityResult: "ELIGIBLE",
-      displaySummary: ELIGIBLE_SUMMARY_EN,
-      reasonText: trimmedFormal,
-      missingFields: [],
-      extractedFields,
-      rawReasoning,
-    };
-  }
-
-  const eligible =
-    trimmedFormal.includes(ELIGIBLE_SENTENCE_EN) ||
-    trimmedFormal.includes(ELIGIBLE_SENTENCE_CN);
-
-  if (eligible) {
-    return {
-      eligibilityResult: "ELIGIBLE",
-      displaySummary: ELIGIBLE_SUMMARY_EN,
-      reasonText: null,
-      missingFields: [],
-      extractedFields,
-      rawReasoning,
-    };
-  }
-
-  const ineligible =
-    trimmedFormal.includes(INELIGIBLE_MARKER_EN) ||
-    trimmedFormal.includes(INELIGIBLE_SENTENCE_CN);
-
-  if (ineligible) {
-    return {
-      eligibilityResult: "INELIGIBLE",
-      displaySummary: INELIGIBLE_SUMMARY_EN,
-      reasonText: extractIneligibleReason(trimmedFormal),
-      missingFields: [],
-      extractedFields,
-      rawReasoning,
-    };
+  if (parsed) {
+    return parsed;
   }
 
   throw new Error(
@@ -424,12 +530,42 @@ function normalizeExtractedFieldKeys(record: Record<string, unknown>) {
       normalized,
       "current_country_of_employment",
     ) &&
+    Object.prototype.hasOwnProperty.call(
+      normalized,
+      "current_employment_country_region",
+    )
+  ) {
+    normalized.current_country_of_employment =
+      normalized.current_employment_country_region;
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      normalized,
+      "current_country_of_employment",
+    ) &&
     Object.prototype.hasOwnProperty.call(normalized, "current_job_country")
   ) {
     normalized.current_country_of_employment = normalized.current_job_country;
   }
 
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      normalized,
+      "work_experience_2020_present",
+    ) &&
+    Object.prototype.hasOwnProperty.call(
+      normalized,
+      "complete_work_experience_timeline",
+    )
+  ) {
+    normalized.work_experience_2020_present =
+      normalized.complete_work_experience_timeline;
+  }
+
+  delete normalized.current_employment_country_region;
   delete normalized.current_job_country;
+  delete normalized.complete_work_experience_timeline;
 
   return normalized;
 }
@@ -473,34 +609,20 @@ function buildDecisionFromText(
     };
   }
 
-  const eligible =
-    formalResult?.includes(ELIGIBLE_SENTENCE_EN) ||
-    formalResult?.includes(ELIGIBLE_SENTENCE_CN);
+  const trimmedFormal = formalResult?.trim();
 
-  if (eligible) {
-    return {
-      eligibilityResult: "ELIGIBLE" as const,
-      displaySummary: ELIGIBLE_SUMMARY_EN,
-      reasonText: null,
-      missingFields: [],
-      extractedFields,
-      rawReasoning,
-    };
+  if (!trimmedFormal) {
+    throw new Error("Unrecognized first-pass analysis result format.");
   }
 
-  const ineligible =
-    formalResult?.includes(INELIGIBLE_MARKER_EN) ||
-    formalResult?.includes(INELIGIBLE_SENTENCE_CN);
+  const parsed = parseFormalDeterminationBlock({
+    trimmedFormal,
+    extractedFields,
+    rawReasoning,
+  });
 
-  if (ineligible) {
-    return {
-      eligibilityResult: "INELIGIBLE" as const,
-      displaySummary: INELIGIBLE_SUMMARY_EN,
-      reasonText: extractIneligibleReason(formalResult ?? ""),
-      missingFields: [],
-      extractedFields,
-      rawReasoning,
-    };
+  if (parsed) {
+    return parsed;
   }
 
   throw new Error("Unrecognized first-pass analysis result format.");

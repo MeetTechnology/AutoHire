@@ -552,6 +552,12 @@ export async function confirmExtractionAndStartEligibilityJudgment(
       "EXTRACTION_REVIEW_NOT_READY",
     );
   }
+  const reviewExtractedFields =
+    review.extractedFields &&
+    typeof review.extractedFields === "object" &&
+    !Array.isArray(review.extractedFields)
+      ? (review.extractedFields as Record<string, unknown>)
+      : {};
 
   const correctedExtractionRawResponse = input?.extractionRawResponse?.trim();
 
@@ -573,7 +579,10 @@ export async function confirmExtractionAndStartEligibilityJudgment(
 
     await updateExtractionReview(latestJob.id, {
       status: "READY",
-      extractedFields: correction.extractedFields,
+      extractedFields: {
+        ...reviewExtractedFields,
+        ...correction.extractedFields,
+      },
       rawExtractionResponse: correction.rawResponse,
       errorMessage: null,
     });

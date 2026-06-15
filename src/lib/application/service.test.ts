@@ -23,7 +23,7 @@ import {
   submitApplication,
   submitSupplementalFields,
 } from "@/lib/application/service";
-import { updateApplication } from "@/lib/data/store";
+import { updateApplication, updateExtractionReview } from "@/lib/data/store";
 
 function resetMemoryStore() {
   (
@@ -243,15 +243,43 @@ describe("secondary analysis editable service flow", () => {
       },
     });
 
-    await confirmExtractionAndStartEligibilityJudgment("app_intro");
+    await updateExtractionReview(extractionJob.id, {
+      extractedFields: {
+        ...snapshot?.latestExtractionReview?.extractedFields,
+        additional_model_field: "Preserve this value",
+      },
+    });
+
+    await confirmExtractionAndStartEligibilityJudgment("app_intro", {
+      extractionRawResponse: `### 1. Extracted Information
+- Name: Corrected Name
+- Personal Email: jane.doe@example.com
+- Work Email: jane.doe@university.edu
+- Phone Number: +1 555 010 2000
+- Year of Birth: 1988
+- Doctoral Degree Status: Doctorate completed
+- Doctoral Graduation Time: 2018
+- Current Title Equivalence: Associate Professor
+- Current Country of Employment: United States
+- Work Experience (2020-Present): 2020-Present, United States, Example University, Associate Professor
+- Research Area: Semiconductor materials
+- additional_model_field: Preserve this value`,
+    });
     snapshot = await getSnapshot("app_intro");
     expect(snapshot?.applicationStatus).toBe("CV_ANALYZING");
     expect(snapshot?.latestExtractionReview?.status).toBe("CONFIRMED");
+    expect(snapshot?.latestExtractionReview?.extractedFields).toMatchObject({
+      name: "Corrected Name",
+      additional_model_field: "Preserve this value",
+    });
 
     await refreshAnalysisState("app_intro");
     snapshot = await getSnapshot("app_intro");
     expect(snapshot?.applicationStatus).toBe("ELIGIBLE");
-    expect(snapshot?.latestResult?.extractedFields.name).toBe("Jane Doe");
+    expect(snapshot?.latestResult?.extractedFields).toMatchObject({
+      name: "Corrected Name",
+      additional_model_field: "Preserve this value",
+    });
   });
 
   it("saves contact-only completion without starting reanalysis", async () => {

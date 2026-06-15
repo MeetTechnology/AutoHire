@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeAnalysisResultPayload } from "@/lib/resume-analysis/result-normalizer";
+import {
+  normalizeAnalysisResultPayload,
+  normalizeExtractionResultPayload,
+} from "@/lib/resume-analysis/result-normalizer";
 
 describe("normalizeAnalysisResultPayload", () => {
   it("parses eligible results from the English formal decision block", () => {
@@ -200,6 +203,119 @@ describe("normalizeAnalysisResultPayload", () => {
     expect(borderline.missingFields.map((f) => f.fieldKey)).toEqual([
       "birth_date",
     ]);
+
+    const ambiguousWorkExperience = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{Cannot determine due to ambiguous work-experience dates}}}`,
+    });
+    expect(ambiguousWorkExperience.eligibilityResult).toBe("INSUFFICIENT_INFO");
+    expect(ambiguousWorkExperience.displaySummary).toBe(
+      "Cannot determine due to ambiguous work-experience dates",
+    );
+    expect(ambiguousWorkExperience.reasonText).toBe(
+      "Cannot determine due to ambiguous work-experience dates",
+    );
+    expect(ambiguousWorkExperience.missingFields.map((f) => f.fieldKey)).toEqual(
+      ["work_experience_since_2020"],
+    );
+
+    const borderlineInferred = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{Cannot determine due to borderline inferred birth year}}}`,
+    });
+    expect(borderlineInferred.eligibilityResult).toBe("INSUFFICIENT_INFO");
+    expect(borderlineInferred.missingFields.map((f) => f.fieldKey)).toEqual([
+      "birth_date",
+    ]);
+
+    const postdocSpecialTrack = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{Only eligible for the Postdoctoral Special Track: Overseas postdoctoral researchers returning to China for work}}}`,
+    });
+    expect(postdocSpecialTrack.eligibilityResult).toBe("ELIGIBLE");
+    expect(postdocSpecialTrack.reasonText).toContain("Postdoctoral Special Track");
+
+    const youngResearcherSpecialTrack = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{Only eligible for the Postdoctoral Special Track: Overseas doctoral graduates returning to China to conduct postdoctoral research}}}`,
+    });
+    expect(youngResearcherSpecialTrack.eligibilityResult).toBe("ELIGIBLE");
+    expect(youngResearcherSpecialTrack.reasonText).toContain(
+      "Overseas doctoral graduates",
+    );
+
+    const youngResearcherSpecialTrackTypo = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{Only eligible for or the Postdoctoral Special Track: Overseas doctoral graduates returning to China to conduct postdoctoral research}}}`,
+    });
+    expect(youngResearcherSpecialTrackTypo.eligibilityResult).toBe("ELIGIBLE");
+
+    const ineligibleSpecialTrackAmbiguous = normalizeAnalysisResultPayload({
+      raw_response: `${base}{{{Not eligible, but special-track eligibility cannot be determined due to ambiguous work-experience dates}}}`,
+    });
+    expect(ineligibleSpecialTrackAmbiguous.eligibilityResult).toBe("INELIGIBLE");
+    expect(ineligibleSpecialTrackAmbiguous.reasonText).toContain(
+      "special-track eligibility cannot be determined",
+    );
+  });
+
+  it("maps ambiguous work-experience dates in the two-step judgment contract", () => {
+    const result = normalizeAnalysisResultPayload({
+      parsed_result: {
+        text: `### 1. Analysis Process
+[[[Known facts: born 1981; PhD completed; currently in USA as Professor. The current role start/end dates are unclear, so overseas tenure cannot be verified.]]]
+
+### 2. Determination Result
+{{{Cannot determine due to ambiguous work-experience dates}}}`,
+      },
+    });
+
+    expect(result.eligibilityResult).toBe("INSUFFICIENT_INFO");
+    expect(result.reasonText).toBe(
+      "Cannot determine due to ambiguous work-experience dates",
+    );
+    expect(result.missingFields.map((field) => field.fieldKey)).toEqual([
+      "work_experience_since_2020",
+    ]);
+    expect(result.rawReasoning).toContain("overseas tenure cannot be verified");
+  });
+
+  it("parses the remaining prompt contract outputs in the two-step judgment path", () => {
+    const twoStepJudgment = (determination: string) =>
+      normalizeAnalysisResultPayload({
+        parsed_result: {
+          text: `### 1. Analysis Process
+[[[Judgment reasoning.]]]
+
+### 2. Determination Result
+{{{${determination}}}}`,
+        },
+      });
+
+    const borderlineInferred = twoStepJudgment(
+      "Cannot determine due to borderline inferred birth year",
+    );
+    expect(borderlineInferred.eligibilityResult).toBe("INSUFFICIENT_INFO");
+    expect(borderlineInferred.missingFields.map((field) => field.fieldKey)).toEqual(
+      ["birth_date"],
+    );
+
+    const missingCritical = twoStepJudgment(
+      "Cannot make a final determination due to missing critical information. Missing fields: Doctoral Degree Status",
+    );
+    expect(missingCritical.eligibilityResult).toBe("INSUFFICIENT_INFO");
+    expect(missingCritical.missingFields.map((field) => field.fieldKey)).toEqual(
+      ["doctoral_degree_status"],
+    );
+
+    const postdocSpecialTrack = twoStepJudgment(
+      "Only eligible for the Postdoctoral Special Track: Overseas postdoctoral researchers returning to China for work",
+    );
+    expect(postdocSpecialTrack.eligibilityResult).toBe("ELIGIBLE");
+    expect(postdocSpecialTrack.reasonText).toContain("Postdoctoral Special Track");
+
+    const ineligibleSpecialTrackAmbiguous = twoStepJudgment(
+      "Not eligible, but special-track eligibility cannot be determined due to ambiguous work-experience dates",
+    );
+    expect(ineligibleSpecialTrackAmbiguous.eligibilityResult).toBe("INELIGIBLE");
+    expect(ineligibleSpecialTrackAmbiguous.reasonText).toContain(
+      "special-track eligibility cannot be determined",
+    );
   });
 
   it("preserves extraction fields when the judgment uses the two-step contract", () => {
@@ -289,5 +405,95 @@ describe("normalizeAnalysisResultPayload", () => {
       "United States",
     );
     expect(result.extractedFields.current_job_country).toBeUndefined();
+  });
+});
+
+describe("normalizeExtractionResultPayload", () => {
+  it("parses the complete extraction contract and preserves multiline fields", () => {
+    const result = normalizeExtractionResultPayload({
+      text: `### 1. Extracted Information
+- Name: DR. DAMIEN PASSEMIER
+- Personal Email: damien.passemier@gmail.com
+- Work Email: !!!null!!!
+- Phone Number: (+852) 5169 8244
+
+- Year of Birth: 1984
+- Year of Birth Source: Inferred from bachelor's graduation year
+
+- Highest Degree Level: Doctorate or doctoral-equivalent
+- Education History:
+  1. **2003 - 2006**: France | University François Rabelais, Tours | Mathematics | BSc in Mathematics
+  2. **2012 - 2014**: France | University of Rennes 1 | Statistics | PhD in Statistics
+
+- Doctoral Degree Status: Yes, obtained
+- Doctoral Graduation Time: 2014
+- Doctoral Degree Institution and Country/Region: University of Rennes 1 | France
+
+- Current Raw Title:
+  1. Hong Kong | Alternative Data Limited (Measurable AI) | Chief Data Scientist
+- Current Title Equivalence: Enterprise senior R&D/technical position
+- Current Employment Country/Region:
+  1. Alternative Data Limited (Measurable AI) | Hong Kong
+- Current Employment Nature:
+  1. Hong Kong | Alternative Data Limited (Measurable AI) | Chief Data Scientist | 无
+- Current Employment Formality Judgment: Formal but full-time unclear
+
+- Complete Work Experience Timeline:
+  1. **Aug 2017 - Nov 2020**: Hong Kong | Tas Alpha | !!!null!!! | Senior Data Scientist | 无
+  2. **Jan 2021 - Present**: Hong Kong | Alternative Data Limited (Measurable AI) | !!!null!!! | Chief Data Scientist | 无
+- Complete Overseas Work Experience Timeline:
+  1. **Jan 2021 - Present**: Hong Kong | Alternative Data Limited (Measurable AI) | !!!null!!! | Chief Data Scientist | 无
+- Overseas Enterprise Work Experience Timeline:
+  1. **Jan 2021 - Present**: Hong Kong | Alternative Data Limited (Measurable AI) | !!!null!!! | Chief Data Scientist | 无
+
+- Postdoctoral Experience Timeline: !!!null!!!
+- Overseas Postdoctoral Experience Timeline: !!!null!!!
+
+- Work Experience Date Ambiguity: Yes
+- Work Experience Date Ambiguity Notes: Some roles lack exact days.
+
+- Research Area:
+  - High-dimensional statistics
+  - Random matrix theory
+  - Statistical inference
+- Applied/Industrial Relevance: Clear applied relevance in alternative data analytics.`,
+    });
+
+    expect(result.extractedFields).toMatchObject({
+      name: "DR. DAMIEN PASSEMIER",
+      work_email: "",
+      year_of_birth: "1984",
+      year_of_birth_source: "Inferred from bachelor's graduation year",
+      highest_degree_level: "Doctorate or doctoral-equivalent",
+      doctoral_degree_status: "Yes, obtained",
+      current_country_of_employment:
+        "1. Alternative Data Limited (Measurable AI) | Hong Kong",
+      work_experience_date_ambiguity: "Yes",
+    });
+    expect(result.extractedFields.education_history).toContain(
+      "2. 2012 - 2014",
+    );
+    expect(result.extractedFields.work_experience_2020_present).toContain(
+      "2. Jan 2021 - Present",
+    );
+    expect(result.extractedFields.research_area).toBe(
+      "- High-dimensional statistics\n  - Random matrix theory\n  - Statistical inference",
+    );
+    expect(Object.keys(result.extractedFields)).toHaveLength(25);
+  });
+
+  it("keeps legacy field labels compatible with the complete contract", () => {
+    const result = normalizeExtractionResultPayload({
+      text: `### 1. Extracted Information
+- Current Country of Employment: United States
+- Work Experience (2020-Present): Industry R&D`,
+    });
+
+    expect(result.extractedFields.current_country_of_employment).toBe(
+      "United States",
+    );
+    expect(result.extractedFields.work_experience_2020_present).toBe(
+      "Industry R&D",
+    );
   });
 });
