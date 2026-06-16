@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
     return new NextResponse(null, { status: 404 });
   }
 
-  const response = NextResponse.redirect(new URL("/ops/audit", request.url));
+  const response = NextResponse.redirect(
+    new URL("/ops/invitations", request.url),
+  );
   response.cookies.set({
     name: getAuditDashboardCookieName(),
     value: createAuditDashboardCookie(token),

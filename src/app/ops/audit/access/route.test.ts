@@ -37,11 +37,12 @@ describe("GET /ops/audit/access", () => {
     expect(setCookie).toContain(`${getAuditDashboardCookieName()}=`);
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=lax");
-    expect(setCookie).toContain("Path=/ops/audit");
+    expect(setCookie).toContain("Path=/");
 
     const cookieValue =
-      setCookie.match(new RegExp(`${getAuditDashboardCookieName()}=([^;]+)`))?.[1] ??
-      "";
+      setCookie.match(
+        new RegExp(`${getAuditDashboardCookieName()}=([^;]+)`),
+      )?.[1] ?? "";
     expect(verifyAuditDashboardCookie(cookieValue)).toBe(true);
   });
 

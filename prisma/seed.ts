@@ -99,6 +99,8 @@ async function main() {
   await prisma.inviteAccessLog.deleteMany();
   await prisma.applicationEventLog.deleteMany();
   await prisma.applicationFeedback.deleteMany();
+  await prisma.invitationGenerationItem.deleteMany();
+  await prisma.invitationGenerationBatch.deleteMany();
   await prisma.supplementFile.deleteMany();
   await prisma.supplementUploadBatch.deleteMany();
   await prisma.supplementRequest.deleteMany();

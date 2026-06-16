@@ -12,6 +12,12 @@ enum TokenStatus {
   DISABLED
 }
 
+enum InviteHashAlgorithm {
+  SHA256
+  SHA384
+  SHA512
+}
+
 enum ApplicationStatus {
   INIT
   INTRO_VIEWED
@@ -167,19 +173,51 @@ enum AskAiSessionStatus {
 }
 
 model ExpertInvitation {
-  id          String      @id @default(cuid())
-  expertId    String
-  email       String?
-  tokenHash   String      @unique
-  tokenStatus TokenStatus @default(ACTIVE)
-  expiredAt   DateTime?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id            String              @id @default(cuid())
+  expertId      String
+  email         String?
+  tokenHash     String              @unique
+  hashAlgorithm InviteHashAlgorithm @default(SHA256)
+  tokenStatus   TokenStatus         @default(ACTIVE)
+  expiredAt     DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
-  applications Application[]
-  accessLogs   InviteAccessLog[]
+  applications   Application[]
+  accessLogs     InviteAccessLog[]
+  generationItem InvitationGenerationItem?
 
   @@index([expertId])
+  @@index([hashAlgorithm])
+}
+
+model InvitationGenerationBatch {
+  id             String              @id @default(cuid())
+  idempotencyKey String              @unique
+  hashAlgorithm  InviteHashAlgorithm
+  requestedCount Int
+  createdCount   Int                 @default(0)
+  expiredDays    Int                 @default(90)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  items InvitationGenerationItem[]
+}
+
+model InvitationGenerationItem {
+  id             String   @id @default(cuid())
+  batchId        String
+  invitationId   String   @unique
+  expertId       String
+  plaintextToken String
+  tokenHash      String   @unique
+  inviteLink     String
+  createdAt      DateTime @default(now())
+
+  batch      InvitationGenerationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  invitation ExpertInvitation          @relation(fields: [invitationId], references: [id], onDelete: Restrict)
+
+  @@index([batchId])
 }
 
 model Application {

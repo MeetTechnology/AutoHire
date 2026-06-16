@@ -39,6 +39,7 @@ import {
   toHistoricalSupplementRequestStatus,
 } from "@/lib/material-supplement/status";
 import { getRuntimeMode } from "@/lib/env";
+import type { InviteHashAlgorithm } from "@/lib/auth/token";
 import {
   getSampleInvitationSeeds,
   getSampleSubmittedApplicationRecords,
@@ -49,6 +50,7 @@ import type {
   AccessResult as PrismaAccessResult,
   AccessTokenStatusSnapshot as PrismaAccessTokenStatusSnapshot,
   EventStatus as PrismaEventStatus,
+  InviteHashAlgorithm as PrismaInviteHashAlgorithm,
   MaterialCategoryReviewStatus as PrismaMaterialCategoryReviewStatus,
   MaterialCategory as PrismaMaterialCategory,
   MaterialReviewRunStatus as PrismaMaterialReviewRunStatus,
@@ -90,11 +92,44 @@ type InvitationRecord = {
   expertId: string;
   email: string | null;
   tokenHash: string;
+  hashAlgorithm: InviteHashAlgorithm;
   tokenStatus: "ACTIVE" | "EXPIRED" | "DISABLED";
   expiredAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type InvitationTokenHashCandidate = {
+  readonly hashAlgorithm: InviteHashAlgorithm;
+  readonly tokenHash: string;
+};
+
+export type InvitationGenerationBatchRecord = {
+  id: string;
+  idempotencyKey: string;
+  hashAlgorithm: InviteHashAlgorithm;
+  requestedCount: number;
+  createdCount: number;
+  expiredDays: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type InvitationGenerationItemRecord = {
+  id: string;
+  batchId: string;
+  invitationId: string;
+  expertId: string;
+  plaintextToken: string;
+  tokenHash: string;
+  inviteLink: string;
+  createdAt: Date;
+};
+
+export type InvitationGenerationBatchWithItems =
+  InvitationGenerationBatchRecord & {
+    readonly items: readonly InvitationGenerationItemRecord[];
+  };
 
 type ApplicationRecord = {
   id: string;
@@ -429,6 +464,8 @@ type FileUploadAttemptRecord = {
 
 type PersistedStore = {
   invitations: InvitationRecord[];
+  invitationGenerationBatches: InvitationGenerationBatchRecord[];
+  invitationGenerationItems: InvitationGenerationItemRecord[];
   applications: ApplicationRecord[];
   resumeFiles: ResumeFileRecord[];
   analysisJobs: AnalysisJobRecord[];
@@ -520,6 +557,8 @@ function buildSampleStore(): PersistedStore {
 
   return {
     invitations: getSampleInvitationSeeds(),
+    invitationGenerationBatches: [],
+    invitationGenerationItems: [],
     applications: [
       {
         id: "app_intro",
@@ -889,6 +928,243 @@ export async function findInvitationByTokenHash(tokenHash: string) {
 
   const prisma = await getPrisma();
   return prisma.expertInvitation.findUnique({ where: { tokenHash } });
+}
+
+export async function findInvitationByTokenHashCandidates(
+  candidates: readonly InvitationTokenHashCandidate[],
+) {
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+
+    for (const candidate of candidates) {
+      const invitation = store.invitations.find(
+        (item) =>
+          item.tokenHash === candidate.tokenHash &&
+          item.hashAlgorithm === candidate.hashAlgorithm,
+      );
+
+      if (invitation) {
+        return invitation;
+      }
+    }
+
+    return null;
+  }
+
+  const prisma = await getPrisma();
+  return prisma.expertInvitation.findFirst({
+    where: {
+      OR: candidates.map((candidate) => ({
+        tokenHash: candidate.tokenHash,
+        hashAlgorithm: candidate.hashAlgorithm as PrismaInviteHashAlgorithm,
+      })),
+    },
+  });
+}
+
+function toInvitationGenerationBatchWithItems(
+  batch: InvitationGenerationBatchRecord,
+  items: readonly InvitationGenerationItemRecord[],
+): InvitationGenerationBatchWithItems {
+  return {
+    ...batch,
+    items: [...items].sort(
+      (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+    ),
+  };
+}
+
+export async function findInvitationGenerationBatchById(
+  batchId: string,
+): Promise<InvitationGenerationBatchWithItems | null> {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const batch =
+      store.invitationGenerationBatches.find((item) => item.id === batchId) ??
+      null;
+
+    if (!batch) {
+      return null;
+    }
+
+    return toInvitationGenerationBatchWithItems(
+      batch,
+      store.invitationGenerationItems.filter(
+        (item) => item.batchId === batch.id,
+      ),
+    );
+  }
+
+  const prisma = await getPrisma();
+  const batch = await prisma.invitationGenerationBatch.findUnique({
+    where: { id: batchId },
+    include: { items: { orderBy: { createdAt: "asc" } } },
+  });
+
+  return batch;
+}
+
+export async function findInvitationGenerationBatchByIdempotencyKey(
+  idempotencyKey: string,
+): Promise<InvitationGenerationBatchWithItems | null> {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const batch =
+      store.invitationGenerationBatches.find(
+        (item) => item.idempotencyKey === idempotencyKey,
+      ) ?? null;
+
+    if (!batch) {
+      return null;
+    }
+
+    return toInvitationGenerationBatchWithItems(
+      batch,
+      store.invitationGenerationItems.filter(
+        (item) => item.batchId === batch.id,
+      ),
+    );
+  }
+
+  const prisma = await getPrisma();
+  const batch = await prisma.invitationGenerationBatch.findUnique({
+    where: { idempotencyKey },
+    include: { items: { orderBy: { createdAt: "asc" } } },
+  });
+
+  return batch;
+}
+
+export async function createInvitationGenerationBatch(input: {
+  id?: string;
+  idempotencyKey: string;
+  hashAlgorithm: InviteHashAlgorithm;
+  requestedCount: number;
+  expiredDays: number;
+  invitations: readonly {
+    expertId: string;
+    plaintextToken: string;
+    tokenHash: string;
+    inviteLink: string;
+    expiredAt: Date;
+  }[];
+}): Promise<InvitationGenerationBatchWithItems> {
+  if (getRuntimeMode() === "memory") {
+    const store = getMemoryStore();
+    const existing = store.invitationGenerationBatches.find(
+      (item) => item.idempotencyKey === input.idempotencyKey,
+    );
+
+    if (existing) {
+      return toInvitationGenerationBatchWithItems(
+        existing,
+        store.invitationGenerationItems.filter(
+          (item) => item.batchId === existing.id,
+        ),
+      );
+    }
+
+    const now = new Date();
+    const batch: InvitationGenerationBatchRecord = {
+      id: input.id ?? createId("invite_batch"),
+      idempotencyKey: input.idempotencyKey,
+      hashAlgorithm: input.hashAlgorithm,
+      requestedCount: input.requestedCount,
+      createdCount: input.invitations.length,
+      expiredDays: input.expiredDays,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const items: InvitationGenerationItemRecord[] = [];
+
+    input.invitations.forEach((invitationInput) => {
+      const invitation: InvitationRecord = {
+        id: createId("invitation"),
+        expertId: invitationInput.expertId,
+        email: null,
+        tokenHash: invitationInput.tokenHash,
+        hashAlgorithm: input.hashAlgorithm,
+        tokenStatus: "ACTIVE",
+        expiredAt: invitationInput.expiredAt,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const item: InvitationGenerationItemRecord = {
+        id: createId("invite_item"),
+        batchId: batch.id,
+        invitationId: invitation.id,
+        expertId: invitation.expertId,
+        plaintextToken: invitationInput.plaintextToken,
+        tokenHash: invitationInput.tokenHash,
+        inviteLink: invitationInput.inviteLink,
+        createdAt: now,
+      };
+
+      store.invitations.push(invitation);
+      store.invitationGenerationItems.push(item);
+      items.push(item);
+    });
+
+    store.invitationGenerationBatches.push(batch);
+
+    return toInvitationGenerationBatchWithItems(batch, items);
+  }
+
+  const prisma = await getPrisma();
+
+  return prisma.$transaction(async (tx) => {
+    const batch = await tx.invitationGenerationBatch.create({
+      data: {
+        ...(input.id ? { id: input.id } : {}),
+        idempotencyKey: input.idempotencyKey,
+        hashAlgorithm: input.hashAlgorithm as PrismaInviteHashAlgorithm,
+        requestedCount: input.requestedCount,
+        createdCount: 0,
+        expiredDays: input.expiredDays,
+      },
+    });
+    const items = [];
+
+    for (const [index, invitationInput] of input.invitations.entries()) {
+      const invitation = await tx.expertInvitation.create({
+        data: {
+          expertId: invitationInput.expertId,
+          email: null,
+          tokenHash: invitationInput.tokenHash,
+          hashAlgorithm: input.hashAlgorithm as PrismaInviteHashAlgorithm,
+          tokenStatus: "ACTIVE",
+          expiredAt: invitationInput.expiredAt,
+        },
+      });
+      const item = await tx.invitationGenerationItem.create({
+        data: {
+          batchId: batch.id,
+          invitationId: invitation.id,
+          expertId: invitation.expertId,
+          plaintextToken: invitationInput.plaintextToken,
+          tokenHash: invitationInput.tokenHash,
+          inviteLink: invitationInput.inviteLink,
+          createdAt: new Date(batch.createdAt.getTime() + index),
+        },
+      });
+
+      items.push(item);
+    }
+
+    const updatedBatch = await tx.invitationGenerationBatch.update({
+      where: { id: batch.id },
+      data: { createdCount: items.length },
+    });
+
+    return {
+      ...updatedBatch,
+      items,
+    };
+  });
 }
 
 export async function findInvitationById(invitationId: string) {

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { hashInviteToken } from "@/lib/auth/token";
+import { hashInviteTokenCandidates } from "@/lib/auth/token";
 import type {
   AccessResult,
   AccessTokenStatusSnapshot,
@@ -13,7 +13,7 @@ import {
   createInviteAccessLog,
   findApplicationEventByIdempotency,
   findInvitationById,
-  findInvitationByTokenHash,
+  findInvitationByTokenHashCandidates,
   findOpenApplicationByInvitationId,
   getApplicationById,
   updateApplication,
@@ -117,14 +117,18 @@ export async function trackEvent(input: TrackingEventInput) {
         fileName: input.upload.fileName,
         fileExt: input.upload.fileExt ?? null,
         fileSize: input.upload.fileSize ?? null,
-        intentCreatedAt:
-          input.eventType.endsWith("_intent_created") ? eventTime : null,
-        uploadStartedAt:
-          input.eventType.endsWith("_upload_started") ? eventTime : null,
-        uploadConfirmedAt:
-          input.eventType.endsWith("_upload_confirmed") ? eventTime : null,
-        uploadFailedAt:
-          input.eventType.endsWith("_upload_failed") ? eventTime : null,
+        intentCreatedAt: input.eventType.endsWith("_intent_created")
+          ? eventTime
+          : null,
+        uploadStartedAt: input.eventType.endsWith("_upload_started")
+          ? eventTime
+          : null,
+        uploadConfirmedAt: input.eventType.endsWith("_upload_confirmed")
+          ? eventTime
+          : null,
+        uploadFailedAt: input.eventType.endsWith("_upload_failed")
+          ? eventTime
+          : null,
         failureCode: input.errorCode ?? null,
         failureStage:
           mapUploadFailureStage(input.upload.failureStage) ??
@@ -135,7 +139,6 @@ export async function trackEvent(input: TrackingEventInput) {
         requestId: input.requestId,
       });
     }
-
   }
 
   if (resolved.applicationId) {
@@ -161,13 +164,26 @@ export async function trackEventFromRequest(
   request: NextRequest,
   input: Omit<
     TrackingEventInput,
-    "sessionId" | "requestId" | "ipHash" | "userAgent" | "referer" | "landingPath" | "utm"
+    | "sessionId"
+    | "requestId"
+    | "ipHash"
+    | "userAgent"
+    | "referer"
+    | "landingPath"
+    | "utm"
     | "ipAddress"
   > &
     Partial<
       Pick<
         TrackingEventInput,
-        "sessionId" | "requestId" | "ipAddress" | "ipHash" | "userAgent" | "referer" | "landingPath" | "utm"
+        | "sessionId"
+        | "requestId"
+        | "ipAddress"
+        | "ipHash"
+        | "userAgent"
+        | "referer"
+        | "landingPath"
+        | "utm"
       >
     >,
 ) {
@@ -198,7 +214,9 @@ async function resolveBoundContext(input: TrackingEventInput) {
     : null;
 
   if (explicitApplication) {
-    const invitation = await findInvitationById(explicitApplication.invitationId);
+    const invitation = await findInvitationById(
+      explicitApplication.invitationId,
+    );
 
     return {
       applicationId: explicitApplication.id,
@@ -215,7 +233,9 @@ async function resolveBoundContext(input: TrackingEventInput) {
     };
   }
 
-  const invitation = await findInvitationByTokenHash(hashInviteToken(input.token));
+  const invitation = await findInvitationByTokenHashCandidates(
+    hashInviteTokenCandidates(input.token),
+  );
   const application = invitation
     ? await findOpenApplicationByInvitationId(invitation.id)
     : null;
@@ -272,7 +292,8 @@ async function applyMilestones(input: {
   }
 
   if (input.eventType === "materials_page_viewed") {
-    patch.materialsEnteredAt = application.materialsEnteredAt ?? input.eventTime;
+    patch.materialsEnteredAt =
+      application.materialsEnteredAt ?? input.eventTime;
   }
 
   if (input.eventType === "application_submitted") {

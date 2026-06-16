@@ -25,7 +25,7 @@ import {
 } from "@/lib/application/screening-contact";
 import { createSessionToken } from "@/lib/auth/session";
 import { getInvitationAccessBlockReason } from "@/lib/auth/invitation-access";
-import { hashInviteToken } from "@/lib/auth/token";
+import { hashInviteTokenCandidates } from "@/lib/auth/token";
 import {
   buildApplicationSnapshot,
   createAnalysisJob,
@@ -38,7 +38,7 @@ import {
   deleteResumeFileById,
   createSupplementalFieldSubmission,
   findInvitationById,
-  findInvitationByTokenHash,
+  findInvitationByTokenHashCandidates,
   findOpenApplicationByInvitationId,
   findSecondaryAnalysisRunByExternalRunId,
   getApplicationById,
@@ -207,7 +207,7 @@ async function syncPostReviewApplicationState(input: {
 }
 
 export async function resolveInviteToken(token: string) {
-  return findInvitationByTokenHash(hashInviteToken(token));
+  return findInvitationByTokenHashCandidates(hashInviteTokenCandidates(token));
 }
 
 export async function createOrRestoreApplication(invitation: {
